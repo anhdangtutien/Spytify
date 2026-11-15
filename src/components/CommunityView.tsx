@@ -27,6 +27,7 @@ import {
   deleteCloudServer,
   fetchCloudServerById,
   fetchCloudServersForUser,
+  fetchCloudServerMembershipAudit,
   pushCloudServerInvite,
   removeCloudServerInvite,
   fetchCloudServerInvites,
@@ -47,6 +48,7 @@ interface CommunityViewProps {
   language?: LanguageCode;
   themeMode?: 'dark' | 'light';
   onActiveServerChange?: (server: CommunityServer | null) => void;
+  onIncomingVoiceCall?: () => void;
 }
 
 // Default DJ stage track (Cyberpunk Synthwave Radio 24/7)
@@ -810,6 +812,73 @@ const SERVER_PRESETS = [
   }
 ];
 
+const sanitizeModeratorIds = (
+  mods: unknown,
+  ownerId?: string | null,
+  kickedIds?: unknown,
+  currentUserId?: string | null
+): string[] => {
+  if (!Array.isArray(mods)) return [];
+  const kickedSet = new Set<string>(Array.isArray(kickedIds) ? kickedIds.filter(Boolean) : []);
+  return Array.from(
+    new Set(
+      mods.filter(
+        (id): id is string =>
+          typeof id === 'string' &&
+          Boolean(id) &&
+          id !== ownerId &&
+          !kickedSet.has(id) &&
+          (!currentUserId || id !== 'usr_me')
+      )
+    )
+  );
+};
+
+const resolveServerRoleFlags = (srv: CommunityServer, userId?: string | null) => {
+  if (!srv || srv.id === 'srv_none') {
+    return { isOwner: false, isMod: false, canManage: false, badge: 'MEMBER' as const };
+  }
+  const isOwner = userId
+    ? srv.owner_id === userId
+    : (!srv.owner_id || srv.owner_id === 'usr_me');
+  const mods = Array.isArray(srv.moderator_ids) ? srv.moderator_ids : [];
+  const isMod = Boolean(
+    !isOwner &&
+    (userId ? mods.includes(userId) : mods.includes('usr_me'))
+  );
+  const badge: 'OWNER' | 'MOD' | 'MEMBER' = isOwner ? 'OWNER' : isMod ? 'MOD' : 'MEMBER';
+  return { isOwner, isMod, canManage: isOwner || isMod, badge };
+};
+
+const saveServerOrderIds = (userId: string | undefined | null, list: CommunityServer[]) => {
+  if (!userId) return;
+  try {
+    localStorage.setItem(
+      `spytify_server_order_${userId}`,
+      JSON.stringify(list.filter(s => s.id !== 'srv_none').map(s => s.id))
+    );
+  } catch {}
+};
+
+const applySavedServerOrder = (userId: string | undefined | null, list: CommunityServer[]): CommunityServer[] => {
+  if (!userId || list.length <= 1) return list;
+  try {
+    const raw = localStorage.getItem(`spytify_server_order_${userId}`);
+    if (!raw) return list;
+    const savedIds: string[] = JSON.parse(raw);
+    if (!Array.isArray(savedIds) || savedIds.length === 0) return list;
+    const rank = new Map<string, number>();
+    savedIds.forEach((id, idx) => rank.set(id, idx));
+    return [...list].sort((a, b) => {
+      const ra = rank.has(a.id) ? rank.get(a.id)! : Number.MAX_SAFE_INTEGER;
+      const rb = rank.has(b.id) ? rank.get(b.id)! : Number.MAX_SAFE_INTEGER;
+      return ra - rb;
+    });
+  } catch {
+    return list;
+  }
+};
+
 const loadUserServersFromStorage = (userId?: string | null): CommunityServer[] => {
   if (!userId) {
     try {
@@ -850,30 +919,31 @@ const loadUserServersFromStorage = (userId?: string | null): CommunityServer[] =
             s.member_ids.includes('usr_host') &&
             s.member_ids.includes('usr_agent_01');
           const resolvedOwnerId = !s.owner_id || s.owner_id === 'usr_me' ? userId : s.owner_id;
+          const sanitizedMods = sanitizeModeratorIds(s.moderator_ids, resolvedOwnerId, s.kicked_ids, userId);
           const rawMembers = isOldDefaultMembers ? ['usr_me', userId] : s.member_ids || ['usr_me', userId];
           const memberSet = new Set(rawMembers);
           memberSet.add('usr_me');
           memberSet.add(userId);
-          return {
+          const draft: CommunityServer = {
             ...s,
             is_custom: true,
             owner_id: resolvedOwnerId,
-            badge:
-              resolvedOwnerId === userId
-                ? 'OWNER'
-                : Array.isArray(s.moderator_ids) && s.moderator_ids.includes(userId)
-                ? 'MOD'
-                : 'MEMBER',
             channels: s.channels.filter(c => c.type !== 'stage'),
             member_ids: Array.from(memberSet),
-            moderator_ids: Array.isArray(s.moderator_ids) ? s.moderator_ids : [],
+            moderator_ids: sanitizedMods,
+          };
+          const { badge } = resolveServerRoleFlags(draft, userId);
+          return {
+            ...draft,
+            badge,
           };
         });
+      const ordered = applySavedServerOrder(userId, cleaned);
       if (!migratedFlag) {
         localStorage.setItem('spytify_custom_srv_zero_members_v1', '1');
       }
-      localStorage.setItem(userKey, JSON.stringify(cleaned));
-      return cleaned;
+      localStorage.setItem(userKey, JSON.stringify(ordered));
+      return ordered;
     }
   } catch {}
   return [];
@@ -890,6 +960,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   language = 'vi',
   themeMode = 'dark',
   onActiveServerChange,
+  onIncomingVoiceCall,
 }) => {
   const isLight = themeMode === 'light';
   // Load user-created custom servers scoped strictly to logged-in user (empty when logged out)
@@ -902,6 +973,97 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       localStorage.removeItem('spytify_user_servers');
     } catch {}
   };
+
+  // Drag & Drop sắp xếp vị trí icon Server trên thanh bên trái
+  const [draggedServerId, setDraggedServerId] = useState<string | null>(null);
+  const [dragOverServerId, setDragOverServerId] = useState<string | null>(null);
+  const [dragDropPosition, setDragDropPosition] = useState<'above' | 'below' | null>(null);
+  const serverRailDragRef = useRef<{
+    serverId: string;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    overId: string | null;
+    position: 'above' | 'below' | null;
+  } | null>(null);
+  const suppressServerClickIdRef = useRef<string | null>(null);
+
+  const handleReorderServers = (fromId: string, toId: string, position: 'above' | 'below' = 'above') => {
+    if (!fromId || !toId || fromId === toId) return;
+    setServers(prev => {
+      const fromIndex = prev.findIndex(s => s.id === fromId);
+      const toIndex = prev.findIndex(s => s.id === toId);
+      if (fromIndex === -1 || toIndex === -1) return prev;
+      const next = [...prev];
+      const [movedItem] = next.splice(fromIndex, 1);
+      let insertIndex = next.findIndex(s => s.id === toId);
+      if (insertIndex === -1) return prev;
+      if (position === 'below') insertIndex += 1;
+      next.splice(insertIndex, 0, movedItem);
+      persistServers(next);
+      saveServerOrderIds(currentUser?.id, next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      const drag = serverRailDragRef.current;
+      if (!drag) return;
+      const dx = Math.abs(e.clientX - drag.startX);
+      const dy = Math.abs(e.clientY - drag.startY);
+      if (!drag.moved && dx < 6 && dy < 6) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        setDraggedServerId(drag.serverId);
+      }
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const targetSlot = el?.closest('[data-server-rail-id]') as HTMLElement | null;
+      const targetId = targetSlot?.getAttribute('data-server-rail-id') || null;
+      if (targetSlot && targetId && targetId !== drag.serverId) {
+        const rect = targetSlot.getBoundingClientRect();
+        const pos: 'above' | 'below' = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+        drag.overId = targetId;
+        drag.position = pos;
+        setDragOverServerId(targetId);
+        setDragDropPosition(pos);
+      } else if (!targetId || targetId === drag.serverId) {
+        drag.overId = null;
+        drag.position = null;
+        setDragOverServerId(null);
+        setDragDropPosition(null);
+      }
+    };
+
+    const handlePointerUp = () => {
+      const drag = serverRailDragRef.current;
+      if (!drag) return;
+      serverRailDragRef.current = null;
+      if (drag.moved) {
+        suppressServerClickIdRef.current = drag.serverId;
+        setTimeout(() => {
+          if (suppressServerClickIdRef.current === drag.serverId) {
+            suppressServerClickIdRef.current = null;
+          }
+        }, 120);
+        if (drag.overId && drag.overId !== drag.serverId) {
+          handleReorderServers(drag.serverId, drag.overId, drag.position || 'above');
+        }
+      }
+      setDraggedServerId(null);
+      setDragOverServerId(null);
+      setDragDropPosition(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [currentUser?.id]);
 
   const [selectedServer, setSelectedServer] = useState<CommunityServer>(servers[0] || EMPTY_SERVER_FALLBACK);
   const [selectedChannel, setSelectedChannel] = useState<CommunityChannel>((servers[0] || EMPTY_SERVER_FALLBACK).channels[0]);
@@ -975,28 +1137,64 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
   const dmImageInputRef = useRef<HTMLInputElement | null>(null);
 
-  // ──────── DISCORD-STYLE SCREEN SHARING (CHIA SẺ MÀN HÌNH) ────────
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [activeScreenShare, setActiveScreenShare] = useState<{
+  // ──────── DISCORD-STYLE SCREEN SHARING (CHIA SẺ MÀN HÌNH NHIỀU NGƯỜI ĐỒNG THỜI) ────────
+  type ScreenShareSession = {
     userId: string;
     userName: string;
+    avatar?: string | null;
     stream: MediaStream;
-  } | null>(null);
+  };
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShares, setScreenShares] = useState<Record<string, ScreenShareSession>>({});
+  const [selectedScreenShareUserId, setSelectedScreenShareUserId] = useState<string | null>(null);
+  const screenSharesList = useMemo(() => Object.values(screenShares), [screenShares]);
+  const activeScreenShare =
+    (selectedScreenShareUserId && screenShares[selectedScreenShareUserId]) ||
+    screenSharesList[0] ||
+    null;
+
+  const upsertScreenShare = (session: ScreenShareSession, autoFocus = false) => {
+    setScreenShares(prev => ({
+      ...prev,
+      [session.userId]: session,
+    }));
+    setSelectedScreenShareUserId(prev => (!prev || autoFocus ? session.userId : prev));
+  };
+
+  const removeScreenShare = (targetUserId: string) => {
+    remoteScreenStreamsRef.current.delete(targetUserId);
+    setScreenShares(prev => {
+      if (!prev[targetUserId]) return prev;
+      const next = { ...prev };
+      delete next[targetUserId];
+      return next;
+    });
+    setSelectedScreenShareUserId(prev => (prev === targetUserId ? null : prev));
+  };
+
+  const clearAllScreenShares = () => {
+    remoteScreenStreamsRef.current.clear();
+    setScreenShares({});
+    setSelectedScreenShareUserId(null);
+  };
+
   const screenStreamRef = useRef<MediaStream | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteScreenStreamsRef = useRef<Map<string, MediaStream>>(new Map());
 
-  // Đồng bộ luồng video chia sẻ màn hình vào thẻ video ngay khi có stream mới
+  // Đồng bộ luồng video chia sẻ màn hình vào thẻ video ngay khi đổi tab hoặc có stream mới
   useEffect(() => {
     if (screenVideoRef.current) {
       if (activeScreenShare?.stream) {
-        screenVideoRef.current.srcObject = activeScreenShare.stream;
+        if (screenVideoRef.current.srcObject !== activeScreenShare.stream) {
+          screenVideoRef.current.srcObject = activeScreenShare.stream;
+        }
         screenVideoRef.current.play().catch(() => {});
       } else {
         screenVideoRef.current.srcObject = null;
       }
     }
-  }, [activeScreenShare]);
+  }, [activeScreenShare?.userId, activeScreenShare?.stream]);
   const creatingChannelType =
     creatingChannelState && creatingChannelState.serverId === selectedServer.id
       ? creatingChannelState.type
@@ -1039,7 +1237,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [connectedVoiceServerId, setConnectedVoiceServerId] = useState<string | null>(null);
   const connectedVoiceChannelRef = useRef<string | null>(null);
   connectedVoiceChannelRef.current = connectedVoiceChannel;
+  const connectedVoiceServerIdRef = useRef<string | null>(null);
+  connectedVoiceServerIdRef.current = connectedVoiceServerId;
   const handleLeaveVoiceCallRef = useRef<() => void>(() => {});
+  const evictSelfFromKickedServerRef = useRef<(serverId: string, toastMsg?: string) => void>(() => {});
   const broadcastUserOfflineRef = useRef<() => void>(() => {});
   const broadcastUserOnlineRef = useRef<() => void>(() => {});
   const [isMuted, setIsMuted] = useState(false);
@@ -1215,6 +1416,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // Voice call participants in current channel (Synced in Realtime via Supabase & Invites!)
   const [voiceParticipants, setVoiceParticipants] = useState<VoiceParticipant[]>([]);
+  const voiceParticipantsRef = useRef<VoiceParticipant[]>([]);
+  voiceParticipantsRef.current = voiceParticipants;
 
   // Floating Mini Profile Card on hover for members & bots
   const [hoveredProfile, setHoveredProfile] = useState<{
@@ -1238,6 +1441,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // Incoming Voice Call Invitation Modal (user must accept to join!)
   const [incomingVoiceInvite, setIncomingVoiceInvite] = useState<{
+    callId?: string;
+    isDmCall?: boolean;
+    roomId?: string;
     fromUserId: string;
     fromUserName: string;
     fromUserAvatar?: string | null;
@@ -1249,6 +1455,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     channelName: string;
     timestamp: number;
   } | null>(null);
+  const incomingVoiceInviteRef = useRef<typeof incomingVoiceInvite>(null);
+  incomingVoiceInviteRef.current = incomingVoiceInvite;
 
   // Local Mute for Me (Tắt tiếng cá nhân người khác khi họ ồn ào)
   const [locallyMutedUsers, setLocallyMutedUsers] = useState<Record<string, boolean>>(() => {
@@ -1307,10 +1515,34 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     });
   };
 
+  const startPrivateCallRef = useRef<(friend: CommunityUserProfile, opts?: { isAnswering?: boolean }) => Promise<void>>(async () => {});
+
   const handleAcceptVoiceInvite = () => {
     if (!incomingVoiceInvite) return;
     const inv = incomingVoiceInvite;
     setIncomingVoiceInvite(null);
+
+    // Nếu là cuộc gọi thoại riêng 1-1 (DM Private Call): mở đúng khung DM của người gọi và kết nối trực tiếp topic dm_private
+    if (inv.isDmCall || inv.serverId === 'dm_private') {
+      const existingFriend = registeredUsers.find(u => u.id === inv.fromUserId);
+      const callerProfile: CommunityUserProfile = existingFriend || {
+        id: inv.fromUserId,
+        username: inv.fromUserName || 'operative',
+        display_name: inv.fromUserName || 'Người dùng',
+        avatar: inv.fromUserAvatar || null,
+        role: 'THÀNH VIÊN',
+        status: 'online',
+        bio: 'Thành viên Spytify từ hệ thống cộng đồng.',
+        listening: null,
+        listeningTrack: null,
+        isHost: false,
+        followsCurrentUser: Boolean(followersOfMeMap[inv.fromUserId]),
+      };
+      setIsFriendsTabActive(true);
+      setActiveDmFriend(callerProfile);
+      startPrivateCallRef.current(callerProfile, { isAnswering: true }).catch(() => {});
+      return;
+    }
 
     // Chuyển sang máy chủ của lời mời nếu khác máy chủ hiện tại
     const targetServer = servers.find(s => s.id === inv.serverId);
@@ -1324,7 +1556,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleDeclineVoiceInvite = () => {
+    const inv = incomingVoiceInvite;
     setIncomingVoiceInvite(null);
+    if (inv && currentUser) {
+      globalSocialChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'voice_call_declined',
+        payload: {
+          callId: inv.callId,
+          channelId: inv.channelId,
+          serverId: inv.serverId,
+          isDmCall: Boolean(inv.isDmCall || inv.serverId === 'dm_private'),
+          fromUserId: inv.fromUserId,
+          declinedByUserId: currentUser.id,
+          declinedByName: currentUser.display_name || currentUser.username || 'Người dùng',
+        },
+      });
+    }
   };
 
   // Right-click context menu for online members
@@ -3069,17 +3317,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [newTagDraftColor, setNewTagDraftColor] = useState('#00E5FF');
   const [newTagDraftIcon, setNewTagDraftIcon] = useState('🎵');
 
-  // Mở modal chọn tag cho thành viên hiện tại
+  // Mở trực tiếp tab chọn Tag sở thích trong Cài đặt Server
   const handleOpenTagSelectModal = () => {
-    const myId = currentUser?.id || myParticipantIdRef.current;
-    const existing =
-      selectedServer.member_tags?.[myId] ||
-      (currentUser?.id ? selectedServer.member_tags?.[currentUser.id] : undefined) ||
-      (myParticipantIdRef.current ? selectedServer.member_tags?.[myParticipantIdRef.current] : undefined) ||
-      selectedServer.member_tags?.['usr_me'] ||
-      [];
-    setSelectedTagIdsDraft(existing);
-    setIsTagSelectModalOpen(true);
+    handleOpenServerSettings(selectedServer, 'tags');
   };
 
   const handleToggleTagDraft = (tagId: string) => {
@@ -3543,7 +3783,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
   };
 
-  const handleOpenServerSettings = (srv: CommunityServer) => {
+  const handleOpenServerSettings = (
+    srv: CommunityServer,
+    initialTab: 'overview' | 'members' | 'tags' | 'invites' | 'danger' = 'overview'
+  ) => {
     setEditServerName(srv.name);
     setEditServerDesc(srv.description);
     setEditServerIcon(srv.icon);
@@ -3553,7 +3796,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setNicknameDraft(serverNicknames[srv.id] || currentUser?.display_name || '');
     const myTags = resolveMemberTags(currentUser?.id || 'usr_me', srv, myServerDisplayName);
     setSelectedTagIdsDraft(myTags.map(t => t.id));
-    setServerSettingsTab('overview');
+    setServerSettingsTab(initialTab);
     setInviteCopied(false);
     setIsServerSettingsOpen(true);
   };
@@ -3661,34 +3904,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         }
       : null;
 
+    const existingBotProfile = registeredUsers.find(u => u.id === botId);
+    const savedBotProfile: CommunityUserProfile = {
+      id: botId,
+      username: existingBotProfile?.username || trimmedName.toLowerCase().replace(/\s+/g, '_'),
+      display_name: trimmedName,
+      avatar: botDraftAvatar || existingBotProfile?.avatar || null,
+      role: trimmedTag,
+      status: 'online',
+      bio: isDemand
+        ? 'Bot phát nhạc theo yêu cầu (/play) hoạt động độc lập theo từng Server.'
+        : 'Bot trạm phát nhạc Radio 24/7.',
+      listening: trimmedListening,
+      listeningTrack: savedStationTrack || existingBotProfile?.listeningTrack || null,
+      isHost: true,
+      followsCurrentUser: false,
+      joinedAt: existingBotProfile?.joinedAt || new Date().toISOString(),
+    };
+
     setRegisteredUsers(prev => {
       const exists = prev.some(u => u.id === botId);
       const next = exists
-        ? prev.map(u => u.id === botId ? {
-            ...u,
-            display_name: trimmedName,
-            avatar: botDraftAvatar || u.avatar,
-            role: trimmedTag,
-            listening: trimmedListening,
-            ...(savedStationTrack ? { listeningTrack: savedStationTrack } : {}),
-          } : u)
-        : [
-            ...prev,
-            {
-              id: botId,
-              username: trimmedName.toLowerCase().replace(/\s+/g, '_'),
-              display_name: trimmedName,
-              avatar: botDraftAvatar || null,
-              role: trimmedTag,
-              status: 'online' as const,
-              bio: isDemand ? 'Bot phát nhạc theo yêu cầu (/play) hoạt động độc lập theo từng Server.' : 'Bot trạm phát nhạc Radio 24/7.',
-              listening: trimmedListening,
-              listeningTrack: savedStationTrack,
-              isHost: true,
-              followsCurrentUser: false,
-              joinedAt: new Date().toISOString(),
-            }
-          ];
+        ? prev.map(u => (u.id === botId ? { ...u, ...savedBotProfile } : u))
+        : [...prev, savedBotProfile];
       try {
         localStorage.setItem('spytify_registered_users', JSON.stringify(next));
       } catch {}
@@ -3705,7 +3943,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
 
     let nextChannels = selectedServer.channels;
-    let channelsChanged = false;
 
     if (!isDemand) {
       const cleanUrl = botDraftStreamUrl.trim();
@@ -3733,7 +3970,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           custom_stream_title: trimmedListening || targetCh.custom_stream_title,
         };
         nextChannels = selectedServer.channels.map(c => c.id === targetCh.id ? updatedChannel : c);
-        channelsChanged = true;
       } else if (!editingBotTargetId && cleanUrl) {
         const newCh: CommunityChannel = {
           id: `radio_${botId}`,
@@ -3749,11 +3985,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           custom_stream_title: trimmedListening || `${trimmedName} Live`,
         };
         nextChannels = [...selectedServer.channels, newCh];
-        channelsChanged = true;
       }
     }
 
-    // Luôn đảm bảo Bot (cả Trạm Live lẫn Theo Yêu Cầu) được add vào danh sách thành viên Server
+    // Luôn đảm bảo Bot (cả Trạm Live lẫn Theo Yêu Cầu) được add vào danh sách thành viên & custom_bots của Server để đồng bộ tới mọi user khác
     const usesExplicitMembers = Boolean(
       Array.isArray(selectedServer.member_ids) ||
       selectedServer.is_custom ||
@@ -3769,15 +4004,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       ? (selectedServer.kicked_ids || []).filter(id => id !== botId)
       : selectedServer.kicked_ids;
 
-    if (channelsChanged || needsMemberAdd || hasKicked) {
-      const updatedSrv: CommunityServer = {
-        ...selectedServer,
-        channels: nextChannels,
-        ...(usesExplicitMembers ? { member_ids: nextMemberIds } : {}),
-        ...(hasKicked ? { kicked_ids: nextKickedIds } : {}),
-      };
-      broadcastAndPersistServerUpdate(updatedSrv);
-    }
+    const prevCustomBots = Array.isArray(selectedServer.custom_bots) ? selectedServer.custom_bots : [];
+    const nextCustomBots = prevCustomBots.some(b => b.id === botId)
+      ? prevCustomBots.map(b => (b.id === botId ? { ...b, ...savedBotProfile } : b))
+      : [...prevCustomBots, savedBotProfile];
+
+    const updatedSrv: CommunityServer = {
+      ...selectedServer,
+      channels: nextChannels,
+      custom_bots: nextCustomBots,
+      ...(usesExplicitMembers ? { member_ids: nextMemberIds } : {}),
+      ...(hasKicked ? { kicked_ids: nextKickedIds } : {}),
+    };
+    broadcastAndPersistServerUpdate(updatedSrv);
 
     showVoiceToast(
       language === 'vi'
@@ -3791,37 +4030,92 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // ──────── QUYỀN HẠN TRONG SERVER (CHỦ SERVER / MOD / THÀNH VIÊN) ────────
   const myAccountUserId = currentUser?.id || null;
   const hasActiveServer = !isFriendsTabActive && servers.length > 0 && selectedServer.id !== 'srv_none';
-  const isServerOwner = Boolean(
-    selectedServer.id !== 'srv_none' &&
-    (selectedServer.owner_id === 'usr_me' ||
-     selectedServer.owner_id === '' ||
-     !selectedServer.owner_id ||
-     (currentUser?.id && selectedServer.owner_id === currentUser.id) ||
-     selectedServer.is_custom ||
-     selectedServer.badge === 'CHỦ SERVER' ||
-     selectedServer.badge === 'BẠN LÀ CHỦ SERVER')
-  );
-  const isServerMod = Boolean(
-    selectedServer.id !== 'srv_none' &&
-    !isServerOwner &&
-    Array.isArray(selectedServer.moderator_ids) &&
-    (selectedServer.moderator_ids.includes('usr_me') || (currentUser?.id && selectedServer.moderator_ids.includes(currentUser.id)))
-  );
-  const canManageServer = isServerOwner || isServerMod;
+  const mySelectedServerRoles = resolveServerRoleFlags(selectedServer, currentUser?.id);
+  const isServerOwner = mySelectedServerRoles.isOwner;
+  const isServerMod = mySelectedServerRoles.isMod;
+  const canManageServer = mySelectedServerRoles.canManage;
 
   const isMemberModerator = (memberId: string, srv: CommunityServer = selectedServer): boolean => {
     if (srv.id === 'srv_none') return false;
-    if (memberId === 'usr_me') return isServerMod;
-    return Array.isArray(srv.moderator_ids) && srv.moderator_ids.includes(memberId);
+    if (memberId === 'usr_me' || (currentUser?.id && memberId === currentUser.id)) {
+      return resolveServerRoleFlags(srv, currentUser?.id).isMod;
+    }
+    return srv.owner_id !== memberId && Array.isArray(srv.moderator_ids) && srv.moderator_ids.includes(memberId);
   };
 
   const isMemberServerOwner = (memberId: string, srv: CommunityServer = selectedServer): boolean => {
     if (srv.id === 'srv_none') return false;
-    if (memberId === 'usr_me') return isServerOwner;
+    if (memberId === 'usr_me' || (currentUser?.id && memberId === currentUser.id)) {
+      return resolveServerRoleFlags(srv, currentUser?.id).isOwner;
+    }
     return srv.owner_id === memberId;
   };
 
+  const mergeCustomBotsLists = (
+    localBots?: CommunityUserProfile[],
+    cloudBots?: CommunityUserProfile[]
+  ): CommunityUserProfile[] | undefined => {
+    const map = new Map<string, CommunityUserProfile>();
+    (Array.isArray(localBots) ? localBots : []).forEach(b => {
+      if (b?.id) map.set(b.id, b);
+    });
+    (Array.isArray(cloudBots) ? cloudBots : []).forEach(b => {
+      if (b?.id) map.set(b.id, { ...map.get(b.id), ...b });
+    });
+    return map.size > 0 ? Array.from(map.values()) : undefined;
+  };
+
+  const syncServerCustomBotsToRegisteredUsers = (srvs: CommunityServer[]) => {
+    const incomingBots: CommunityUserProfile[] = [];
+    srvs.forEach(s => {
+      if (Array.isArray(s?.custom_bots)) {
+        s.custom_bots.forEach(b => {
+          if (b?.id) incomingBots.push(b);
+        });
+      }
+    });
+    if (incomingBots.length === 0) return;
+
+    setRegisteredUsers(prev => {
+      const byId = new Map<string, CommunityUserProfile>();
+      prev.forEach(u => byId.set(u.id, u));
+      let changed = false;
+      incomingBots.forEach(bot => {
+        const existing = byId.get(bot.id);
+        if (!existing) {
+          byId.set(bot.id, {
+            ...bot,
+            status: 'online',
+            isHost: true,
+          });
+          changed = true;
+        } else if (
+          existing.display_name !== bot.display_name ||
+          existing.avatar !== bot.avatar ||
+          existing.role !== bot.role ||
+          existing.listening !== bot.listening ||
+          existing.listeningTrack?.path_or_url !== bot.listeningTrack?.path_or_url
+        ) {
+          byId.set(bot.id, {
+            ...existing,
+            ...bot,
+            status: 'online',
+            isHost: true,
+          });
+          changed = true;
+        }
+      });
+      if (!changed) return prev;
+      const next = Array.from(byId.values());
+      try {
+        localStorage.setItem('spytify_registered_users', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const broadcastAndPersistServerUpdate = (updatedSrv: CommunityServer) => {
+    syncServerCustomBotsToRegisteredUsers([updatedSrv]);
     setServers(prev => {
       const exists = prev.some(s => s.id === updatedSrv.id);
       const next = exists ? prev.map(s => (s.id === updatedSrv.id ? updatedSrv : s)) : [...prev, updatedSrv];
@@ -3833,6 +4127,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
     pushCloudServer(updatedSrv).catch(() => {});
     activeChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'server_updated',
+      payload: updatedSrv,
+    });
+    globalSocialChannelRef.current?.send({
       type: 'broadcast',
       event: 'server_updated',
       payload: updatedSrv,
@@ -3894,8 +4193,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleToggleModerator = (memberId: string) => {
-    if (!isServerOwner || memberId === 'usr_me' || ACTIVE_BOT_IDS.has(memberId)) return;
-    const currentMods = Array.isArray(selectedServer.moderator_ids) ? selectedServer.moderator_ids : [];
+    if (!isServerOwner || memberId === 'usr_me' || memberId === currentUser?.id || ACTIVE_BOT_IDS.has(memberId)) return;
+    const currentMods = sanitizeModeratorIds(selectedServer.moderator_ids, selectedServer.owner_id, selectedServer.kicked_ids, myAccountUserId);
     const nextMods = currentMods.includes(memberId)
       ? currentMods.filter(id => id !== memberId)
       : [...currentMods, memberId];
@@ -3919,11 +4218,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // Nhượng quyền Chủ Server cho thành viên khác & hạ quyền Chủ hiện tại xuống Điều hành viên (Mod)
   const handleTransferOwnership = (newOwnerId: string) => {
-    if (!newOwnerId || newOwnerId === 'usr_me' || (currentUser?.id && newOwnerId === currentUser.id) || ACTIVE_BOT_IDS.has(newOwnerId)) return;
-    const currentMods = Array.isArray(selectedServer.moderator_ids) ? selectedServer.moderator_ids : [];
-    const modSet = new Set(currentMods.filter(id => id !== newOwnerId));
-    if (myAccountUserId) modSet.add(myAccountUserId);
-    modSet.add('usr_me');
+    if (!isServerOwner || !newOwnerId || newOwnerId === 'usr_me' || (currentUser?.id && newOwnerId === currentUser.id) || ACTIVE_BOT_IDS.has(newOwnerId)) return;
+    const currentMods = sanitizeModeratorIds(selectedServer.moderator_ids, newOwnerId, selectedServer.kicked_ids, myAccountUserId);
+    const modSet = new Set(currentMods);
+    if (myAccountUserId) {
+      modSet.add(myAccountUserId);
+    } else {
+      modSet.add('usr_me');
+    }
 
     const currentMembers = Array.isArray(selectedServer.member_ids) ? selectedServer.member_ids : ['usr_me'];
     const memberSet = new Set(currentMembers);
@@ -4012,6 +4314,37 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
     showVoiceToast('Bạn đã rời khỏi máy chủ.');
   };
+
+  // Xử lý ngay lập tức khi tài khoản hiện tại bị kick / xóa khỏi một server (tránh stale closure từ Realtime/Cloud sync)
+  const evictSelfFromKickedServer = (kickedServerId: string, toastMsg?: string) => {
+    if (!kickedServerId || kickedServerId === 'srv_none' || kickedServerId === 'dm_private') return;
+    if (
+      connectedVoiceServerIdRef.current === kickedServerId ||
+      voiceServerIdRef.current === kickedServerId
+    ) {
+      handleLeaveVoiceCallRef.current();
+    }
+    setVoiceParticipants(prev =>
+      prev.filter(p => p.serverId !== kickedServerId)
+    );
+    setServers(prev => {
+      if (!prev.some(s => s.id === kickedServerId)) return prev;
+      const next = prev.filter(s => s.id !== kickedServerId);
+      persistServers(next);
+      return next;
+    });
+    if (viewStateRef.current.selectedServerId === kickedServerId) {
+      setIsFriendsTabActive(true);
+      setSelectedServer(EMPTY_SERVER_FALLBACK);
+      setSelectedChannel(EMPTY_SERVER_FALLBACK.channels[0]);
+      setIsServerSettingsOpen(false);
+      onActiveServerChange?.(null);
+    }
+    if (toastMsg) {
+      showVoiceToast(toastMsg);
+    }
+  };
+  evictSelfFromKickedServerRef.current = evictSelfFromKickedServer;
 
   // Đồng bộ thông tin thành viên vào danh sách đặc vụ đã đăng ký & danh sách member_ids của Server
   const ensureMemberSyncedToServer = (
@@ -4151,7 +4484,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       prev.filter(p => !(p.id === memberId && (!p.serverId || p.serverId === selectedServer.id)))
     );
 
-    // Phát broadcast lập tức để client của thành viên bị kick ngắt kết nối voice & thoát khỏi server
+    // Phát broadcast lập tức trên tất cả kênh (server, global social, và voice WebRTC) để client của thành viên bị kick ngắt kết nối voice & thoát khỏi server ngay
     try {
       activeChannelRef.current?.send({
         type: 'broadcast',
@@ -4163,6 +4496,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         event: 'member_kicked',
         payload: { serverId: selectedServer.id, memberId },
       });
+      globalSocialChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'server_updated',
+        payload: updatedSrv,
+      });
+      activeChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'voice_kick',
+        payload: { targetUserId: memberId, serverId: selectedServer.id },
+      });
+      globalSocialChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'voice_kick',
+        payload: { targetUserId: memberId, serverId: selectedServer.id },
+      });
+      rtcSendRef.current?.('member_kicked', { serverId: selectedServer.id, memberId });
+      rtcSendRef.current?.('voice_kick', { targetUserId: memberId, serverId: selectedServer.id });
     } catch {}
   };
 
@@ -4301,15 +4651,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     let targetSrv: CommunityServer | null = cloudMatch || localMatch || null;
 
     if (cloudMatch && localMatch) {
+      const mergedKicked = Array.from(new Set([...(cloudMatch.kicked_ids || [])]));
+      const effectiveOwner = cloudMatch.owner_id || localMatch.owner_id;
+      const sanitizedCloudMods = sanitizeModeratorIds(
+        cloudMatch.moderator_ids,
+        effectiveOwner,
+        mergedKicked,
+        currentUser.id
+      );
       targetSrv = {
         ...localMatch,
         ...cloudMatch,
         member_ids: Array.from(
           new Set([...(localMatch.member_ids || []), ...(cloudMatch.member_ids || [])])
         ),
-        moderator_ids: Array.from(
-          new Set([...(localMatch.moderator_ids || []), ...(cloudMatch.moderator_ids || [])])
-        ),
+        moderator_ids: sanitizedCloudMods,
       };
     }
 
@@ -4950,8 +5306,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       el.srcObject = null;
       remoteAudioRef.current.delete(peerId);
     }
-    remoteScreenStreamsRef.current.delete(peerId);
-    setActiveScreenShare(prev => (prev?.userId === peerId ? null : prev));
+    removeScreenShare(peerId);
   };
 
   useEffect(() => {
@@ -4971,7 +5326,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     const createPeer = (peerId: string): RTCPeerConnection => {
       const existing = peersRef.current.get(peerId);
-      if (existing) return existing;
+      if (existing) {
+        if (
+          existing.connectionState === 'failed' ||
+          existing.connectionState === 'closed' ||
+          existing.signalingState === 'closed'
+        ) {
+          closePeer(peerId);
+        } else {
+          return existing;
+        }
+      }
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       peersRef.current.set(peerId, pc);
 
@@ -4996,12 +5361,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         if (e.track.kind === 'video') {
           const videoStream = e.streams[0] || new MediaStream([e.track]);
           remoteScreenStreamsRef.current.set(peerId, videoStream);
-          const peerName = voiceParticipants.find(p => p.id === peerId)?.name || 'Thành viên';
-          setActiveScreenShare({
-            userId: peerId,
-            userName: peerName,
-            stream: videoStream,
-          });
+          const matchedVp = voiceParticipantsRef.current.find(p => p.id === peerId);
+          const matchedReg = registeredUsers.find(u => u.id === peerId);
+          const peerName = matchedVp?.name || matchedReg?.display_name || 'Thành viên';
+          const peerAvatar = matchedVp?.avatar || matchedReg?.avatar || null;
+          setVoiceParticipants(prev =>
+            prev.map(p => (p.id === peerId ? { ...p, isScreenSharing: true } : p))
+          );
+          e.track.onended = () => {
+            removeScreenShare(peerId);
+            setVoiceParticipants(prev =>
+              prev.map(p => (p.id === peerId ? { ...p, isScreenSharing: false } : p))
+            );
+          };
+          upsertScreenShare(
+            {
+              userId: peerId,
+              userName: peerName,
+              avatar: peerAvatar,
+              stream: videoStream,
+            },
+            false
+          );
           return;
         }
         let el = remoteAudioRef.current.get(peerId);
@@ -5052,7 +5433,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (!payload || payload.to !== myId) return;
       setDmCallConnected(true);
       try {
-        const pc = createPeer(payload.from);
+        let pc = createPeer(payload.from);
+        if (pc.signalingState !== 'stable') {
+          try {
+            await pc.setLocalDescription({ type: 'rollback' } as RTCSessionDescriptionInit);
+          } catch {
+            closePeer(payload.from);
+            pc = createPeer(payload.from);
+          }
+        }
         await pc.setRemoteDescription(payload.sdp);
         await flushIce(payload.from, pc);
         const answer = await pc.createAnswer();
@@ -5091,7 +5480,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     ch.on('broadcast', { event: 'rtc_bye' }, ({ payload }) => {
       if (payload?.from) {
         closePeer(payload.from);
-        if (connectedVoiceServerId === 'dm_private' && peersRef.current.size === 0) {
+        if (voiceServerIdRef.current === 'dm_private' && peersRef.current.size === 0) {
           setDmCallConnected(false);
         }
       }
@@ -5099,8 +5488,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     ch.on('broadcast', { event: 'rtc_screen_stopped' }, ({ payload }) => {
       if (payload?.userId) {
-        remoteScreenStreamsRef.current.delete(payload.userId);
-        setActiveScreenShare(prev => (prev?.userId === payload.userId ? null : prev));
+        removeScreenShare(payload.userId);
+        setVoiceParticipants(prev =>
+          prev.map(p => (p.id === payload.userId ? { ...p, isScreenSharing: false } : p))
+        );
       }
     });
 
@@ -5125,6 +5516,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           }
           return [...prev, incomingVp];
         });
+        if (incomingVp.isScreenSharing) {
+          setScreenShares(prev =>
+            prev[incomingVp.id]
+              ? {
+                  ...prev,
+                  [incomingVp.id]: {
+                    ...prev[incomingVp.id],
+                    userName: incomingVp.name,
+                    avatar: incomingVp.avatar,
+                  },
+                }
+              : prev
+          );
+        }
         if (payload.action === 'join' && myVoiceParticipantRef.current && payload.participant.id !== myParticipantIdRef.current) {
           send('voice_presence', { action: 'here', participant: myVoiceParticipantRef.current });
         }
@@ -5133,15 +5538,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           prev.filter(p => !(p.id === payload.userId && (!p.serverId || p.serverId === voiceServerIdRef.current)))
         );
         closePeer(payload.userId);
-        remoteScreenStreamsRef.current.delete(payload.userId);
-        setActiveScreenShare(prev => (prev?.userId === payload.userId ? null : prev));
+        removeScreenShare(payload.userId);
       } else if (payload.action === 'screen_share' && payload.userId) {
         setVoiceParticipants(prev =>
           prev.map(p => (p.id === payload.userId ? { ...p, isScreenSharing: Boolean(payload.isScreenSharing) } : p))
         );
         if (!payload.isScreenSharing) {
-          remoteScreenStreamsRef.current.delete(payload.userId);
-          setActiveScreenShare(prev => (prev?.userId === payload.userId ? null : prev));
+          removeScreenShare(payload.userId);
         }
       }
     });
@@ -5162,8 +5565,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     ch.on('broadcast', { event: 'voice_kick' }, ({ payload }) => {
       if (payload && (payload.targetUserId === myParticipantIdRef.current || (currentUser && payload.targetUserId === currentUser.id))) {
-        handleLeaveVoiceCall();
+        handleLeaveVoiceCallRef.current();
         playAudioChime('leave');
+      }
+    });
+
+    ch.on('broadcast', { event: 'member_kicked' }, ({ payload }) => {
+      if (!payload || !currentUser) return;
+      if (payload.memberId === currentUser.id || payload.memberId === myParticipantIdRef.current) {
+        evictSelfFromKickedServerRef.current(
+          payload.serverId || voiceServerIdRef.current || '',
+          'Bạn đã bị quản trị viên mời ra khỏi máy chủ.'
+        );
       }
     });
 
@@ -5330,6 +5743,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     // Khi đăng nhập: tải đúng danh sách server & dữ liệu của tài khoản đó
     const userServers = loadUserServersFromStorage(currentUser.id);
+    syncServerCustomBotsToRegisteredUsers(userServers);
     setServers(userServers);
     if (userServers.length > 0) {
       setSelectedServer(userServers[0]);
@@ -5501,11 +5915,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     const syncCloudProfilesAndFollows = async () => {
       try {
-        const [cloudProfiles, followGraph, serverInvites, cloudServers] = await Promise.all([
+        const [cloudProfiles, followGraph, serverInvites, serverAudit] = await Promise.all([
           fetchAllCloudProfiles(),
           fetchCloudFollowGraph(currentUser.id),
           fetchCloudServerInvites(currentUser.id),
-          fetchCloudServersForUser(currentUser.id),
+          fetchCloudServerMembershipAudit(currentUser.id),
         ]);
 
         if (!isMounted) return;
@@ -5514,6 +5928,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         setIncomingServerInvites(serverInvites.incoming);
         setOutgoingServerInvites(serverInvites.outgoing);
 
+        const removedServerSet = new Set<string>(serverAudit.removedServerIds || []);
+        serverAudit.removedServerIds.forEach(removedSrvId => {
+          evictSelfFromKickedServerRef.current(removedSrvId);
+        });
+
+        const cloudServers = serverAudit.activeServers;
         if (cloudServers && cloudServers.length > 0) {
           const mergeServerWithCloud = (localSrv: CommunityServer | undefined, cs: CommunityServer): CommunityServer => {
             const kickedSet = new Set<string>([
@@ -5524,49 +5944,67 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 ...(Array.isArray(localSrv?.member_ids) ? localSrv!.member_ids! : []),
                 ...(Array.isArray(cs.member_ids) ? cs.member_ids : []),
                 ...(cs.owner_id ? [cs.owner_id] : []),
-                'usr_me',
               ])
             ).filter(id => !kickedSet.has(id) || id === cs.owner_id);
-            const combinedMods = Array.from(
-              new Set([
-                ...(Array.isArray(localSrv?.moderator_ids) ? localSrv!.moderator_ids! : []),
-                ...(Array.isArray(cs.moderator_ids) ? cs.moderator_ids : []),
-              ])
-            ).filter(id => !kickedSet.has(id));
-            const badge =
-              cs.owner_id === currentUser.id
-                ? 'OWNER'
-                : combinedMods.includes(currentUser.id)
-                ? 'MOD'
-                : 'MEMBER';
-            return {
+            const authoritativeMods = sanitizeModeratorIds(
+              cs.moderator_ids,
+              cs.owner_id,
+              Array.from(kickedSet),
+              currentUser.id
+            );
+            const draftSrv: CommunityServer = {
               ...localSrv,
               ...cs,
               is_custom: true,
-              badge,
               member_ids: combinedMembers,
-              moderator_ids: combinedMods,
+              moderator_ids: authoritativeMods,
               kicked_ids: Array.from(kickedSet),
+              custom_bots: mergeCustomBotsLists(localSrv?.custom_bots, cs.custom_bots),
+            };
+            const { badge } = resolveServerRoleFlags(draftSrv, currentUser.id);
+            return {
+              ...draftSrv,
+              badge,
             };
           };
 
+          syncServerCustomBotsToRegisteredUsers(cloudServers);
+
           setServers(prev => {
             const byId = new Map<string, CommunityServer>();
-            prev.forEach(s => byId.set(s.id, s));
+            prev.forEach(s => {
+              if (!removedServerSet.has(s.id)) {
+                byId.set(s.id, s);
+              }
+            });
             cloudServers.forEach((cs: CommunityServer) => {
               if (!cs?.id || cs.id === 'srv_none') return;
+              if (
+                cs.owner_id !== currentUser.id &&
+                Array.isArray(cs.kicked_ids) &&
+                cs.kicked_ids.includes(currentUser.id)
+              ) {
+                return;
+              }
               byId.set(cs.id, mergeServerWithCloud(byId.get(cs.id), cs));
             });
-            const merged = Array.from(byId.values());
+            const merged = applySavedServerOrder(currentUser.id, Array.from(byId.values()));
             persistServers(merged);
             return merged;
           });
 
           setSelectedServer(prev => {
             if (!prev || prev.id === 'srv_none') return prev;
+            if (removedServerSet.has(prev.id)) return EMPTY_SERVER_FALLBACK;
             const matchedCloud = cloudServers.find((cs: CommunityServer) => cs?.id === prev.id);
             if (!matchedCloud) return prev;
             return mergeServerWithCloud(prev, matchedCloud);
+          });
+        } else if (removedServerSet.size > 0) {
+          setServers(prev => {
+            const next = prev.filter(s => !removedServerSet.has(s.id));
+            if (next.length !== prev.length) persistServers(next);
+            return next;
           });
         }
 
@@ -5693,15 +6131,65 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     socialCh.on('broadcast', { event: 'voice_call_invite' }, ({ payload }) => {
       if (payload && (payload.targetUserId === myParticipantIdRef.current || (currentUser && payload.targetUserId === currentUser.id))) {
+        // Nếu đang kết nối sẵn trong đúng phòng thoại DM đó (ví dụ cả 2 cùng bấm gọi nhau) -> coi như đã kết nối, không bật popup thừa
+        if (
+          (payload.isDmCall || payload.serverId === 'dm_private') &&
+          connectedVoiceServerIdRef.current === 'dm_private' &&
+          connectedVoiceChannelRef.current === payload.channelId
+        ) {
+          setDmCallConnected(true);
+          return;
+        }
         playAudioChime('join');
         setIncomingVoiceInvite(payload);
+        onIncomingVoiceCall?.();
+      }
+    });
+
+    socialCh.on('broadcast', { event: 'voice_call_cancel' }, ({ payload }) => {
+      if (!payload || !currentUser) return;
+      if (payload.targetUserId === currentUser.id || payload.targetUserId === myParticipantIdRef.current) {
+        const curInv = incomingVoiceInviteRef.current;
+        if (curInv && (!payload.channelId || curInv.channelId === payload.channelId)) {
+          setIncomingVoiceInvite(null);
+          showVoiceToast(`${payload.fromUserName || 'Người gọi'} đã hủy cuộc gọi.`);
+        }
+      }
+    });
+
+    socialCh.on('broadcast', { event: 'voice_call_declined' }, ({ payload }) => {
+      if (!payload || !currentUser) return;
+      if (payload.fromUserId === currentUser.id || payload.fromUserId === myParticipantIdRef.current) {
+        if (
+          payload.isDmCall &&
+          connectedVoiceServerIdRef.current === 'dm_private' &&
+          connectedVoiceChannelRef.current === payload.channelId
+        ) {
+          handleLeaveVoiceCallRef.current();
+          showVoiceToast(`${payload.declinedByName || 'Người nhận'} đã từ chối cuộc gọi.`);
+        }
+      }
+    });
+
+    socialCh.on('broadcast', { event: 'voice_call_accepted' }, ({ payload }) => {
+      if (!payload || !currentUser) return;
+      if (payload.fromUserId === currentUser.id || payload.fromUserId === myParticipantIdRef.current) {
+        if (
+          payload.isDmCall &&
+          connectedVoiceServerIdRef.current === 'dm_private' &&
+          connectedVoiceChannelRef.current === payload.channelId
+        ) {
+          setDmCallConnected(true);
+        }
       }
     });
 
     socialCh.on('broadcast', { event: 'voice_kick' }, ({ payload }) => {
       if (payload && (payload.targetUserId === myParticipantIdRef.current || (currentUser && payload.targetUserId === currentUser.id))) {
-        handleLeaveVoiceCall();
-        playAudioChime('leave');
+        if (!payload.serverId || connectedVoiceServerIdRef.current === payload.serverId || voiceServerIdRef.current === payload.serverId) {
+          handleLeaveVoiceCallRef.current();
+          playAudioChime('leave');
+        }
       }
     });
 
@@ -5860,20 +6348,54 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     socialCh.on('broadcast', { event: 'member_kicked' }, ({ payload }) => {
       if (!payload || !currentUser) return;
-      if (payload.memberId === currentUser.id) {
-        if (connectedVoiceServerId === payload.serverId) {
-          handleLeaveVoiceCall();
-        }
-        setServers(prev => {
-          const next = prev.filter(s => s.id !== payload.serverId);
-          persistServers(next);
-          return next;
-        });
-        if (selectedServer.id === payload.serverId) {
-          setIsFriendsTabActive(true);
-          setSelectedServer(EMPTY_SERVER_FALLBACK);
-        }
+      if (payload.memberId === currentUser.id || payload.memberId === myParticipantIdRef.current) {
+        evictSelfFromKickedServerRef.current(
+          payload.serverId,
+          'Bạn đã bị quản trị viên mời ra khỏi máy chủ.'
+        );
+      } else if (payload.serverId && payload.memberId) {
+        setVoiceParticipants(prev =>
+          prev.filter(p => !(p.id === payload.memberId && (!p.serverId || p.serverId === payload.serverId)))
+        );
       }
+    });
+
+    socialCh.on('broadcast', { event: 'server_updated' }, ({ payload }) => {
+      if (!payload || !payload.id || !currentUser) return;
+      const upd: CommunityServer = payload;
+      if (
+        upd.owner_id !== currentUser.id &&
+        (upd.kicked_ids?.includes(currentUser.id) ||
+          (Array.isArray(upd.member_ids) && !upd.member_ids.includes(currentUser.id)))
+      ) {
+        evictSelfFromKickedServerRef.current(upd.id, 'Bạn đã bị quản trị viên mời ra khỏi máy chủ.');
+        return;
+      }
+
+      const cleanedMods = sanitizeModeratorIds(upd.moderator_ids, upd.owner_id, upd.kicked_ids, currentUser.id);
+      const normalizedUpd: CommunityServer = { ...upd, moderator_ids: cleanedMods };
+      const { canManage, badge: myBadge } = resolveServerRoleFlags(normalizedUpd, currentUser.id);
+      const isMyServer =
+        upd.owner_id === currentUser.id ||
+        (Array.isArray(upd.member_ids) && upd.member_ids.includes(currentUser.id)) ||
+        cleanedMods.includes(currentUser.id);
+
+      syncServerCustomBotsToRegisteredUsers([normalizedUpd]);
+      setServers(prev => {
+        if (!prev.some(s => s.id === normalizedUpd.id) && !isMyServer) return prev;
+        const mergedItem: CommunityServer = { ...normalizedUpd, badge: myBadge };
+        const exists = prev.some(s => s.id === normalizedUpd.id);
+        const next = exists ? prev.map(s => (s.id === normalizedUpd.id ? mergedItem : s)) : [...prev, mergedItem];
+        persistServers(next);
+        return next;
+      });
+      setSelectedServer(prev => {
+        if (prev.id !== normalizedUpd.id) return prev;
+        if (!canManage) {
+          setServerSettingsTab(cur => (cur === 'members' ? 'overview' : cur));
+        }
+        return { ...normalizedUpd, badge: myBadge };
+      });
     });
 
     socialCh.subscribe();
@@ -5884,7 +6406,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       socialCh.unsubscribe();
       globalSocialChannelRef.current = null;
     };
-  }, [currentUser?.id, isFriendsTabActive]);
+  }, [currentUser?.id]);
 
   // Đồng bộ avatar mới nhất cho activeDmFriend và selectedProfileUser khi registeredUsers cập nhật
   useEffect(() => {
@@ -6000,6 +6522,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       fetchCloudServerById(currentSrvId),
       fetchCloudDirectMessages(`spytify_srv_chat_${currentSrvId}`),
     ]).then(([cloudSrv, cloudRows]) => {
+      // Nếu bản ghi Cloud cho thấy user hiện tại đã bị kick hoặc bị xóa khỏi danh sách thành viên -> trục xuất ngay lập tức
+      if (cloudSrv && cloudSrv.owner_id !== currentUser.id) {
+        const cloudKicked =
+          Array.isArray(cloudSrv.kicked_ids) && cloudSrv.kicked_ids.includes(currentUser.id);
+        const cloudMemberMissing =
+          Array.isArray(cloudSrv.member_ids) &&
+          !cloudSrv.member_ids.includes(currentUser.id) &&
+          !(Array.isArray(cloudSrv.moderator_ids) && cloudSrv.moderator_ids.includes(currentUser.id));
+        if (cloudKicked || cloudMemberMissing) {
+          evictSelfFromKickedServerRef.current(
+            currentSrvId,
+            'Bạn không còn là thành viên của máy chủ này.'
+          );
+          return;
+        }
+      }
+
+      const cloudKickedSet = new Set<string>(
+        Array.isArray(cloudSrv?.kicked_ids) ? cloudSrv.kicked_ids : []
+      );
       const chatSenders = new Map<string, { id: string; username: string; display_name: string; avatar: string | null }>();
 
       if (cloudRows && cloudRows.length > 0) {
@@ -6049,7 +6591,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         });
 
         chatSenders.forEach(sender => {
-          ensureMemberSyncedToServer(sender, currentSrvId, false);
+          if (!cloudKickedSet.has(sender.id)) {
+            ensureMemberSyncedToServer(sender, currentSrvId, false);
+          }
         });
       }
 
@@ -6070,40 +6614,42 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         ])
       ).filter(id => !kickedSet.has(id) || id === (cloudSrv?.owner_id || selectedServer.owner_id));
 
-      const mergedModIds = Array.from(
-        new Set([
-          ...(Array.isArray(selectedServer.moderator_ids) ? selectedServer.moderator_ids : []),
-          ...(Array.isArray(cloudSrv?.moderator_ids) ? cloudSrv.moderator_ids : []),
-        ])
-      ).filter(id => !kickedSet.has(id));
-
       const effectiveOwnerId = cloudSrv?.owner_id || selectedServer.owner_id;
-      const myBadge =
-        effectiveOwnerId === currentUser.id
-          ? 'OWNER'
-          : mergedModIds.includes(currentUser.id)
-          ? 'MOD'
-          : 'MEMBER';
+      const mergedModIds = sanitizeModeratorIds(
+        cloudSrv ? cloudSrv.moderator_ids : selectedServer.moderator_ids,
+        effectiveOwnerId,
+        Array.from(kickedSet),
+        currentUser.id
+      );
 
-      const mergedSrv: CommunityServer = {
+      const draftSrv: CommunityServer = {
         ...selectedServer,
         ...(cloudSrv || {}),
         id: currentSrvId,
         is_custom: true,
-        badge: myBadge,
         owner_id: effectiveOwnerId,
         member_ids: mergedMemberIds,
         moderator_ids: mergedModIds,
         kicked_ids: Array.from(kickedSet),
+        custom_bots: mergeCustomBotsLists(selectedServer.custom_bots, cloudSrv?.custom_bots),
       };
+      const { badge: myBadge } = resolveServerRoleFlags(draftSrv, currentUser.id);
+      const mergedSrv: CommunityServer = { ...draftSrv, badge: myBadge };
 
+      syncServerCustomBotsToRegisteredUsers([mergedSrv]);
       setServers(prev => {
         const next = prev.map(s => (s.id === currentSrvId ? mergedSrv : s));
         persistServers(next);
         return next;
       });
       setSelectedServer(prev => (prev.id === currentSrvId ? mergedSrv : prev));
-      pushCloudServer(mergedSrv).catch(() => {});
+      const cloudNeedsMemberSync =
+        !cloudSrv ||
+        (effectiveOwnerId !== currentUser.id &&
+          (!Array.isArray(cloudSrv.member_ids) || !cloudSrv.member_ids.includes(currentUser.id)));
+      if (cloudNeedsMemberSync) {
+        pushCloudServer(mergedSrv).catch(() => {});
+      }
     });
 
     const channelTopic = `spytify_server_${selectedServer.id}`;
@@ -6127,26 +6673,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           (upd.kicked_ids?.includes(currentUser.id) ||
             (Array.isArray(upd.member_ids) && !upd.member_ids.includes(currentUser.id)))
         ) {
-          if (connectedVoiceServerId === upd.id) {
-            handleLeaveVoiceCall();
-          }
-          setServers(prev => {
-            const next = prev.filter(s => s.id !== upd.id);
-            persistServers(next);
-            return next;
-          });
-          setIsFriendsTabActive(true);
-          setSelectedServer(EMPTY_SERVER_FALLBACK);
+          evictSelfFromKickedServerRef.current(
+            upd.id,
+            'Bạn đã bị quản trị viên mời ra khỏi máy chủ.'
+          );
           return;
         }
 
-        const myBadge =
-          upd.owner_id === currentUser.id
-            ? 'OWNER'
-            : Array.isArray(upd.moderator_ids) && upd.moderator_ids.includes(currentUser.id)
-            ? 'MOD'
-            : 'MEMBER';
-        const mergedSrv = { ...upd, badge: myBadge };
+        const cleanedMods = sanitizeModeratorIds(upd.moderator_ids, upd.owner_id, upd.kicked_ids, currentUser.id);
+        const normalizedUpd: CommunityServer = { ...upd, moderator_ids: cleanedMods };
+        const { canManage, badge: myBadge } = resolveServerRoleFlags(normalizedUpd, currentUser.id);
+        const mergedSrv = { ...normalizedUpd, badge: myBadge };
+        if (!canManage) {
+          setServerSettingsTab(cur => (cur === 'members' ? 'overview' : cur));
+        }
+        syncServerCustomBotsToRegisteredUsers([mergedSrv]);
         setServers(prev => {
           const next = prev.map(s => (s.id === mergedSrv.id ? mergedSrv : s));
           persistServers(next);
@@ -6159,17 +6700,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     channel.on('broadcast', { event: 'member_kicked' }, ({ payload }) => {
       if (!payload || !currentUser) return;
       if (payload.serverId === selectedServer.id) {
-        if (payload.memberId === currentUser.id) {
-          if (connectedVoiceServerId === payload.serverId) {
-            handleLeaveVoiceCall();
-          }
-          setServers(prev => {
-            const next = prev.filter(s => s.id !== payload.serverId);
-            persistServers(next);
-            return next;
-          });
-          setIsFriendsTabActive(true);
-          setSelectedServer(EMPTY_SERVER_FALLBACK);
+        if (payload.memberId === currentUser.id || payload.memberId === myParticipantIdRef.current) {
+          evictSelfFromKickedServerRef.current(
+            payload.serverId,
+            'Bạn đã bị quản trị viên mời ra khỏi máy chủ.'
+          );
         } else {
           setVoiceParticipants(prev =>
             prev.filter(p => !(p.id === payload.memberId && (!p.serverId || p.serverId === payload.serverId)))
@@ -6348,15 +6883,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           prev.filter(p => !(p.id === payload.userId && (!p.serverId || p.serverId === selectedServer.id)))
         );
         closePeer(payload.userId);
-        remoteScreenStreamsRef.current.delete(payload.userId);
-        setActiveScreenShare(prev => (prev?.userId === payload.userId ? null : prev));
+        removeScreenShare(payload.userId);
       } else if (payload.action === 'screen_share' && payload.userId) {
         setVoiceParticipants(prev =>
           prev.map(p => (p.id === payload.userId ? { ...p, isScreenSharing: Boolean(payload.isScreenSharing) } : p))
         );
         if (!payload.isScreenSharing) {
-          remoteScreenStreamsRef.current.delete(payload.userId);
-          setActiveScreenShare(prev => (prev?.userId === payload.userId ? null : prev));
+          removeScreenShare(payload.userId);
         }
       }
     });
@@ -6379,12 +6912,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (payload && (payload.targetUserId === myParticipantIdRef.current || (currentUser && payload.targetUserId === currentUser.id))) {
         playAudioChime('join');
         setIncomingVoiceInvite(payload);
+        onIncomingVoiceCall?.();
       }
     });
 
     channel.on('broadcast', { event: 'voice_kick' }, ({ payload }) => {
       if (payload && (payload.targetUserId === myParticipantIdRef.current || (currentUser && payload.targetUserId === currentUser.id))) {
-        handleLeaveVoiceCall();
+        handleLeaveVoiceCallRef.current();
         playAudioChime('leave');
       }
     });
@@ -6565,11 +7099,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       screenStreamRef.current = stream;
       const myId = myParticipantIdRef.current;
       setIsScreenSharing(true);
-      setActiveScreenShare({
-        userId: myId,
-        userName: myServerDisplayName,
-        stream,
-      });
+      if (myVoiceParticipantRef.current) {
+        myVoiceParticipantRef.current = { ...myVoiceParticipantRef.current, isScreenSharing: true };
+      }
+      upsertScreenShare(
+        {
+          userId: myId,
+          userName: myServerDisplayName,
+          avatar: currentUser?.avatar || null,
+          stream,
+        },
+        true
+      );
 
       // Gán stream trực tiếp cho video preview của người chia sẻ
       if (screenVideoRef.current) {
@@ -6580,7 +7121,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       const videoTrack = stream.getVideoTracks()[0];
       peersRef.current.forEach(async (pc, peerId) => {
         try {
-          pc.addTrack(videoTrack, stream);
+          const existingVideoSender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (existingVideoSender) {
+            await existingVideoSender.replaceTrack(videoTrack);
+          } else {
+            pc.addTrack(videoTrack, stream);
+          }
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           rtcSendRef.current?.('rtc_offer', { from: myId, to: peerId, sdp: pc.localDescription });
@@ -6593,6 +7139,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         handleStopScreenShare();
       };
 
+      rtcSendRef.current?.('voice_presence', { action: 'screen_share', userId: myId, isScreenSharing: true });
       if (activeChannelRef.current) {
         activeChannelRef.current.send({
           type: 'broadcast',
@@ -6611,11 +7158,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       screenStreamRef.current.getTracks().forEach(t => t.stop());
       screenStreamRef.current = null;
     }
-    if (screenVideoRef.current) {
-      screenVideoRef.current.srcObject = null;
-    }
     setIsScreenSharing(false);
-    setActiveScreenShare(prev => (prev?.userId === myId ? null : prev));
+    if (myVoiceParticipantRef.current) {
+      myVoiceParticipantRef.current = { ...myVoiceParticipantRef.current, isScreenSharing: false };
+    }
+    removeScreenShare(myId);
 
     peersRef.current.forEach(async (pc, peerId) => {
       try {
@@ -6631,6 +7178,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     });
 
+    rtcSendRef.current?.('voice_presence', { action: 'screen_share', userId: myId, isScreenSharing: false });
+    rtcSendRef.current?.('rtc_screen_stopped', { userId: myId });
     if (activeChannelRef.current) {
       try {
         activeChannelRef.current.send({
@@ -6640,22 +7189,31 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         });
       } catch {}
     }
-
-    const client = getSupabaseClient();
-    if (client && connectedVoiceChannel) {
-      try {
-        client.channel(`spytify_voice_${voiceServerIdRef.current}_${connectedVoiceChannel}`).send({
-          type: 'broadcast',
-          event: 'rtc_screen_stopped',
-          payload: { userId: myId },
-        });
-      } catch {}
-    }
   };
 
   const handleLeaveVoiceCall = () => {
     const wasInCall = Boolean(connectedVoiceChannel || connectedVoiceChannelRef.current || myVoiceParticipantRef.current);
+    // Nếu đang đổ chuông cuộc gọi riêng 1-1 mà người gọi tắt máy trước khi đối phương bắt máy -> gửi tín hiệu hủy chuông
+    if (
+      (voiceServerIdRef.current === 'dm_private' || connectedVoiceServerIdRef.current === 'dm_private') &&
+      peersRef.current.size === 0 &&
+      activeDmFriend &&
+      currentUser &&
+      connectedVoiceChannelRef.current
+    ) {
+      globalSocialChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'voice_call_cancel',
+        payload: {
+          fromUserId: currentUser.id,
+          fromUserName: currentUser.display_name || currentUser.username || 'Người dùng',
+          targetUserId: activeDmFriend.id,
+          channelId: connectedVoiceChannelRef.current,
+        },
+      });
+    }
     handleStopScreenShare();
+    clearAllScreenShares();
     const myId = myParticipantIdRef.current;
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (micStreamRef.current) {
@@ -6669,6 +7227,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     micGainRef.current = null;
     outboundStreamRef.current = null;
     myVoiceParticipantRef.current = null;
+    voiceServerIdRef.current = '';
 
     // Giữ phát nhạc nền 24/7 liên tục khi chuyển phòng hoặc rời voice call
 
@@ -6697,6 +7256,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     setConnectedVoiceChannel(null);
     setConnectedVoiceServerId(null);
+    setDmCallConnected(false);
+    setDmCallCountdown(30);
     setIsUserSpeaking(false);
     if (wasInCall) {
       playAudioChime('leave');
@@ -7129,7 +7690,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     markDmAsRead(friend.id);
   };
 
-  const handleStartPrivateCall = async (friend: CommunityUserProfile) => {
+  const handleStartPrivateCall = async (
+    friend: CommunityUserProfile,
+    options?: { isAnswering?: boolean }
+  ) => {
     if (!currentUser) return;
     setIsFriendsTabActive(true);
     setActiveDmFriend(friend);
@@ -7137,12 +7701,37 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     const roomId = getDmRoomId(currentUser.id, friend.id);
     const dmVoiceChId = `dm_voice_${roomId}`;
 
-    // Nếu đang ở trong chính cuộc gọi riêng này thì giữ nguyên
-    if (connectedVoiceServerId === 'dm_private' && connectedVoiceChannel === dmVoiceChId) {
+    // Nếu đang ở trong chính cuộc gọi riêng này
+    if (connectedVoiceServerIdRef.current === 'dm_private' && connectedVoiceChannelRef.current === dmVoiceChId) {
+      if (options?.isAnswering) {
+        setDmCallConnected(true);
+        globalSocialChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'voice_call_accepted',
+          payload: {
+            isDmCall: true,
+            fromUserId: friend.id,
+            acceptedByUserId: currentUser.id,
+            channelId: dmVoiceChId,
+          },
+        });
+      }
       return;
     }
 
-    // Dọn dẹp cuộc gọi cũ nếu có
+    // Nếu đang ở phòng voice khác -> gửi rời phòng cũ sạch sẽ trước khi vào DM call
+    if (connectedVoiceChannelRef.current && connectedVoiceChannelRef.current !== dmVoiceChId) {
+      const oldId = myParticipantIdRef.current;
+      rtcSendRef.current?.('voice_presence', { action: 'leave', userId: oldId });
+      rtcSendRef.current?.('rtc_bye', { from: oldId });
+      activeChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'voice_presence',
+        payload: { action: 'leave', userId: oldId },
+      });
+    }
+
+    // Dọn dẹp thiết bị mic cũ nếu có
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach(t => t.stop());
@@ -7155,6 +7744,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     micGainRef.current = null;
     outboundStreamRef.current = null;
     voiceServerIdRef.current = 'dm_private';
+
+    const myId = myParticipantIdRef.current;
+    const dmParticipant: VoiceParticipant = {
+      id: myId,
+      name: currentUser.display_name || currentUser.username || 'Operative',
+      username: currentUser.username || 'operative',
+      avatar: currentUser.avatar || null,
+      isMuted: false,
+      isDeafened: false,
+      isSpeaking: false,
+      isHost: false,
+      isBot: false,
+      isStreaming: false,
+      listening: null,
+      listeningTrack: null,
+      serverId: 'dm_private',
+      channelId: dmVoiceChId,
+    };
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -7195,14 +7802,56 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         animFrameRef.current = requestAnimationFrame(checkAudio);
       };
       checkAudio();
+      myVoiceParticipantRef.current = dmParticipant;
     } catch {
       setIsMuted(true);
+      myVoiceParticipantRef.current = { ...dmParticipant, isMuted: true };
     }
 
+    setDmCallCountdown(30);
+    setDmCallConnected(Boolean(options?.isAnswering));
     setConnectedVoiceServerId('dm_private');
     setConnectedVoiceChannel(dmVoiceChId);
     playAudioChime('join');
+
+    // Phát tín hiệu cuộc gọi đến / xác nhận bắt máy qua kênh Realtime toàn cục cho bạn bè (trừ AI Bot)
+    if (!ACTIVE_BOT_IDS.has(friend.id)) {
+      if (options?.isAnswering) {
+        globalSocialChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'voice_call_accepted',
+          payload: {
+            isDmCall: true,
+            fromUserId: friend.id,
+            acceptedByUserId: currentUser.id,
+            channelId: dmVoiceChId,
+          },
+        });
+      } else {
+        const callInvitePayload = {
+          callId: `dm_call_${roomId}_${Date.now()}`,
+          isDmCall: true,
+          roomId,
+          fromUserId: currentUser.id,
+          fromUserName: currentUser.display_name || currentUser.username || 'Người dùng',
+          fromUserAvatar: currentUser.avatar || null,
+          targetUserId: friend.id,
+          targetUserName: friend.display_name || friend.username || 'Bạn bè',
+          serverId: 'dm_private',
+          serverName: 'Cuộc gọi riêng 1-1',
+          channelId: dmVoiceChId,
+          channelName: 'Cuộc gọi thoại riêng',
+          timestamp: Date.now(),
+        };
+        globalSocialChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'voice_call_invite',
+          payload: callInvitePayload,
+        });
+      }
+    }
   };
+  startPrivateCallRef.current = handleStartPrivateCall;
 
   const handleSendDmMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -7449,16 +8098,36 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
         <div className={`w-8 h-[1px] my-0.5 ${isLight ? 'bg-[#e2e8f0]' : 'bg-[#1a1a24]'}`} />
 
-        {/* Server Icons List */}
-        <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto no-scrollbar">
+        {/* Server Icons List (Kéo thả để sắp xếp vị trí Server) */}
+        <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto no-scrollbar py-1">
           {servers.map(srv => {
             const isSelected = !isFriendsTabActive && selectedServer.id === srv.id;
             const srvUnreadCount = srv.channels.reduce(
               (acc, ch) => acc + (unreadChannelCounts[ch.id] || 0),
               0
             );
+            const isDraggingThis = draggedServerId === srv.id;
+            const isDropTarget = dragOverServerId === srv.id && draggedServerId !== srv.id;
             return (
-              <div key={srv.id} className="relative group flex items-center justify-center w-full">
+              <div
+                key={srv.id}
+                data-server-rail-id={srv.id}
+                className={`relative group flex items-center justify-center w-full select-none transition-transform duration-150 ${
+                  isDraggingThis ? 'opacity-45 scale-90 cursor-grabbing' : ''
+                }`}
+              >
+                {isDropTarget && dragDropPosition === 'above' && (
+                  <div
+                    className="absolute -top-1.5 left-3 right-3 h-0.5 rounded-full z-20 shadow-sm pointer-events-none"
+                    style={{ backgroundColor: accentColor, boxShadow: `0 0 8px ${accentColor}` }}
+                  />
+                )}
+                {isDropTarget && dragDropPosition === 'below' && (
+                  <div
+                    className="absolute -bottom-1.5 left-3 right-3 h-0.5 rounded-full z-20 shadow-sm pointer-events-none"
+                    style={{ backgroundColor: accentColor, boxShadow: `0 0 8px ${accentColor}` }}
+                  />
+                )}
                 <span 
                   className={`absolute left-0 w-1 rounded-r-full transition-all duration-200 ${
                     isSelected ? 'h-8' : srvUnreadCount > 0 ? 'h-3 bg-red-500 opacity-100' : 'h-2 bg-zinc-600 opacity-0 group-hover:opacity-100'
@@ -7467,35 +8136,50 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 />
                 
                 <button
+                  type="button"
+                  onPointerDown={e => {
+                    if (e.button !== 0 || servers.length <= 1) return;
+                    serverRailDragRef.current = {
+                      serverId: srv.id,
+                      startX: e.clientX,
+                      startY: e.clientY,
+                      moved: false,
+                      overId: null,
+                      position: null,
+                    };
+                  }}
                   onClick={() => {
+                    if (suppressServerClickIdRef.current === srv.id) return;
                     setIsFriendsTabActive(false);
                     handleSelectServer(srv);
                   }}
-                  className={`w-11 h-11 flex items-center justify-center text-base font-bold cursor-pointer transition-all duration-200 shadow-md relative ${
+                  className={`w-11 h-11 flex items-center justify-center text-base font-bold transition-all duration-200 shadow-md relative ${
+                    isDraggingThis ? 'cursor-grabbing' : 'cursor-pointer'
+                  } ${
                     isSelected 
                       ? 'rounded-xl border' 
                       : isLight 
                       ? 'rounded-3xl hover:rounded-xl bg-[#ffffff] border border-[#cbd5e1] text-[#334155] hover:text-[#0f172a]'
                       : 'rounded-3xl hover:rounded-xl bg-[#0e0e14] border border-[#1e1e28] hover:border-white/30 text-zinc-300 hover:text-white'
-                  }`}
+                  } ${isDropTarget ? 'ring-2 ring-cyan-400/70' : ''}`}
                   style={{
                     backgroundColor: isSelected ? `${accentColor}25` : undefined,
                     borderColor: isSelected ? accentColor : undefined,
                     color: isSelected ? accentColor : undefined,
                   }}
-                  title={srv.name}
+                  title={`${srv.name} (Giữ & kéo để đổi vị trí)`}
                 >
-                  <div className="w-full h-full rounded-[inherit] overflow-hidden flex items-center justify-center">
+                  <div className="w-full h-full rounded-[inherit] overflow-hidden flex items-center justify-center pointer-events-none">
                     {renderServerIconContent(srv.icon, srv.name, isSelected ? accentColor : srv.accent_color, 'w-5 h-5')}
                   </div>
                   {srvUnreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#040407] shadow-md">
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#040407] shadow-md pointer-events-none">
                       {srvUnreadCount > 99 ? '99+' : srvUnreadCount}
                     </span>
                   )}
                   {connectedVoiceServerId === srv.id && connectedVoiceChannel && (
                     <span
-                      className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-black flex items-center justify-center border-2 border-[#040407] shadow-md shadow-emerald-500/50 animate-pulse"
+                      className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-black flex items-center justify-center border-2 border-[#040407] shadow-md shadow-emerald-500/50 animate-pulse pointer-events-none"
                       title="Đang trong phòng thoại tại máy chủ này"
                     >
                       <Volume2 className="w-2.5 h-2.5 stroke-[2.5]" />
@@ -8177,53 +8861,88 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                 </span>
                               </div>
                               <span className="truncate">{myServerDisplayName} ({getTranslation(language, 'community.you')})</span>
-                              {isMuted && <MicOff className="w-2.5 h-2.5 text-red-400 ml-auto" />}
+                              {isScreenSharing && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectChannel(channel);
+                                    setSelectedScreenShareUserId(myParticipantIdRef.current);
+                                  }}
+                                  className="ml-auto inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-mono font-bold bg-red-600 text-white border border-red-400/50 cursor-pointer flex-shrink-0"
+                                  title="Bạn đang chia sẻ màn hình — bấm để xem"
+                                >
+                                  <Monitor className="w-2.5 h-2.5" />
+                                  <span>LIVE</span>
+                                </button>
+                              )}
+                              {isMuted && <MicOff className={`w-2.5 h-2.5 text-red-400 flex-shrink-0 ${isScreenSharing ? '' : 'ml-auto'}`} />}
                             </div>
                           )}
 
-                          {otherVoiceParticipants.map(vp => (
-                            <div 
-                              key={vp.id} 
-                              onContextMenu={(e) => {
-                                e.preventDefault();
-                                setMemberMenu({
-                                  x: Math.min(e.clientX, window.innerWidth - 240),
-                                  y: Math.min(e.clientY, window.innerHeight - 300),
-                                  member: {
-                                    id: vp.id,
-                                    name: vp.name,
-                                    avatar: resolveUserAvatar(vp.id, vp.avatar),
-                                    role: (ACTIVE_BOT_IDS.has(vp.id) || vp.isBot) ? 'DJ' : (vp.isHost ? 'HOST' : 'MEMBER'),
-                                    isHost: vp.isHost,
-                                    status: 'online',
-                                    listening: vp.listeningTrack ? `${vp.listeningTrack.title} - ${vp.listeningTrack.artist}` : (vp.listening || null),
-                                    listeningTrack: vp.listeningTrack || null,
-                                  },
-                                  fromVoice: true,
-                                });
-                              }}
-                              className={`flex items-center gap-1.5 text-[11px] p-0.5 rounded hover:bg-white/5 cursor-pointer ${isLight ? 'text-[#475569]' : 'text-[#aaa]'}`}
-                            >
-                              <div className="relative flex-shrink-0">
-                                <span 
-                                  className={`w-4 h-4 rounded-full overflow-hidden border text-[9px] font-bold flex items-center justify-center transition-all ${isLight ? 'bg-[#e2e8f0] text-[#0f172a]' : 'bg-[#161622] text-white'}`}
-                                  style={{
-                                    borderColor: vp.isSpeaking ? accentColor : (isLight ? '#cbd5e1' : 'rgba(255,255,255,0.2)'),
-                                    boxShadow: vp.isSpeaking ? `0 0 6px ${accentColor}` : undefined,
-                                  }}
-                                >
-                                  {renderAvatarContent(vp.name, resolveUserAvatar(vp.id, vp.avatar))}
-                                </span>
+                          {otherVoiceParticipants.map(vp => {
+                            const vpSharing = Boolean(vp.isScreenSharing || screenShares[vp.id]);
+                            return (
+                              <div 
+                                key={vp.id} 
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  setMemberMenu({
+                                    x: Math.min(e.clientX, window.innerWidth - 240),
+                                    y: Math.min(e.clientY, window.innerHeight - 300),
+                                    member: {
+                                      id: vp.id,
+                                      name: vp.name,
+                                      avatar: resolveUserAvatar(vp.id, vp.avatar),
+                                      role: (ACTIVE_BOT_IDS.has(vp.id) || vp.isBot) ? 'DJ' : (vp.isHost ? 'HOST' : 'MEMBER'),
+                                      isHost: vp.isHost,
+                                      status: 'online',
+                                      listening: vp.listeningTrack ? `${vp.listeningTrack.title} - ${vp.listeningTrack.artist}` : (vp.listening || null),
+                                      listeningTrack: vp.listeningTrack || null,
+                                    },
+                                    fromVoice: true,
+                                  });
+                                }}
+                                className={`flex items-center gap-1.5 text-[11px] p-0.5 rounded hover:bg-white/5 cursor-pointer ${isLight ? 'text-[#475569]' : 'text-[#aaa]'}`}
+                              >
+                                <div className="relative flex-shrink-0">
+                                  <span 
+                                    className={`w-4 h-4 rounded-full overflow-hidden border text-[9px] font-bold flex items-center justify-center transition-all ${isLight ? 'bg-[#e2e8f0] text-[#0f172a]' : 'bg-[#161622] text-white'}`}
+                                    style={{
+                                      borderColor: vp.isSpeaking ? accentColor : (isLight ? '#cbd5e1' : 'rgba(255,255,255,0.2)'),
+                                      boxShadow: vp.isSpeaking ? `0 0 6px ${accentColor}` : undefined,
+                                    }}
+                                  >
+                                    {renderAvatarContent(vp.name, resolveUserAvatar(vp.id, vp.avatar))}
+                                  </span>
+                                </div>
+                                <span className="truncate">{vp.name}</span>
+                                {((vp.isHost && (ACTIVE_BOT_IDS.has(vp.id) || vp.isBot)) || channel.dj_bot_id === vp.id) && (
+                                  <span className="text-[8px] font-mono font-bold text-amber-400 bg-amber-400/10 px-1 rounded border border-amber-400/30 flex-shrink-0">
+                                    DJ
+                                  </span>
+                                )}
+                                {vpSharing && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectChannel(channel);
+                                      if (screenShares[vp.id]) {
+                                        setSelectedScreenShareUserId(vp.id);
+                                      }
+                                    }}
+                                    className="ml-auto inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-mono font-bold bg-red-600/90 text-white border border-red-400/50 cursor-pointer flex-shrink-0 hover:bg-red-500"
+                                    title={`${vp.name} đang chia sẻ màn hình — bấm để xem`}
+                                  >
+                                    <Monitor className="w-2.5 h-2.5" />
+                                    <span>LIVE</span>
+                                  </button>
+                                )}
+                                {vp.isMuted && <MicOff className={`w-2.5 h-2.5 text-red-400 flex-shrink-0 ${vpSharing ? '' : 'ml-auto'}`} />}
                               </div>
-                              <span className="truncate">{vp.name}</span>
-                              {((vp.isHost && (ACTIVE_BOT_IDS.has(vp.id) || vp.isBot)) || channel.dj_bot_id === vp.id) && (
-                                <span className="text-[8px] font-mono font-bold text-amber-400 bg-amber-400/10 px-1 rounded border border-amber-400/30">
-                                  DJ
-                                </span>
-                              )}
-                              {vp.isMuted && <MicOff className="w-2.5 h-2.5 text-red-400 ml-auto" />}
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -9599,9 +10318,54 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <div className={`flex-1 flex flex-col p-6 items-center justify-between overflow-y-auto ${
             isLight ? 'bg-gradient-to-b from-[#f8fafc] to-[#f1f5f9]' : 'bg-gradient-to-b from-[#08080f] to-[#040407]'
           }`}>
-            {/* Discord-style Screen Share Stage View */}
+            {/* Discord-style Multi-Screen Share Stage View (Chia Tab chọn từng màn hình đang phát) */}
             {activeScreenShare && (
               <div className="w-full max-w-5xl flex flex-col items-center mb-4">
+                {/* Thanh Tab chọn màn hình của từng người trong cuộc gọi */}
+                <div className="w-full flex items-center justify-between gap-2 mb-2 px-1">
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                    {screenSharesList.map(ss => {
+                      const isActiveTab = activeScreenShare.userId === ss.userId;
+                      const isMine = ss.userId === myParticipantIdRef.current;
+                      return (
+                        <button
+                          key={ss.userId}
+                          type="button"
+                          onClick={() => setSelectedScreenShareUserId(ss.userId)}
+                          className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer flex-shrink-0 ${
+                            isActiveTab
+                              ? 'shadow-lg'
+                              : isLight
+                              ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
+                              : 'bg-[#14151e] hover:bg-[#1c1e2b] border-white/10 text-zinc-300'
+                          }`}
+                          style={isActiveTab ? {
+                            backgroundColor: `${accentColor}22`,
+                            borderColor: accentColor,
+                            color: isLight ? '#0f172a' : '#ffffff',
+                          } : undefined}
+                        >
+                          <div className="w-4 h-4 rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                            {renderAvatarContent(ss.userName, resolveUserAvatar(ss.userId, ss.avatar))}
+                          </div>
+                          <Monitor className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActiveTab ? accentColor : '#10b981' }} />
+                          <span className="truncate max-w-[140px]">
+                            {ss.userName}{isMine ? ` (${getTranslation(language, 'community.you')})` : ''}
+                          </span>
+                          <span className="px-1 py-0.2 rounded text-[8px] font-mono font-bold bg-red-600 text-white">
+                            LIVE
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {screenSharesList.length > 1 && (
+                    <span className="text-[10px] font-mono text-zinc-400 flex-shrink-0 px-2 py-1 rounded-lg bg-black/40 border border-white/10">
+                      {screenSharesList.length} màn hình đang chia sẻ
+                    </span>
+                  )}
+                </div>
+
                 <div className="w-full rounded-2xl bg-black/90 border border-white/15 overflow-hidden shadow-2xl relative group">
                   {/* Top Screen Share Header Bar */}
                   <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between z-20">
@@ -9613,6 +10377,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-white tracking-wide">
                             {activeScreenShare.userName}
+                            {activeScreenShare.userId === myParticipantIdRef.current ? ` (${getTranslation(language, 'community.you')})` : ''}
                           </span>
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-red-600 text-white animate-pulse">
                             LIVE
@@ -9652,6 +10417,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                   {/* Video Stream Element */}
                   <video
+                    key={activeScreenShare.userId}
                     ref={(el) => {
                       screenVideoRef.current = el;
                       if (el && activeScreenShare?.stream && el.srcObject !== activeScreenShare.stream) {
@@ -9713,6 +10479,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         {myServerDisplayName}
                       </span>
                       <span className={`text-[10px] font-mono ${isLight ? 'text-[#64748b]' : 'text-zinc-400'}`}>({getTranslation(language, 'community.you')})</span>
+                      {isScreenSharing && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedScreenShareUserId(myParticipantIdRef.current);
+                          }}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8px] font-mono font-bold bg-red-600 text-white border border-red-400/50 cursor-pointer flex-shrink-0"
+                          title="Bạn đang chia sẻ màn hình — bấm để xem"
+                        >
+                          <Monitor className="w-2.5 h-2.5" />
+                          <span>SHARE</span>
+                        </button>
+                      )}
                       {isUserSpeaking && (
                         <span className="w-2 h-2 rounded-full animate-ping ml-1" style={{ backgroundColor: accentColor }} />
                       )}
@@ -9947,6 +10727,22 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     {/* Discord Bottom-left Tag */}
                     <div className="absolute bottom-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/85 border border-white/10 max-w-[85%] truncate">
                       <span className="text-xs font-bold text-white tracking-wide truncate">{vp.name}</span>
+                      {(vp.isScreenSharing || Boolean(screenShares[vp.id])) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (screenShares[vp.id]) {
+                              setSelectedScreenShareUserId(vp.id);
+                            }
+                          }}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[8px] font-mono font-bold bg-red-600 text-white border border-red-400/50 cursor-pointer flex-shrink-0 hover:bg-red-500"
+                          title={`${vp.name} đang chia sẻ màn hình — bấm để xem`}
+                        >
+                          <Monitor className="w-2.5 h-2.5" />
+                          <span>SHARE</span>
+                        </button>
+                      )}
                       {locallyMutedUsers[vp.id] && (
                         <span className="text-[8px] font-mono font-bold text-red-400 bg-red-400/20 border border-red-400/40 px-1 py-0.2 rounded flex items-center gap-0.5">
                           <VolumeX className="w-2.5 h-2.5" />
@@ -10625,27 +11421,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               }`}
             >
               <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Nút Chọn Tag cho User */}
-          <div className="mb-2.5">
-            <button
-              onClick={handleOpenTagSelectModal}
-              className={`w-full py-1.5 px-2.5 rounded-lg border text-[10px] font-bold flex items-center justify-between transition-all cursor-pointer shadow-sm group ${
-                isLight
-                  ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-800'
-                  : 'bg-[#12121c] hover:bg-[#1a1a28] border-white/10 hover:border-cyan-400/40 text-zinc-200'
-              }`}
-              title={language === 'vi' ? 'Bấm để chọn các tag sở thích của bạn tại máy chủ này' : 'Click to select your server interest tags'}
-            >
-              <div className="flex items-center gap-1.5">
-                <Tag className="w-3 h-3 text-cyan-400 group-hover:rotate-12 transition-transform" />
-                <span>{language === 'vi' ? 'Tag của bạn' : 'Your Tags'}</span>
-              </div>
-              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                {resolveMemberTags('usr_me', selectedServer).length} {language === 'vi' ? 'đã chọn' : 'selected'}
-              </span>
             </button>
           </div>
 
@@ -12619,7 +13394,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   const adminTabs = [
                     { id: 'overview' as const, name: 'Tổng quan', icon: <Sliders className="w-4 h-4 shrink-0" /> },
                     { id: 'members' as const, name: 'Thành viên & Bot', icon: <Users className="w-4 h-4 shrink-0" />, count: onlineMembers.length },
-                    { id: 'tags' as const, name: 'Quản lý Tag', icon: <Tag className="w-4 h-4 shrink-0" /> },
+                    { id: 'tags' as const, name: 'Tag & Sở thích', icon: <Tag className="w-4 h-4 shrink-0" /> },
                     { id: 'invites' as const, name: 'Mời bạn bè', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
                     { id: 'danger' as const, name: 'Vùng nguy hiểm', icon: <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" /> },
                   ];
@@ -13193,11 +13968,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 </div>
               )}
 
-              {serverSettingsTab === 'tags' && !canManageServer && (
+              {serverSettingsTab === 'tags' && (
                 <div className="space-y-5 max-w-xl">
                   <div>
                     <h4 className={`text-sm font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      CHỌN TAG SỞ THÍCH CỦA BẠN
+                      CHỌN TAG SỞ THÍCH CỦA BẠN ({selectedTagIdsDraft.length})
                     </h4>
                     <p className="text-xs text-[#888] font-mono">
                       Chọn các tag bạn muốn hiển thị trên hồ sơ của mình trong máy chủ này. Bấm vào tag để chọn hoặc bỏ chọn.
@@ -13256,7 +14031,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       onClick={() => {
                         handleSaveUserTags();
                         showVoiceToast(language === 'vi' ? 'Đã lưu tags sở thích!' : 'Saved interest tags!');
-                        setIsServerSettingsOpen(false);
+                        if (!canManageServer) {
+                          setIsServerSettingsOpen(false);
+                        }
                       }}
                       className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-lg hover:scale-105 active:scale-95 transition-all"
                       style={{ backgroundColor: accentColor }}
@@ -13269,7 +14046,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               )}
 
               {serverSettingsTab === 'tags' && canManageServer && (
-                <div className="space-y-6 max-w-xl">
+                <div className="space-y-6 max-w-xl pt-5 border-t border-white/10">
                   <div>
                     <h4 className={`text-sm font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
                       QUẢN LÝ TAG SỞ THÍCH CỦA MÁY CHỦ
@@ -14775,11 +15552,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </span>
             </div>
 
-            <h3 className="text-base font-extrabold tracking-tight">Lời Mời Vào Phòng Thoại</h3>
+            <h3 className="text-base font-extrabold tracking-tight">
+              {incomingVoiceInvite.isDmCall || incomingVoiceInvite.serverId === 'dm_private'
+                ? 'Cuộc Gọi Thoại Đến'
+                : 'Lời Mời Vào Phòng Thoại'}
+            </h3>
             <p className="text-xs text-[#888] mt-1.5 max-w-xs">
-              <strong className="text-white">{incomingVoiceInvite.fromUserName}</strong> đang mời bạn tham gia phòng thoại{' '}
-              <strong className="text-cyan-400">"{incomingVoiceInvite.channelName}"</strong> tại máy chủ{' '}
-              <strong className="text-amber-400">{incomingVoiceInvite.serverName}</strong>.
+              {incomingVoiceInvite.isDmCall || incomingVoiceInvite.serverId === 'dm_private' ? (
+                <>
+                  <strong className={isLight ? 'text-slate-900' : 'text-white'}>{incomingVoiceInvite.fromUserName}</strong> đang gọi thoại riêng cho bạn. Bạn có muốn bắt máy không?
+                </>
+              ) : (
+                <>
+                  <strong className={isLight ? 'text-slate-900' : 'text-white'}>{incomingVoiceInvite.fromUserName}</strong> đang mời bạn tham gia phòng thoại{' '}
+                  <strong className="text-cyan-400">"{incomingVoiceInvite.channelName}"</strong> tại máy chủ{' '}
+                  <strong className="text-amber-400">{incomingVoiceInvite.serverName}</strong>.
+                </>
+              )}
             </p>
 
             <div className="grid grid-cols-2 gap-2.5 w-full mt-5">

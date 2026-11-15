@@ -783,33 +783,51 @@ export async function fetchCloudServerById(serverId: string): Promise<any | null
   }
 }
 
-export async function fetchCloudServersForUser(userId: string): Promise<any[]> {
+export interface CloudServerMembershipAudit {
+  activeServers: any[];
+  removedServerIds: string[];
+}
+
+export async function fetchCloudServerMembershipAudit(userId: string): Promise<CloudServerMembershipAudit> {
   const client = getSupabaseClient();
-  if (!client || !userId) return [];
+  if (!client || !userId) return { activeServers: [], removedServerIds: [] };
   try {
     const { data, error } = await client
       .from('spytify_direct_messages')
       .select('content')
       .eq('room_id', SERVERS_REGISTRY_ROOM_ID);
-    if (error || !data) return [];
-    const results: any[] = [];
+    if (error || !data) return { activeServers: [], removedServerIds: [] };
+    const activeServers: any[] = [];
+    const removedServerIds: string[] = [];
     for (const row of data) {
       if (!row?.content) continue;
       try {
         const srv = JSON.parse(row.content);
         if (!srv?.id || srv.id === 'srv_none') continue;
         const isOwner = srv.owner_id === userId;
+        const isKicked = Array.isArray(srv.kicked_ids) && srv.kicked_ids.includes(userId);
         const isMember = Array.isArray(srv.member_ids) && srv.member_ids.includes(userId);
         const isMod = Array.isArray(srv.moderator_ids) && srv.moderator_ids.includes(userId);
+        if (!isOwner && isKicked) {
+          removedServerIds.push(srv.id);
+          continue;
+        }
         if (isOwner || isMember || isMod) {
-          results.push(srv);
+          activeServers.push(srv);
+        } else {
+          removedServerIds.push(srv.id);
         }
       } catch {}
     }
-    return results;
+    return { activeServers, removedServerIds };
   } catch {
-    return [];
+    return { activeServers: [], removedServerIds: [] };
   }
+}
+
+export async function fetchCloudServersForUser(userId: string): Promise<any[]> {
+  const { activeServers } = await fetchCloudServerMembershipAudit(userId);
+  return activeServers;
 }
 
 export async function pushCloudServerInvite(invite: CloudServerInvite): Promise<void> {

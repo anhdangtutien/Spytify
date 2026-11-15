@@ -44,7 +44,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Phiên bản Spytify v1.0.2 alpha cho Windows và macOS (tính năng đa Bot Yêu Cầu với /play @id_bot, stream xuyên suốt tới khi hết hàng đợi rồi tự rời phòng, sửa phát nhạc từ trạng thái bot, khôi phục âm lượng bot & đồng bộ hồ sơ cộng đồng).'
+          releaseBody: 'Phiên bản Spytify v1.0.3 alpha cho Windows và macOS (đồng bộ kick thành viên, sửa cuộc gọi riêng 1-1, chia tab nhiều màn hình share đồng thời & biểu tượng share cạnh tên, đồng bộ bot tạo mới/tùy biến tới mọi thành viên, sửa lỗi hiển thị sai Chủ Server & đồng bộ phân quyền/khóa đổi theme với thành viên thường, kéo thả sắp xếp icon server và đưa chọn tag sở thích vào cài đặt).'
           releaseDraft: false
           prerelease: false
 
@@ -90,7 +90,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Phiên bản Spytify v1.0.2 alpha cho Windows và macOS (Apple Silicon M1/M2/M3/M4 & Intel).'
+          releaseBody: 'Phiên bản Spytify v1.0.3 alpha cho Windows và macOS (Apple Silicon M1/M2/M3/M4 & Intel).'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin

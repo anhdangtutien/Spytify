@@ -3462,6 +3462,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               language={language}
               themeMode={themeMode}
               onActiveServerChange={(server) => setCommunityServerColor(server ? server.accent_color : null)}
+              onIncomingVoiceCall={() => setCurrentView('community')}
             />
           </div>
 

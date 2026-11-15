@@ -168,6 +168,7 @@ export interface CommunityServer {
   member_tags?: Record<string, string[]>;
   allow_member_invites?: boolean;
   pending_invites?: CommunityPendingInvite[];
+  custom_bots?: CommunityUserProfile[];
 }
 
 export interface RequestBotTrack {
