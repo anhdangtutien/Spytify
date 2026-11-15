@@ -2565,7 +2565,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const enterTrayLowMemoryMode = () => {
       isTrayModeRef.current = true;
       setIsTrayMode(true);
-      setShowYoutubeVideo(false);
       document.documentElement.classList.add('app-minimized');
       invoke('trim_memory').catch(() => {});
     };
@@ -2599,22 +2598,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
     }).then(fn => { unlistenState = fn; });
 
-    // Lắng nghe sự kiện visibility chuẩn của trình duyệt / WebView2
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        enterTrayLowMemoryMode();
-      } else {
-        exitTrayLowMemoryMode();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
       if (unlistenPlay) unlistenPlay();
       if (unlistenPrev) unlistenPrev();
       if (unlistenNext) unlistenNext();
       if (unlistenState) unlistenState();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.documentElement.classList.remove('app-minimized');
     };
   }, [syncPlaybackStateNow]);
@@ -3292,9 +3280,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </div>
       )}
 
-      {/* Main Layout (Unmounted in Tray Mode to free all UI/Image/Canvas RAM) */}
-      {!isTrayMode && (
-      <>
+      {/* Main Layout (Persistently mounted to keep WebRTC, Screen Share, Audio & Radio Bots alive) */}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar
           currentView={currentView}
@@ -3829,8 +3815,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         isNextTrackPopupEnabled={Boolean(isNextTrackPopupEnabled && nextTrackPopup)}
         onToggleNextTrackPopupEnabled={handleToggleNextTrackPopupEnabled}
       />
-      </>
-      )}
     </div>
   );
 }
