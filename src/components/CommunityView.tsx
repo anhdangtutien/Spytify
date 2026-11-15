@@ -253,26 +253,6 @@ const DJ_BOT_OPTIONS = [
     ],
   },
   {
-    id: 'usr_music_bot',
-    name: 'Rythm',
-    genre: 'Yêu cầu & Hàng đợi nhạc (@Rythm /p)',
-    liveStreamId: '',
-    liveStreamTitle: 'Phát nhạc theo yêu cầu (@Rythm /p)',
-    backupStreams: [],
-    trackName: 'Rythm - Bot phát nhạc theo yêu cầu',
-    track: {
-      id: 'yt_ondemand_rythm',
-      title: 'Bot phát nhạc theo yêu cầu (@Rythm /p)',
-      artist: 'Rythm Bot',
-      album: 'On-Demand Music Queue',
-      duration_secs: 0,
-      path_or_url: '',
-      source: 'youtube' as const,
-      cover_art: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
-    },
-    playlist: [],
-  },
-  {
     id: 'custom',
     name: 'Trạm Tùy Biến (Custom YouTube)',
     genre: 'Custom Stream / Video 24/7',
@@ -944,6 +924,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const connectedVoiceChannelRef = useRef<string | null>(null);
   connectedVoiceChannelRef.current = connectedVoiceChannel;
   const handleLeaveVoiceCallRef = useRef<() => void>(() => {});
+  const broadcastUserOfflineRef = useRef<() => void>(() => {});
+  const broadcastUserOnlineRef = useRef<() => void>(() => {});
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -3701,8 +3683,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Determine real-time effective status for any user
   const getEffectiveStatus = (u: CommunityUserProfile): 'online' | 'dnd' | 'offline' => {
     if (ACTIVE_BOT_IDS.has(u.id)) return 'online';
-    const rt = realtimeUserPresences[u.id] || Object.values(realtimeUserPresences).find(p => p.username.toLowerCase() === u.username.toLowerCase());
-    if (rt && (rt.status === 'online' || rt.status === 'dnd')) return rt.status;
+    const rt = realtimeUserPresences[u.id] || Object.values(realtimeUserPresences).find(p => p.username && u.username && p.username.toLowerCase() === u.username.toLowerCase());
+    if (rt) {
+      if (rt.status === 'offline' || (rt.status as string) === 'invisible') return 'offline';
+      if (rt.status === 'online' || rt.status === 'dnd') return rt.status;
+    }
     return 'offline';
   };
 
@@ -3724,9 +3709,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (myUname && (m.username || '').toLowerCase() === myUname) return;
       if (!isMemberInServer(m.user_id)) return;
       const alreadyKnown =
-        registeredUsers.some(u => u.id === m.user_id || u.username.toLowerCase() === (m.username || '').toLowerCase()) ||
+        registeredUsers.some(u => u.id === m.user_id || (u.username && m.username && u.username.toLowerCase() === m.username.toLowerCase())) ||
         Object.values(realtimeUserPresences).some(
-          rt => rt.id === m.user_id || rt.username.toLowerCase() === (m.username || '').toLowerCase()
+          rt => rt.id === m.user_id || (rt.username && m.username && rt.username.toLowerCase() === m.username.toLowerCase())
         );
       if (!alreadyKnown) {
         map.set(m.user_id, {
@@ -3765,7 +3750,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       .filter(u => isMemberInServer(u.id))
       .filter(u => !currentUser || (u.id !== currentUser.id && u.username.toLowerCase() !== (currentUser.username || '').toLowerCase()))
       .map(u => {
-        const rt = realtimeUserPresences[u.id] || Object.values(realtimeUserPresences).find(p => p.username.toLowerCase() === u.username.toLowerCase());
+        const rt = realtimeUserPresences[u.id] || Object.values(realtimeUserPresences).find(p => p.username && u.username && p.username.toLowerCase() === u.username.toLowerCase());
         const latestMsgWithAvatar = [...messages]
           .reverse()
           .find(m => m.user_id === u.id && m.avatar);
@@ -3820,7 +3805,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       .filter(rt =>
         isMemberInServer(rt.id) &&
         rt.id !== (currentUser?.id || myParticipantIdRef.current) &&
-        !registeredUsers.some(u => u.id === rt.id || u.username.toLowerCase() === rt.username.toLowerCase())
+        (rt.status === 'online' || rt.status === 'dnd') &&
+        !registeredUsers.some(u => u.id === rt.id || (u.username && rt.username && u.username.toLowerCase() === rt.username.toLowerCase()))
       )
       .map(rt => {
         const effStatus: 'online' | 'dnd' | 'offline' = rt.status === 'online' || rt.status === 'dnd' ? rt.status : 'offline';
@@ -4219,19 +4205,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     // 1. Khi người dùng bấm nút đóng X hoặc Thoát ứng dụng từ System Tray
     listen('app-close-requested', () => {
       handleLeaveVoiceCallRef.current();
+      broadcastUserOfflineRef.current();
     }).then(fn => { unlistenClose = fn; }).catch(() => {});
 
     // 2. Khi cửa sổ bị ẩn vào System Tray (nút X khi bật close-to-tray)
-    // Tự động out phòng voice để không bị kẹt nick và tắt micro
+    // Tự động out phòng voice và cập nhật ngay trạng thái sang Vô hình (offline)
     listen<string>('app-window-state', (event) => {
       if (event.payload === 'hidden') {
         handleLeaveVoiceCallRef.current();
+        broadcastUserOfflineRef.current();
+      } else if (event.payload === 'normal') {
+        broadcastUserOnlineRef.current();
       }
     }).then(fn => { unlistenState = fn; }).catch(() => {});
 
     // 3. Sự kiện beforeunload khi refresh / đóng webview
     const handleBeforeUnload = () => {
       handleLeaveVoiceCallRef.current();
+      broadcastUserOfflineRef.current();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
@@ -5297,7 +5288,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (!payload || !payload.id) return;
       setRealtimeUserPresences(prev => ({
         ...prev,
-        [payload.id]: payload,
+        [payload.id]: {
+          ...payload,
+          status: payload.status || 'offline',
+          username: payload.username || prev[payload.id]?.username || '',
+          display_name: payload.display_name || prev[payload.id]?.display_name || payload.username || 'Operative',
+        },
       }));
       ensureMemberSyncedToServer(
         {
@@ -5690,7 +5686,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       activeChannelRef.current.send({
         type: 'broadcast',
         event: 'user_presence',
-        payload: { id: myId, status: 'offline' },
+        payload: {
+          ...(myPresencePayloadRef.current || {}),
+          id: currentUser?.id || myId,
+          username: currentUser?.username || myPresencePayloadRef.current?.username || 'operative',
+          display_name: myServerDisplayName,
+          status: 'offline',
+          listening: null,
+          listeningTrack: null,
+        },
       });
     }
 
@@ -5702,6 +5706,53 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
   };
   handleLeaveVoiceCallRef.current = handleLeaveVoiceCall;
+
+  const broadcastUserOffline = () => {
+    const myId = currentUser?.id || myParticipantIdRef.current;
+    if (activeChannelRef.current) {
+      try {
+        activeChannelRef.current.send({
+          type: 'broadcast',
+          event: 'user_presence',
+          payload: {
+            ...(myPresencePayloadRef.current || {}),
+            id: myId,
+            username: currentUser?.username || myPresencePayloadRef.current?.username || 'operative',
+            display_name: myServerDisplayName,
+            avatar: currentUser?.avatar || null,
+            status: 'offline',
+            listening: null,
+            listeningTrack: null,
+          },
+        });
+      } catch {}
+    }
+  };
+
+  const broadcastUserOnline = () => {
+    if (myStatus === 'invisible') return;
+    const myId = currentUser?.id || myParticipantIdRef.current;
+    if (activeChannelRef.current) {
+      try {
+        activeChannelRef.current.send({
+          type: 'broadcast',
+          event: 'user_presence',
+          payload: {
+            ...(myPresencePayloadRef.current || {}),
+            id: myId,
+            username: currentUser?.username || myPresencePayloadRef.current?.username || 'operative',
+            display_name: myServerDisplayName,
+            avatar: currentUser?.avatar || null,
+            status: myStatus,
+            listening: myVisibleListening,
+            listeningTrack: myVisibleTrack,
+          },
+        });
+      } catch {}
+    }
+  };
+  broadcastUserOfflineRef.current = broadcastUserOffline;
+  broadcastUserOnlineRef.current = broadcastUserOnline;
 
   const handleToggleMute = () => {
     const myId = myParticipantIdRef.current;
@@ -9965,10 +10016,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 (memberMenu.member.id === 'usr_music_bot' && requestBotVoiceChannelId && requestBotVoiceChannelId === connectedVoiceChannel);
 
               if (isTargetBot) {
-                // "các bot live stream nếu đã được phân vào live station thì nếu mời thì sẽ không hợp lệ"
-                const assignedLiveStation = selectedServer.channels.find(
+                // "các bot live stream nếu đã được phân vào live station thì nếu mời thì sẽ không hợp lệ" (Rythm không phải station bot)
+                const isStationBot = memberMenu.member.id !== 'usr_music_bot';
+                const assignedLiveStation = isStationBot ? selectedServer.channels.find(
                   c => c.type === 'voice' && c.is_radio && (c.dj_bot_id === memberMenu.member.id || (!c.dj_bot_id && memberMenu.member.id === 'usr_host'))
-                );
+                ) : null;
                 if (assignedLiveStation) {
                   return (
                     <div className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-xs text-zinc-500 cursor-not-allowed bg-white/5 border border-white/5">
