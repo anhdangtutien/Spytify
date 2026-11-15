@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { 
   Radio, MessageSquare, Headphones, Users, Disc, Play, Send, 
   Music, Plus, Hash, Volume2, Flame, Activity, Share2,
@@ -940,6 +941,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // ──────── VOICE CALL STATE & SUPABASE SYNC ────────
   const [connectedVoiceChannel, setConnectedVoiceChannel] = useState<string | null>(null);
   const [connectedVoiceServerId, setConnectedVoiceServerId] = useState<string | null>(null);
+  const connectedVoiceChannelRef = useRef<string | null>(null);
+  connectedVoiceChannelRef.current = connectedVoiceChannel;
+  const handleLeaveVoiceCallRef = useRef<() => void>(() => {});
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -4209,35 +4213,34 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // ──────── TỰ ĐỘNG THÔNG BÁO VÀ NGẮT VOICE SẠCH SẼ KHI TẮT CỬA SỔ / THOÁT ỨNG DỤNG ────────
   useEffect(() => {
+    let unlistenClose: (() => void) | undefined;
+    let unlistenState: (() => void) | undefined;
+
+    // 1. Khi người dùng bấm nút đóng X hoặc Thoát ứng dụng từ System Tray
+    listen('app-close-requested', () => {
+      handleLeaveVoiceCallRef.current();
+    }).then(fn => { unlistenClose = fn; }).catch(() => {});
+
+    // 2. Khi cửa sổ bị ẩn vào System Tray (nút X khi bật close-to-tray)
+    // Tự động out phòng voice để không bị kẹt nick và tắt micro
+    listen<string>('app-window-state', (event) => {
+      if (event.payload === 'hidden') {
+        handleLeaveVoiceCallRef.current();
+      }
+    }).then(fn => { unlistenState = fn; }).catch(() => {});
+
+    // 3. Sự kiện beforeunload khi refresh / đóng webview
     const handleBeforeUnload = () => {
-      const myId = myParticipantIdRef.current;
-      try {
-        if (activeChannelRef.current) {
-          activeChannelRef.current.send({
-            type: 'broadcast',
-            event: 'voice_presence',
-            payload: { action: 'leave', userId: myId },
-          });
-          activeChannelRef.current.send({
-            type: 'broadcast',
-            event: 'user_presence',
-            payload: { id: myId, status: 'offline' },
-          });
-        }
-        if (connectedVoiceChannel) {
-          getSupabaseClient()?.channel(`spytify_voice_${voiceServerIdRef.current}_${connectedVoiceChannel}`).send({
-            type: 'broadcast',
-            event: 'rtc_bye',
-            payload: { from: myId },
-          });
-        }
-      } catch {}
+      handleLeaveVoiceCallRef.current();
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
+      if (unlistenClose) unlistenClose();
+      if (unlistenState) unlistenState();
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [connectedVoiceChannel]);
+  }, []);
 
   // ──────── TỰ ĐỘNG HỦY CUỘC GỌI RIÊNG 1-1 SAU 30 GIÂY NẾU ĐỐI PHƯƠNG KHÔNG BẮT MÁY ────────
   useEffect(() => {
@@ -5658,6 +5661,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleLeaveVoiceCall = () => {
+    const wasInCall = Boolean(connectedVoiceChannel || connectedVoiceChannelRef.current || myVoiceParticipantRef.current);
     handleStopScreenShare();
     const myId = myParticipantIdRef.current;
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -5676,19 +5680,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     // Giữ phát nhạc nền 24/7 liên tục khi chuyển phòng hoặc rời voice call
 
     rtcSendRef.current?.('voice_presence', { action: 'leave', userId: myId });
+    rtcSendRef.current?.('rtc_bye', { from: myId });
     if (activeChannelRef.current) {
       activeChannelRef.current.send({
         type: 'broadcast',
         event: 'voice_presence',
         payload: { action: 'leave', userId: myId },
       });
+      activeChannelRef.current.send({
+        type: 'broadcast',
+        event: 'user_presence',
+        payload: { id: myId, status: 'offline' },
+      });
     }
 
     setConnectedVoiceChannel(null);
     setConnectedVoiceServerId(null);
     setIsUserSpeaking(false);
-    playAudioChime('leave');
+    if (wasInCall) {
+      playAudioChime('leave');
+    }
   };
+  handleLeaveVoiceCallRef.current = handleLeaveVoiceCall;
 
   const handleToggleMute = () => {
     const myId = myParticipantIdRef.current;

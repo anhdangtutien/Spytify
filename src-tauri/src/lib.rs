@@ -27,6 +27,7 @@ use std::sync::Mutex;
 
 static RELATED_CACHE: Mutex<Option<HashMap<String, Vec<SearchResult>>>> = Mutex::new(None);
 static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
+static IS_EXITING: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 fn set_close_to_tray(enabled: bool) {
@@ -1247,7 +1248,14 @@ pub fn run() {
                             let _ = app.emit("tray-next-track", ());
                         }
                         "quit" => {
-                            app.exit(0);
+                            let _ = app.emit("app-close-requested", ());
+                            if !IS_EXITING.swap(true, Ordering::SeqCst) {
+                                let app_handle = app.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+                                    app_handle.exit(0);
+                                });
+                            }
                         }
                         _ => {}
                     }
@@ -1294,6 +1302,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
+                    let _ = window.emit("app-close-requested", ());
                     if CLOSE_TO_TRAY.load(Ordering::SeqCst) {
                         // Hide window to tray on close to allow background audio playback
                         api.prevent_close();
@@ -1301,8 +1310,14 @@ pub fn run() {
                         let _ = window.emit("app-window-state", "hidden");
                         trim_process_memory();
                     } else {
-                        // User disabled tray: exit application completely
-                        std::process::exit(0);
+                        // User disabled tray: allow frontend to send leave packets before exit
+                        api.prevent_close();
+                        if !IS_EXITING.swap(true, Ordering::SeqCst) {
+                            tauri::async_runtime::spawn(async move {
+                                tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
+                                std::process::exit(0);
+                            });
+                        }
                     }
                 }
                 WindowEvent::Resized(_) => {
