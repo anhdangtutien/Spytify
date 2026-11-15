@@ -1195,6 +1195,66 @@ async fn download_and_install_update(
     Ok(())
 }
 
+#[tauri::command]
+fn get_launch_on_startup() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let output = std::process::Command::new("reg")
+            .args([
+                "query",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                "/v",
+                "Spytify",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| format!("Không thể kiểm tra Registry Windows: {}", e))?;
+        return Ok(output.status.success());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn set_launch_on_startup(enabled: bool) -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+        if enabled {
+            let exe_path = std::env::current_exe()
+                .map_err(|e| format!("Không thể xác định đường dẫn ứng dụng: {}", e))?;
+            let quoted = format!("\"{}\"", exe_path.to_string_lossy());
+            let output = std::process::Command::new("reg")
+                .args(["add", RUN_KEY, "/v", "Spytify", "/t", "REG_SZ", "/d", &quoted, "/f"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .map_err(|e| format!("Không thể ghi Registry Windows: {}", e))?;
+            if !output.status.success() {
+                let err_msg = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("Không thể bật khởi động cùng Windows: {}", err_msg.trim()));
+            }
+            return Ok(true);
+        } else {
+            let _ = std::process::Command::new("reg")
+                .args(["delete", RUN_KEY, "/v", "Spytify", "/f"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .output();
+            return Ok(false);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = enabled;
+        Err("Tính năng khởi động cùng Windows chỉ khả dụng trên hệ điều hành Windows.".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let audio_manager = AudioPlayerManager::new();
@@ -1378,7 +1438,9 @@ pub fn run() {
             rust_ui_search_online,
             rust_ui_play_index,
             check_for_updates,
-            download_and_install_update
+            download_and_install_update,
+            get_launch_on_startup,
+            set_launch_on_startup
         ])
         .run(tauri::generate_context!())
         .expect("error while running soundify application");

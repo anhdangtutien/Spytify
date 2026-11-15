@@ -105,11 +105,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
 
-  // Close to Tray & Updater state
+  // Close to Tray, Launch on Startup & Updater state
   const [closeToTray, setCloseToTray] = useState<boolean>(() => {
     const saved = localStorage.getItem('spytify_close_to_tray');
     return saved !== 'false';
   });
+  const [launchOnStartup, setLaunchOnStartup] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('spytify_launch_on_startup') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isTogglingStartup, setIsTogglingStartup] = useState(false);
+  const [launchStartupMsg, setLaunchStartupMsg] = useState<string | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateStatusMsg, setUpdateStatusMsg] = useState<string | null>(null);
   const [userBio, setUserBio] = useState(() => {
@@ -120,6 +129,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   });
   const [isEditingBio, setIsEditingBio] = useState(false);
+
+  useEffect(() => {
+    invoke<boolean>('get_launch_on_startup')
+      .then((enabled) => {
+        const val = Boolean(enabled);
+        setLaunchOnStartup(val);
+        try {
+          localStorage.setItem('spytify_launch_on_startup', val ? 'true' : 'false');
+        } catch {}
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleToggleLaunchOnStartup = async (enabled: boolean) => {
+    setIsTogglingStartup(true);
+    setLaunchStartupMsg(null);
+    try {
+      const actual = await invoke<boolean>('set_launch_on_startup', { enabled });
+      setLaunchOnStartup(Boolean(actual));
+      try {
+        localStorage.setItem('spytify_launch_on_startup', actual ? 'true' : 'false');
+      } catch {}
+      setLaunchStartupMsg(
+        actual ? 'Đã bật khởi động cùng Windows!' : 'Đã tắt khởi động cùng Windows.'
+      );
+    } catch (e: any) {
+      setLaunchStartupMsg(typeof e === 'string' ? e : e?.message || 'Không thể thay đổi cài đặt khởi động Windows.');
+    } finally {
+      setIsTogglingStartup(false);
+    }
+  };
 
   const handleToggleCloseToTray = async (enabled: boolean) => {
     setCloseToTray(enabled);
@@ -862,6 +902,52 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Khởi Động & Ứng Dụng Windows Card */}
+            <div>
+              <h3 className={`text-sm font-bold mb-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Khởi Động &amp; Ứng Dụng Desktop
+              </h3>
+              <div className={`p-4 rounded-2xl border ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                    >
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-xs font-bold ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                        Khởi động cùng Windows
+                      </p>
+                      <p className="text-[11px] text-[#777] mt-0.5">
+                        {launchOnStartup
+                          ? 'Bật: Spytify sẽ tự động mở khi bạn đăng nhập vào Windows.'
+                          : 'Tắt: Chỉ mở Spytify thủ công khi bạn nhấn biểu tượng ứng dụng.'}
+                      </p>
+                      {launchStartupMsg && (
+                        <p className="text-[10px] font-mono text-cyan-400 mt-1">{launchStartupMsg}</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isTogglingStartup}
+                    onClick={() => handleToggleLaunchOnStartup(!launchOnStartup)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 ${
+                      launchOnStartup ? 'bg-emerald-500' : 'bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        launchOnStartup ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1492,6 +1578,40 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              {/* Launch on Windows startup */}
+              <div className="flex items-center justify-between pb-4 border-b border-[#1c1c28]">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                  >
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Khởi động cùng Windows</p>
+                    <p className="text-[11px] text-[#777] mt-0.5">
+                      {launchOnStartup
+                        ? 'Bật: Tự động khởi chạy Spytify mỗi khi mở máy Windows.'
+                        : 'Tắt: Không tự khởi chạy khi bật máy tính.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isTogglingStartup}
+                  onClick={() => handleToggleLaunchOnStartup(!launchOnStartup)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 ${
+                    launchOnStartup ? 'bg-emerald-500' : 'bg-zinc-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      launchOnStartup ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
               {/* Close to tray */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">

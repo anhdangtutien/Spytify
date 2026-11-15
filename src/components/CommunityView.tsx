@@ -1179,8 +1179,102 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const screenShareStageRef = useRef<HTMLDivElement | null>(null);
   const screenVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteScreenStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  const [isScreenFullscreen, setIsScreenFullscreen] = useState(false);
+
+  const handleToggleScreenFullscreen = () => {
+    const targetEl = screenShareStageRef.current || screenVideoRef.current;
+    if (!targetEl) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      targetEl.requestFullscreen().catch(() => {
+        screenVideoRef.current?.requestFullscreen().catch(() => {});
+      });
+    }
+  };
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const fsEl = document.fullscreenElement;
+      setIsScreenFullscreen(
+        Boolean(fsEl && (fsEl === screenShareStageRef.current || fsEl === screenVideoRef.current))
+      );
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
+
+  // Helper hiển thị hộp thoại suy nghĩ có đuôi (lệch sang phải Avatar)
+  const renderThoughtSpeechBubble = ({
+    text,
+    placement = 'right-side',
+    compact = false,
+    editable = false,
+    title,
+    onClick,
+  }: {
+    text: string;
+    placement?: 'top-right' | 'right-side';
+    compact?: boolean;
+    editable?: boolean;
+    title?: string;
+    onClick?: (e: React.MouseEvent) => void;
+  }) => {
+    const fillHex = isLight ? '#ffffff' : '#131420';
+    const borderHex = isLight ? '#0891b2' : '#22d3ee';
+    const posClasses =
+      placement === 'top-right'
+        ? 'bottom-full left-4 mb-2.5 max-w-[180px]'
+        : compact
+        ? '-top-3 left-[calc(100%+12px)] max-w-[172px]'
+        : '-top-4 left-[calc(100%+14px)] max-w-[235px]';
+
+    return (
+      <div
+        onClick={onClick}
+        title={title}
+        className={`absolute ${posClasses} px-2.5 py-1.5 rounded-2xl border shadow-xl z-30 transition-all ${
+          placement === 'top-right' ? 'rounded-bl-[5px]' : 'rounded-tl-[5px]'
+        } ${
+          isLight
+            ? 'bg-white/95 border-cyan-600/80 text-slate-800 shadow-slate-300/60'
+            : 'bg-[#131420]/95 border-cyan-400/75 text-cyan-100 shadow-black/80'
+        } ${editable ? 'cursor-pointer hover:scale-[1.03] hover:border-cyan-300' : ''}`}
+      >
+        <div className={`flex items-start gap-1.5 font-mono leading-snug ${compact ? 'text-[9.5px]' : 'text-[10.5px]'}`}>
+          <span className="shrink-0 opacity-90">💭</span>
+          <span className="line-clamp-2 break-words font-medium">{text}</span>
+        </div>
+
+        {placement === 'top-right' ? (
+          <svg
+            width="13"
+            height="9"
+            viewBox="0 0 13 9"
+            className="absolute -bottom-[8px] left-2.5 pointer-events-none"
+            aria-hidden="true"
+          >
+            <path d="M 1 0 L 12 0 L 2.5 8 Z" fill={fillHex} />
+            <path d="M 1 0 L 2.5 8 L 12 0" fill="none" stroke={borderHex} strokeOpacity="0.75" strokeWidth="1.2" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg
+            width="9"
+            height="13"
+            viewBox="0 0 9 13"
+            className="absolute -left-[8px] top-2.5 pointer-events-none"
+            aria-hidden="true"
+          >
+            <path d="M 9 1 L 9 12 L 1 2.5 Z" fill={fillHex} />
+            <path d="M 9 1 L 1 2.5 L 9 12" fill="none" stroke={borderHex} strokeOpacity="0.75" strokeWidth="1.2" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+    );
+  };
 
   // Đồng bộ luồng video chia sẻ màn hình vào thẻ video ngay khi đổi tab hoặc có stream mới
   useEffect(() => {
@@ -4998,8 +5092,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       );
       return;
     }
-    navigator.clipboard.writeText(`spytify://station/join/${srvId}`);
+    try {
+      navigator.clipboard.writeText(`spytify://station/join/${srvId}`);
+    } catch {}
     setInviteCopied(true);
+    showVoiceToast(language === 'vi' ? 'Đã sao chép link mời vào máy chủ!' : 'Copied server invite link!');
     setTimeout(() => setInviteCopied(false), 2500);
   };
 
@@ -8806,15 +8903,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             </span>
                           ) : null}
 
-                          {/* Nút Thêm Người (Mời bạn bè vào phòng thoại) */}
+                          {/* Nút Thêm Người (Mời bạn bè vào phòng thoại / Server) */}
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
-                              handleCopyInvite(selectedServer.id);
+                              if (selectedServer.allow_member_invites === false && !canManageServer) {
+                                showVoiceToast(
+                                  language === 'vi'
+                                    ? 'Chủ máy chủ đã tắt quyền mời tự do. Chỉ Chủ Server và Mod mới có thể mời thành viên!'
+                                    : 'Server owner disabled free invites. Only Owner & Mods can invite members!'
+                                );
+                                return;
+                              }
+                              handleOpenServerSettings(selectedServer, 'invites');
                             }}
-                            title={language === 'vi' ? 'Sao chép link mời vào phòng thoại' : 'Copy invite link to this voice channel'}
+                            title={language === 'vi' ? 'Mời bạn bè vào phòng thoại & máy chủ' : 'Invite friends to this voice channel & server'}
                             className="opacity-0 group-hover/vch:opacity-100 p-1 rounded hover:bg-white/10 text-[#777] hover:text-white transition-all cursor-pointer"
                           >
                             <UserPlus className="w-3.5 h-3.5" />
@@ -9068,20 +9173,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
               {renderStatusDot(myEffectivePublicStatus, 'sm')}
 
-              {/* Hộp thoại suy nghĩ / Note trên Avatar (Discord / Instagram style) */}
+              {/* Hộp thoại suy nghĩ / Note trên Avatar (Lệch sang phải với đuôi hộp thoại) */}
               {myUserThought ? (
-                <div
-                  onClick={(e) => {
+                renderThoughtSpeechBubble({
+                  text: myUserThought,
+                  placement: 'top-right',
+                  editable: true,
+                  title: `Suy nghĩ: "${myUserThought}" - Bấm để chỉnh sửa`,
+                  onClick: e => {
                     e.stopPropagation();
                     handleOpenThoughtModal();
-                  }}
-                  title={`Suy nghĩ: "${myUserThought}" - Bấm để chỉnh sửa`}
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 max-w-[140px] px-2.5 py-0.5 rounded-xl bg-zinc-900/95 border border-cyan-400 text-[8.5px] font-mono font-medium text-cyan-200 shadow-xl shadow-cyan-950/70 flex items-center gap-1 z-30 cursor-pointer hover:scale-105 hover:border-cyan-300 transition-all truncate whitespace-nowrap"
-                >
-                  <span className="text-[9px] shrink-0">💭</span>
-                  <span className="truncate">{myUserThought}</span>
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 w-1.5 h-1.5 -mt-0.5 bg-zinc-900 border-r border-b border-cyan-400 rotate-45 pointer-events-none" />
-                </div>
+                  },
+                })
               ) : (
                 <div
                   onClick={(e) => {
@@ -9089,7 +9192,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     handleOpenThoughtModal();
                   }}
                   title="Đặt suy nghĩ / Note mới"
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 group-hover/avt:opacity-100 px-1.5 py-0.5 rounded-full bg-zinc-900/95 border border-cyan-500/60 text-[7.5px] font-mono text-cyan-300 hover:text-white z-30 transition-all cursor-pointer whitespace-nowrap shadow"
+                  className="absolute bottom-full left-4 mb-2 opacity-0 group-hover/avt:opacity-100 px-2 py-0.5 rounded-xl rounded-bl-[4px] bg-zinc-900/95 border border-cyan-500/60 text-[8px] font-mono text-cyan-300 hover:text-white z-30 transition-all cursor-pointer whitespace-nowrap shadow"
                 >
                   + Note
                 </div>
@@ -10366,9 +10469,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   )}
                 </div>
 
-                <div className="w-full rounded-2xl bg-black/90 border border-white/15 overflow-hidden shadow-2xl relative group">
+                <div
+                  ref={screenShareStageRef}
+                  data-screen-share-fullscreen
+                  className="w-full rounded-2xl bg-black/95 border border-white/15 overflow-hidden shadow-2xl relative group flex items-center justify-center"
+                >
                   {/* Top Screen Share Header Bar */}
-                  <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between z-20">
+                  <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between z-20 opacity-95 group-hover:opacity-100 transition-opacity">
                     <div className="flex items-center gap-2">
                       <div className="p-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
                         <Monitor className="w-4 h-4" />
@@ -10398,19 +10505,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         </button>
                       )}
                       <button
-                        onClick={() => {
-                          if (screenVideoRef.current) {
-                            if (document.fullscreenElement) {
-                              document.exitFullscreen().catch(() => {});
-                            } else {
-                              screenVideoRef.current.requestFullscreen().catch(() => {});
-                            }
-                          }
-                        }}
+                        type="button"
+                        onClick={handleToggleScreenFullscreen}
                         className="p-1.5 rounded-lg bg-black/60 hover:bg-white/20 text-white transition-all cursor-pointer"
-                        title="Toàn màn hình"
+                        title={isScreenFullscreen ? 'Thu nhỏ màn hình' : 'Toàn màn hình'}
                       >
-                        <Maximize2 className="w-4 h-4" />
+                        {isScreenFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
@@ -10418,6 +10518,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   {/* Video Stream Element */}
                   <video
                     key={activeScreenShare.userId}
+                    data-screen-share-video
                     ref={(el) => {
                       screenVideoRef.current = el;
                       if (el && activeScreenShare?.stream && el.srcObject !== activeScreenShare.stream) {
@@ -10425,10 +10526,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         el.play().catch(() => {});
                       }
                     }}
+                    onDoubleClick={handleToggleScreenFullscreen}
                     autoPlay
                     playsInline
                     muted={activeScreenShare?.userId === myParticipantIdRef.current}
-                    className="w-full max-h-[62vh] object-contain bg-black"
+                    className={`w-full object-contain bg-black cursor-pointer ${
+                      isScreenFullscreen ? 'h-full max-h-none' : 'max-h-[62vh]'
+                    }`}
                   />
                 </div>
               </div>
@@ -14400,39 +14504,40 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     'lg'
                   )}
 
-                  {/* Thought note bubble on avatar */}
-                  {((selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id)
-                    ? myUserThought
-                    : ((selectedProfileUser as any).thought || (selectedProfileUser as any).custom_status)) ? (
-                    <div
-                      onClick={() => {
-                        if (selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id) {
-                          handleOpenThoughtModal();
-                        }
-                      }}
-                      title={selectedProfileUser.id === 'usr_me' ? 'Bấm để đổi suy nghĩ người dùng' : undefined}
-                      className={`absolute -top-5 left-1/2 -translate-x-1/2 max-w-[140px] px-2.5 py-0.5 rounded-full bg-zinc-950/95 border border-cyan-400 text-[10px] font-mono text-cyan-200 shadow-xl flex items-center gap-1 z-30 truncate ${
-                        (selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id) ? 'cursor-pointer hover:scale-105 hover:border-cyan-300' : ''
-                      }`}
-                    >
-                      <span className="text-xs">💭</span>
-                      <span className="truncate">
-                        {(selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id)
-                          ? myUserThought
-                          : ((selectedProfileUser as any).thought || (selectedProfileUser as any).custom_status)}
-                      </span>
-                    </div>
-                  ) : (selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id) ? (
-                    <button
-                      type="button"
-                      onClick={handleOpenThoughtModal}
-                      title="Đặt suy nghĩ / Note mới"
-                      className="absolute -top-4 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-500/60 text-[9px] font-mono text-cyan-300 hover:text-white hover:border-cyan-400 shadow-md flex items-center gap-1 cursor-pointer whitespace-nowrap z-30"
-                    >
-                      <span>💭</span>
-                      <span>+ Đặt suy nghĩ</span>
-                    </button>
-                  ) : null}
+                  {/* Hộp thoại suy nghĩ lệch sang phải Avatar với đuôi hộp thoại */}
+                  {(() => {
+                    const isMeProfile = selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id;
+                    const thoughtValue = isMeProfile
+                      ? myUserThought
+                      : ((selectedProfileUser as any).thought || (selectedProfileUser as any).custom_status);
+                    if (thoughtValue) {
+                      return renderThoughtSpeechBubble({
+                        text: thoughtValue,
+                        placement: 'right-side',
+                        editable: Boolean(isMeProfile),
+                        title: isMeProfile ? 'Bấm để đổi suy nghĩ người dùng' : undefined,
+                        onClick: () => {
+                          if (isMeProfile) {
+                            handleOpenThoughtModal();
+                          }
+                        },
+                      });
+                    }
+                    if (isMeProfile) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={handleOpenThoughtModal}
+                          title="Đặt suy nghĩ / Note mới"
+                          className="absolute top-1 left-[calc(100%+14px)] px-2.5 py-1 rounded-2xl rounded-tl-[4px] bg-cyan-950/90 border border-cyan-500/60 text-[9.5px] font-mono text-cyan-300 hover:text-white hover:border-cyan-400 shadow-md flex items-center gap-1 cursor-pointer whitespace-nowrap z-30"
+                        >
+                          <span>💭</span>
+                          <span>+ Đặt suy nghĩ</span>
+                        </button>
+                      );
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 {selectedProfileUser.id !== 'usr_me' && (
@@ -15339,28 +15444,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 </div>
                 {renderStatusDot(hoveredProfile.member.status, 'md')}
 
-                {/* Thought note bubble on mini profile avatar */}
+                {/* Hộp thoại suy nghĩ lệch sang phải Avatar với đuôi hộp thoại */}
                 {(() => {
                   const isMe = hoveredProfile.member.id === 'usr_me' || (currentUser && hoveredProfile.member.id === currentUser.id) || (myParticipantIdRef.current && hoveredProfile.member.id === myParticipantIdRef.current);
                   const effectiveThought = isMe ? myUserThought : ((hoveredProfile.member as any).thought || realtimeUserPresences[hoveredProfile.member.id]?.thought || null);
                   if (!effectiveThought) return null;
-                  return (
-                    <div
-                      onClick={() => {
-                        if (isMe) {
-                          setHoveredProfile(null);
-                          handleOpenThoughtModal();
-                        }
-                      }}
-                      title={isMe ? 'Bấm để đổi suy nghĩ người dùng' : undefined}
-                      className={`absolute -top-4 left-1/2 -translate-x-1/2 max-w-[140px] px-2.5 py-0.5 rounded-full bg-zinc-950/95 border border-cyan-400 text-[9.5px] font-mono text-cyan-200 shadow-xl flex items-center gap-1 z-30 truncate ${
-                        isMe ? 'cursor-pointer hover:scale-105 hover:border-cyan-300' : ''
-                      }`}
-                    >
-                      <span className="text-[10px]">💭</span>
-                      <span className="truncate">{effectiveThought}</span>
-                    </div>
-                  );
+                  return renderThoughtSpeechBubble({
+                    text: effectiveThought,
+                    placement: 'right-side',
+                    compact: true,
+                    editable: Boolean(isMe),
+                    title: isMe ? 'Bấm để đổi suy nghĩ người dùng' : undefined,
+                    onClick: () => {
+                      if (isMe) {
+                        setHoveredProfile(null);
+                        handleOpenThoughtModal();
+                      }
+                    },
+                  });
                 })()}
               </div>
 

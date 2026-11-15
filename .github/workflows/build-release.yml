@@ -44,7 +44,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Phiên bản Spytify v1.0.3 alpha cho Windows và macOS (đồng bộ kick thành viên, sửa cuộc gọi riêng 1-1, chia tab nhiều màn hình share đồng thời & biểu tượng share cạnh tên, đồng bộ bot tạo mới/tùy biến tới mọi thành viên, sửa lỗi hiển thị sai Chủ Server & đồng bộ phân quyền/khóa đổi theme với thành viên thường, kéo thả sắp xếp icon server và đưa chọn tag sở thích vào cài đặt).'
+          releaseBody: 'Phiên bản Spytify v1.0.3 alpha cho Windows và macOS (đồng bộ kick thành viên, sửa cuộc gọi 1-1, chia tab nhiều màn hình share & sửa phóng to toàn màn hình, thiết kế lại ô suy nghĩ có đuôi lệch phải, sửa phân quyền Chủ Server/Mod & khóa đổi theme member, kéo thả icon server, đưa chọn tag sở thích vào cài đặt, sửa nút mời ở phòng thoại & thêm tùy chọn Khởi động cùng Windows trong phần Tài khoản).'
           releaseDraft: false
           prerelease: false
 
