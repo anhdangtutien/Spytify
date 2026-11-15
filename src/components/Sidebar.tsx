@@ -1,11 +1,10 @@
 ﻿import React, { useState } from 'react';
 import { 
-  Search, FolderPlus, HardDrive, Heart, Sparkles, User as UserIcon, LogIn, Flame, Layers, Radio,
+  Search, FolderPlus, HardDrive, Heart, Sparkles, User as UserIcon, LogIn, Flame, Layers,
   PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
-import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
+import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, SpytifyBrandLogo } from './Icons';
 import { ViewType, User } from '../types';
-import spytifyLogo from '../assets/spytify-logo.png';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 import { CURRENT_VERSION } from '../services/updater';
 
@@ -96,12 +95,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 style={{ backgroundColor: dotIndicator }}
               />
             )}
-            {view === 'community' && (
-              <span className="absolute -top-1 -right-1 flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: accentColor }} />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5" style={{ backgroundColor: accentColor }} />
-              </span>
-            )}
             {view === 'ai_mix' && (
               <span 
                 className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full"
@@ -147,11 +140,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={handleToggle}
             title={getTranslation(language, 'sidebar.expand')}
-            className="w-10 h-10 rounded-xl overflow-hidden bg-[#101014] border border-[#262630] hover:border-[#00E5FF]/60 flex items-center justify-center flex-shrink-0 cursor-pointer relative group transition-all"
-            style={{ boxShadow: `0 0 10px ${accentColor}25` }}
+            className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center flex-shrink-0 cursor-pointer relative group transition-all"
           >
-            <img src={spytifyLogo} alt="Spytify" className="w-full h-full object-cover group-hover:opacity-20 transition-opacity" />
-            <PanelLeftOpen className="w-4 h-4 text-white absolute opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="w-full h-full group-hover:opacity-25 transition-opacity">
+              <SpytifyBrandLogo
+                accentColor={accentColor}
+                themeMode={themeMode}
+                className="w-full h-full rounded-xl"
+              />
+            </div>
+            <PanelLeftOpen
+              className="w-4 h-4 absolute opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ color: accentColor }}
+            />
           </button>
         </div>
       ) : (
@@ -161,12 +162,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="flex items-center gap-3 cursor-pointer group/brand"
             title={getTranslation(language, 'sidebar.collapse')}
           >
-            <div 
-              className="w-9 h-9 rounded-xl overflow-hidden bg-[#101014] border border-[#262630] group-hover/brand:border-[#00E5FF]/60 flex items-center justify-center flex-shrink-0 transition-colors"
-              style={{ boxShadow: `0 0 12px ${accentColor}35` }}
-            >
-              <img src={spytifyLogo} alt="Spytify" className="w-full h-full object-cover" />
-            </div>
+            <SpytifyBrandLogo
+              accentColor={accentColor}
+              themeMode={themeMode}
+              className="w-9 h-9 rounded-xl"
+            />
             <div>
               <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5 group-hover/brand:text-[#00E5FF] transition-colors">
                 <span>Spytify</span>
@@ -198,19 +198,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className={`space-y-0.5 ${isCollapsed ? 'p-2' : 'p-3'}`}>
         {navItem('library', getTranslation(language, 'nav.trending'), <Flame className="w-4 h-4" />)}
         {navItem('search', getTranslation(language, 'nav.search'), <Search className="w-4 h-4" />)}
-        {navItem('community', getTranslation(language, 'nav.community'), <Radio className="w-4 h-4" />,
-          <span 
-            className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold border flex items-center gap-1"
-            style={{ 
-              color: accentColor, 
-              backgroundColor: `${accentColor}18`, 
-              borderColor: `${accentColor}35` 
-            }}
-          >
-            <span className="w-1 h-1 rounded-full animate-ping" style={{ backgroundColor: accentColor }} />
-            LIVE
-          </span>
-        )}
+        {navItem('community', getTranslation(language, 'nav.community'), <SpyJamIcon className="w-4 h-4" />)}
         {navItem('albums', getTranslation(language, 'nav.myAlbums'), <Layers className="w-4 h-4" />,
           <span className="text-[10px] text-[#666] font-mono">{albumCount}</span>
         )}
@@ -352,8 +340,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* App Version Tag Footer */}
       {isCollapsed ? (
-        <div className="py-2.5 flex items-center justify-center border-t border-[#141418]">
-          <span className="text-[9px] font-mono text-[#555] font-bold">v{CURRENT_VERSION}</span>
+        <div className="py-2 px-0.5 flex flex-col items-center justify-center border-t border-[#141418] text-center">
+          <span className="text-[7.5px] font-mono text-[#666] font-bold leading-tight">v{CURRENT_VERSION}</span>
         </div>
       ) : (
         <div className="px-3.5 py-2 flex items-center justify-between text-[10px] font-mono text-[#555] border-t border-[#141418]">

@@ -392,6 +392,14 @@ export default function App() {
         console.error('Failed to update avatar in DB:', e);
         setCurrentUser(prev => prev ? { ...prev, avatar: newAvatar } : null);
       }
+      if (isSupabaseConfigured()) {
+        cloudSyncPush(currentUser.id, {
+          username: currentUser.username,
+          displayName: currentUser.display_name,
+          email: currentUser.email || undefined,
+          avatar: newAvatar,
+        }).catch(() => {});
+      }
     } else {
       localStorage.setItem('spytify_guest_avatar', newAvatar);
       showNotification(getTranslation(language, 'toast.avatarSaved'));
@@ -1362,6 +1370,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   albums: localAlbums,
                 }).catch(() => {});
               }).catch(() => {});
+
+              cloudSyncPull(user.id).then(cloudData => {
+                if (cloudData?.avatar && cloudData.avatar !== user.avatar) {
+                  setCurrentUser(prev => prev ? { ...prev, avatar: cloudData.avatar } : null);
+                  invoke('auth_update_avatar', { userId: user.id, avatar: cloudData.avatar }).catch(() => {});
+                }
+              }).catch(() => {});
             }
           }
         })
@@ -1420,8 +1435,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             });
             setTracks(prev => deduplicateTracks([...cloudData.favorites, ...prev]));
           }
-          if (cloudData.avatar && !user.avatar) {
+          if (cloudData.avatar && cloudData.avatar !== user.avatar) {
             setCurrentUser(prev => prev ? { ...prev, avatar: cloudData.avatar } : null);
+            invoke('auth_update_avatar', { userId: user.id, avatar: cloudData.avatar }).catch(() => {});
           }
           if (cloudData.accentColor) {
             handleUpdateAccentColor(cloudData.accentColor);
@@ -1443,6 +1459,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setCommunityServerColor(null);
     localStorage.removeItem('soundify_active_user_id');
     showNotification(getTranslation(language, 'toast.loggedOut'));
     setCurrentView('library');
@@ -3462,10 +3479,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 currentTrack={currentTrack}
                 isPlaying={isPlaying}
                 onPlayTrack={handlePlayTrack}
+                onOpenAuth={() => setIsAuthModalOpen(true)}
                 accentColor={activeAccentColor}
                 language={language}
                 themeMode={themeMode}
-                onActiveServerChange={(server) => setCommunityServerColor(server.accent_color)}
+                onActiveServerChange={(server) => setCommunityServerColor(server ? server.accent_color : null)}
               />
             ) : currentView === 'profile' ? (
               <ProfileView

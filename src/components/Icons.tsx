@@ -1,4 +1,5 @@
 import React from 'react';
+import spyJamIconUrl from '../assets/spy-jam-icon.png';
 
 export const YoutubeIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -17,3 +18,55 @@ export const AudiusIcon: React.FC<{ className?: string; style?: React.CSSPropert
     <path d="M12 2L2 8.5v7L12 22l10-6.5v-7L12 2zm0 3.3l7 4.55v4.3L12 18.7l-7-4.55v-4.3L12 5.3zm-1 3.7v6l5-3-5-3z" />
   </svg>
 );
+
+export const SpyJamIcon: React.FC<{ className?: string; style?: React.CSSProperties }> = ({ className = 'w-4 h-4', style }) => (
+  <span
+    aria-hidden="true"
+    className={`inline-block flex-shrink-0 bg-current ${className}`}
+    style={{
+      WebkitMaskImage: `url(${spyJamIconUrl})`,
+      maskImage: `url(${spyJamIconUrl})`,
+      WebkitMaskSize: 'contain',
+      maskSize: 'contain',
+      WebkitMaskRepeat: 'no-repeat',
+      maskRepeat: 'no-repeat',
+      WebkitMaskPosition: 'center',
+      maskPosition: 'center',
+      ...style,
+    }}
+  />
+);
+
+export const SpytifyBrandLogo: React.FC<{
+  accentColor?: string;
+  themeMode?: 'dark' | 'light';
+  className?: string;
+  iconClassName?: string;
+}> = ({
+  accentColor = '#ff2a55',
+  themeMode = 'dark',
+  className = 'w-9 h-9 rounded-xl',
+  iconClassName = 'w-[74%] h-[74%]',
+}) => {
+  const isLight = themeMode === 'light';
+  return (
+    <div
+      className={`overflow-hidden flex items-center justify-center flex-shrink-0 transition-all ${className}`}
+      style={{
+        backgroundColor: isLight ? '#09090d' : '#ffffff',
+        border: `1.5px solid ${isLight ? `${accentColor}55` : `${accentColor}40`}`,
+        boxShadow: isLight
+          ? `0 4px 12px rgba(9, 9, 13, 0.25), 0 0 10px ${accentColor}30`
+          : `0 0 14px ${accentColor}40`,
+      }}
+    >
+      <SpyJamIcon
+        className={iconClassName}
+        style={{
+          color: accentColor,
+          backgroundColor: accentColor,
+        }}
+      />
+    </div>
+  );
+};

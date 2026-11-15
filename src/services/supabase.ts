@@ -169,6 +169,24 @@ CREATE POLICY "Allow public read-write for spytify_profiles" ON public.spytify_p
 CREATE POLICY "Allow public read-write for spytify_albums" ON public.spytify_albums FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for spytify_favorites" ON public.spytify_favorites FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow public read-write for spytify_history" ON public.spytify_history FOR ALL USING (true) WITH CHECK (true);
+
+-- Bảng lưu tin nhắn riêng (Direct Messages 1-1), tự động giới hạn tối đa 80 tin nhắn gần nhất mỗi phòng
+CREATE TABLE IF NOT EXISTS public.spytify_direct_messages (
+    id TEXT PRIMARY KEY,
+    room_id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    receiver_id TEXT NOT NULL,
+    sender_username TEXT,
+    sender_display_name TEXT,
+    sender_avatar TEXT,
+    content TEXT NOT NULL,
+    track_embed JSONB,
+    created_at TEXT,
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
+);
+CREATE INDEX IF NOT EXISTS idx_spytify_dm_room_sent ON public.spytify_direct_messages(room_id, sent_at DESC);
+ALTER TABLE public.spytify_direct_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages FOR ALL USING (true) WITH CHECK (true);
 `;
 
 export async function testSupabaseConnection(): Promise<{ success: boolean; message: string }> {
@@ -316,10 +334,9 @@ export async function cloudSyncPush(userId: string, data: Partial<CloudUserData>
     if (data.username) profilePayload.username = data.username;
     if (data.displayName) profilePayload.display_name = data.displayName;
     if (data.email) profilePayload.email = data.email;
-    if (data.avatar) profilePayload.avatar = data.avatar;
+    if (data.avatar !== undefined) profilePayload.avatar = data.avatar;
     if (data.accentColor) profilePayload.accent_color = data.accentColor;
     if (data.themeMode) profilePayload.theme_mode = data.themeMode;
-    if (data.language) profilePayload.language = data.language;
 
     if (Object.keys(profilePayload).length > 2) {
       await client.from('spytify_profiles').upsert(profilePayload, { onConflict: 'id' });
@@ -462,3 +479,391 @@ export async function cloudSyncPull(userId: string): Promise<CloudUserData | nul
     return null;
   }
 }
+
+export const MAX_CHAT_MESSAGES_LIMIT = 80;
+
+export interface CloudDirectMessageRow {
+  id: string;
+  room_id: string;
+  sender_id: string;
+  receiver_id: string;
+  sender_username: string;
+  sender_display_name: string;
+  sender_avatar?: string | null;
+  content: string;
+  track_embed?: Track | null;
+  created_at: string;
+  sent_at?: string;
+}
+
+/**
+ * Fetches up to the latest 80 direct messages for a 1-on-1 room from Supabase Cloud (if table exists)
+ */
+export async function fetchCloudDirectMessages(roomId: string): Promise<CloudDirectMessageRow[]> {
+  const client = getSupabaseClient();
+  if (!client || !roomId) return [];
+  try {
+    const { data, error } = await client
+      .from('spytify_direct_messages')
+      .select('*')
+      .eq('room_id', roomId)
+      .order('sent_at', { ascending: false })
+      .limit(MAX_CHAT_MESSAGES_LIMIT);
+    if (error || !data) return [];
+    return (data as CloudDirectMessageRow[]).reverse();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Fetches recent incoming 1-on-1 direct messages sent to receiverId so we can detect unread messages
+ */
+export async function fetchIncomingCloudDirectMessages(receiverId: string): Promise<CloudDirectMessageRow[]> {
+  const client = getSupabaseClient();
+  if (!client || !receiverId) return [];
+  try {
+    const { data, error } = await client
+      .from('spytify_direct_messages')
+      .select('*')
+      .eq('receiver_id', receiverId)
+      .order('sent_at', { ascending: false })
+      .limit(MAX_CHAT_MESSAGES_LIMIT);
+    if (error || !data) return [];
+    return (data as CloudDirectMessageRow[])
+      .filter(r => r.room_id && r.room_id.startsWith('dm_') && r.sender_id !== receiverId)
+      .reverse();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Saves a direct message to Supabase Cloud and prunes older messages beyond the latest 80 for that room
+ */
+export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !msg.room_id) return;
+  try {
+    const { error } = await client.from('spytify_direct_messages').upsert(
+      {
+        ...msg,
+        sent_at: msg.sent_at || new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+    if (error) return;
+
+    // Giữ tối đa 80 tin nhắn gần nhất cho mỗi room_id để tránh quá tải database
+    const { data: oldRows } = await client
+      .from('spytify_direct_messages')
+      .select('id')
+      .eq('room_id', msg.room_id)
+      .order('sent_at', { ascending: false })
+      .range(MAX_CHAT_MESSAGES_LIMIT, MAX_CHAT_MESSAGES_LIMIT + 100);
+
+    if (oldRows && oldRows.length > 0) {
+      const idsToDelete = oldRows.map((r: any) => r.id);
+      await client.from('spytify_direct_messages').delete().in('id', idsToDelete);
+    }
+  } catch {}
+}
+
+// ──────────────── CLOUD PROFILES & FOLLOW / FRIEND REQUEST SYNC ────────────────
+
+export interface CloudPublicProfile {
+  id: string;
+  username: string;
+  display_name: string;
+  avatar: string | null;
+}
+
+/**
+ * Fetches all registered user profiles (including latest cloud avatars) from spytify_profiles
+ */
+export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  try {
+    const { data, error } = await client
+      .from('spytify_profiles')
+      .select('id, username, display_name, avatar')
+      .limit(200);
+    if (error || !data) return [];
+    return data.map((row: any) => ({
+      id: row.id,
+      username: row.username || 'operative',
+      display_name: row.display_name || row.username || 'Operative',
+      avatar: row.avatar || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export interface CloudFollowEdge {
+  followerId: string;
+  targetId: string;
+  followerUsername: string;
+  followerDisplayName: string;
+  followerAvatar: string | null;
+  createdAt: string;
+}
+
+const FOLLOW_GRAPH_ROOM_ID = 'spytify_follow_graph';
+
+/**
+ * Fetches all follow / friend request edges involving `userId` (either as follower or target)
+ */
+export async function fetchCloudFollowGraph(userId: string): Promise<{
+  myFollowingIds: string[];
+  followersOfMe: CloudFollowEdge[];
+}> {
+  const client = getSupabaseClient();
+  if (!client || !userId) return { myFollowingIds: [], followersOfMe: [] };
+  try {
+    const { data, error } = await client
+      .from('spytify_direct_messages')
+      .select('*')
+      .eq('room_id', FOLLOW_GRAPH_ROOM_ID)
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+
+    if (error || !data) return { myFollowingIds: [], followersOfMe: [] };
+
+    const myFollowingIds: string[] = [];
+    const followersOfMe: CloudFollowEdge[] = [];
+
+    for (const row of data as any[]) {
+      if (row.sender_id === userId && row.receiver_id) {
+        myFollowingIds.push(row.receiver_id);
+      } else if (row.receiver_id === userId && row.sender_id) {
+        followersOfMe.push({
+          followerId: row.sender_id,
+          targetId: row.receiver_id,
+          followerUsername: row.sender_username || 'operative',
+          followerDisplayName: row.sender_display_name || row.sender_username || 'Operative',
+          followerAvatar: row.sender_avatar || null,
+          createdAt: row.created_at || '',
+        });
+      }
+    }
+
+    return { myFollowingIds, followersOfMe };
+  } catch {
+    return { myFollowingIds: [], followersOfMe: [] };
+  }
+}
+
+/**
+ * Records a follow / friend request from `follower` to `targetId` in Supabase Cloud
+ */
+export async function pushCloudFollow(
+  follower: { id: string; username: string; display_name: string; avatar?: string | null },
+  targetId: string
+): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !follower?.id || !targetId || follower.id === targetId) return;
+  try {
+    await client.from('spytify_direct_messages').upsert(
+      {
+        id: `follow_${follower.id}_${targetId}`,
+        room_id: FOLLOW_GRAPH_ROOM_ID,
+        sender_id: follower.id,
+        receiver_id: targetId,
+        sender_username: follower.username,
+        sender_display_name: follower.display_name,
+        sender_avatar: follower.avatar || null,
+        content: 'FOLLOW',
+        created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        sent_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch {}
+}
+
+/**
+ * Removes a follow / friend request edge from `followerId` to `targetId` in Supabase Cloud
+ */
+export async function removeCloudFollow(followerId: string, targetId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !followerId || !targetId) return;
+  try {
+    await client
+      .from('spytify_direct_messages')
+      .delete()
+      .eq('id', `follow_${followerId}_${targetId}`);
+  } catch {}
+}
+
+// ============================================================================
+// CLOUD SERVER REGISTRY & SERVER INVITE SYSTEM
+// ============================================================================
+
+const SERVERS_REGISTRY_ROOM_ID = 'spytify_servers_registry';
+const SERVER_INVITES_ROOM_ID = 'spytify_server_invites';
+
+export interface CloudServerInvite {
+  id: string;
+  serverId: string;
+  serverName: string;
+  serverIcon: string;
+  serverColor: string;
+  inviterId: string;
+  inviterUsername: string;
+  inviterDisplayName: string;
+  inviterAvatar?: string | null;
+  targetUserId: string;
+  createdAt: string;
+}
+
+/**
+ * Syncs a custom CommunityServer definition to Supabase Cloud so invite links
+ * (`spytify://station/join/...`) and invited members can load and join the server across accounts.
+ */
+export async function pushCloudServer(server: any): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !server?.id || server.id === 'srv_none') return;
+  try {
+    await client.from('spytify_direct_messages').upsert(
+      {
+        id: `srv_reg_${server.id}`,
+        room_id: SERVERS_REGISTRY_ROOM_ID,
+        sender_id: server.owner_id || 'usr_me',
+        receiver_id: server.id,
+        sender_username: server.name || 'Server',
+        sender_display_name: server.name || 'Server',
+        sender_avatar: server.icon || '🎧',
+        content: JSON.stringify(server),
+        created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        sent_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch {}
+}
+
+export async function deleteCloudServer(serverId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !serverId) return;
+  try {
+    await client
+      .from('spytify_direct_messages')
+      .delete()
+      .eq('id', `srv_reg_${serverId}`);
+  } catch {}
+}
+
+export async function fetchCloudServerById(serverId: string): Promise<any | null> {
+  const client = getSupabaseClient();
+  if (!client || !serverId) return null;
+  try {
+    const cleanId = serverId.trim().replace(/^spytify:\/\/station\/join\//i, '').trim();
+    const { data, error } = await client
+      .from('spytify_direct_messages')
+      .select('content')
+      .eq('id', `srv_reg_${cleanId}`)
+      .maybeSingle();
+    if (error || !data?.content) return null;
+    return JSON.parse(data.content);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchCloudServersForUser(userId: string): Promise<any[]> {
+  const client = getSupabaseClient();
+  if (!client || !userId) return [];
+  try {
+    const { data, error } = await client
+      .from('spytify_direct_messages')
+      .select('content')
+      .eq('room_id', SERVERS_REGISTRY_ROOM_ID);
+    if (error || !data) return [];
+    const results: any[] = [];
+    for (const row of data) {
+      if (!row?.content) continue;
+      try {
+        const srv = JSON.parse(row.content);
+        if (!srv?.id || srv.id === 'srv_none') continue;
+        const isOwner = srv.owner_id === userId;
+        const isMember = Array.isArray(srv.member_ids) && srv.member_ids.includes(userId);
+        const isMod = Array.isArray(srv.moderator_ids) && srv.moderator_ids.includes(userId);
+        if (isOwner || isMember || isMod) {
+          results.push(srv);
+        }
+      } catch {}
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+export async function pushCloudServerInvite(invite: CloudServerInvite): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !invite?.serverId || !invite?.targetUserId) return;
+  try {
+    const rowId = `srv_inv_${invite.serverId}_${invite.targetUserId}`;
+    await client.from('spytify_direct_messages').upsert(
+      {
+        id: rowId,
+        room_id: SERVER_INVITES_ROOM_ID,
+        sender_id: invite.inviterId,
+        receiver_id: invite.targetUserId,
+        sender_username: invite.inviterUsername,
+        sender_display_name: invite.inviterDisplayName,
+        sender_avatar: invite.inviterAvatar || null,
+        content: JSON.stringify({ ...invite, id: rowId }),
+        created_at: invite.createdAt,
+        sent_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch {}
+}
+
+export async function removeCloudServerInvite(serverId: string, targetUserId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !serverId || !targetUserId) return;
+  try {
+    await client
+      .from('spytify_direct_messages')
+      .delete()
+      .eq('id', `srv_inv_${serverId}_${targetUserId}`);
+  } catch {}
+}
+
+export async function fetchCloudServerInvites(
+  userId: string
+): Promise<{ incoming: CloudServerInvite[]; outgoing: CloudServerInvite[] }> {
+  const client = getSupabaseClient();
+  if (!client || !userId) return { incoming: [], outgoing: [] };
+  try {
+    const { data, error } = await client
+      .from('spytify_direct_messages')
+      .select('sender_id, receiver_id, content')
+      .eq('room_id', SERVER_INVITES_ROOM_ID)
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+    if (error || !data) return { incoming: [], outgoing: [] };
+    const incoming: CloudServerInvite[] = [];
+    const outgoing: CloudServerInvite[] = [];
+    for (const row of data as any[]) {
+      if (!row?.content) continue;
+      try {
+        const parsed: CloudServerInvite = JSON.parse(row.content);
+        if (row.receiver_id === userId) {
+          incoming.push(parsed);
+        } else if (row.sender_id === userId) {
+          outgoing.push(parsed);
+        }
+      } catch {}
+    }
+    return { incoming, outgoing };
+  } catch {
+    return { incoming: [], outgoing: [] };
+  }
+}
+
+
+

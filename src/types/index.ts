@@ -129,6 +129,8 @@ export interface CommunityServer {
   max_members?: number;
   is_custom?: boolean;
   member_ids?: string[];
+  moderator_ids?: string[];
+  kicked_ids?: string[];
 }
 
 export interface CommunityUserProfile {
