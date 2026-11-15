@@ -135,7 +135,7 @@ export interface CommunityUserProfile {
   display_name: string;
   avatar?: string | null;
   role: string;
-  status: 'online' | 'idle' | 'dnd' | 'offline';
+  status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline';
   bio?: string;
   listening?: string | null;
   listeningTrack?: Track | null;

@@ -5,7 +5,7 @@ import {
   Mic, MicOff, PhoneCall, PhoneOff, VolumeX, Signal, Shield,
   X, Sparkles, Palette, Check, Settings, Sliders, Volume1, RotateCcw, CheckCircle2,
   MoreVertical, UserPlus, UserCheck, Heart, UserMinus, Trash2, Copy, Crown, Info,
-  Search, ShieldAlert, AlertCircle
+  Search, ShieldAlert, AlertCircle, Edit3, EyeOff
 } from 'lucide-react';
 import { Track, User, CommunityServer, CommunityChannel, CommunityMessage, StageSession, VoiceParticipant, CommunityUserProfile } from '../types';
 import { getSupabaseClient } from '../services/supabase';
@@ -80,7 +80,7 @@ const INITIAL_USERS: CommunityUserProfile[] = [
     display_name: 'Luna Lofi',
     avatar: null,
     role: 'CHILL HOST',
-    status: 'idle',
+    status: 'online',
     bio: 'Thưởng thức trà chiều, mưa rơi và những giai điệu Lofi êm đềm.',
     listening: 'Snowman - WYS',
     listeningTrack: {
@@ -103,7 +103,7 @@ const INITIAL_USERS: CommunityUserProfile[] = [
     display_name: 'GhostOperative',
     avatar: null,
     role: 'AGENT',
-    status: 'online',
+    status: 'offline',
     bio: 'Thành viên yêu âm nhạc Spytify. Âm nhạc là chìa khóa mở mọi cánh cửa.',
     listening: null,
     listeningTrack: null,
@@ -437,19 +437,122 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   });
 
   // ──────── REGISTERED USERS & MUTUAL FOLLOW FRIENDS SYSTEM ────────
+  const ACTIVE_BOT_IDS = new Set(['usr_host', 'usr_agent_01', 'usr_luna_lofi']);
   const [registeredUsers, setRegisteredUsers] = useState<CommunityUserProfile[]>(() => {
     try {
       const saved = localStorage.getItem('spytify_registered_users');
       if (saved) {
         const parsed: CommunityUserProfile[] = JSON.parse(saved);
-        // Exclude fake/injected custom users from earlier searches
-        const filtered = parsed.filter(u => !u.id.startsWith('usr_custom_') && u.username !== 'a');
+        // Exclude fake/injected custom users from earlier searches; reset non-bot users to offline until real-time presence arrives
+        const filtered = parsed
+          .filter(u => !u.id.startsWith('usr_custom_') && u.username !== 'a')
+          .map(u => ({
+            ...u,
+            status: (ACTIVE_BOT_IDS.has(u.id) ? 'online' : 'offline') as CommunityUserProfile['status'],
+          }));
         localStorage.setItem('spytify_registered_users', JSON.stringify(filtered));
         return filtered;
       }
     } catch {}
     return INITIAL_USERS;
   });
+
+  // ──────── USER PRESENCE STATUS (ONLINE / BẬN / VÔ HÌNH) & SERVER NICKNAMES ────────
+  const [myStatus, setMyStatus] = useState<'online' | 'dnd' | 'invisible'>(() => {
+    try {
+      const s = localStorage.getItem('spytify_user_status');
+      if (s === 'online' || s === 'dnd' || s === 'invisible') return s;
+    } catch {}
+    return 'online';
+  });
+
+  const [serverNicknames, setServerNicknames] = useState<Record<string, string>>(() => {
+    try {
+      const s = localStorage.getItem('spytify_server_nicknames');
+      if (s) return JSON.parse(s);
+    } catch {}
+    return {};
+  });
+
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
+  const [isNicknameModalOpen, setIsNicknameModalOpen] = useState(false);
+  const [nicknameDraft, setNicknameDraft] = useState('');
+
+  // Real-time online presence map keyed by user id / username
+  const [realtimeUserPresences, setRealtimeUserPresences] = useState<
+    Record<string, {
+      id: string;
+      username: string;
+      display_name: string;
+      avatar?: string | null;
+      status: 'online' | 'dnd' | 'invisible' | 'offline';
+      listening?: string | null;
+      listeningTrack?: Track | null;
+    }>
+  >({});
+
+  const myServerDisplayName = (serverNicknames[selectedServer.id]?.trim()) || currentUser?.display_name || 'Bạn (Operative)';
+
+  const handleChangeMyStatus = (newStatus: 'online' | 'dnd' | 'invisible') => {
+    setMyStatus(newStatus);
+    try {
+      localStorage.setItem('spytify_user_status', newStatus);
+    } catch {}
+    setIsStatusMenuOpen(false);
+  };
+
+  const handleOpenNicknameModal = () => {
+    setNicknameDraft(serverNicknames[selectedServer.id] || currentUser?.display_name || '');
+    setIsStatusMenuOpen(false);
+    setMemberMenu(null);
+    setIsNicknameModalOpen(true);
+  };
+
+  const handleSaveServerNickname = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = nicknameDraft.trim();
+    setServerNicknames(prev => {
+      const next = { ...prev };
+      if (trimmed) {
+        next[selectedServer.id] = trimmed;
+      } else {
+        delete next[selectedServer.id];
+      }
+      try {
+        localStorage.setItem('spytify_server_nicknames', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    setIsNicknameModalOpen(false);
+  };
+
+  // Helper: chỉ hiện đèn khi thực sự online hoặc đang ở chế độ Bận (dnd); nếu offline hoặc vô hình thì không hiện đèn
+  const renderStatusDot = (status?: string, size: 'sm' | 'md' | 'lg' = 'sm') => {
+    if (status !== 'online' && status !== 'dnd') return null;
+    const sizeClasses =
+      size === 'lg'
+        ? 'w-5 h-5 -bottom-0.5 -right-0.5 border-2'
+        : size === 'md'
+        ? 'w-3.5 h-3.5 -bottom-0.5 -right-0.5 border-2'
+        : 'w-2.5 h-2.5 -bottom-0.5 -right-0.5 border';
+    if (status === 'dnd') {
+      return (
+        <span
+          className={`absolute ${sizeClasses} rounded-full bg-red-500 border-black flex items-center justify-center`}
+          title="Bận / Không làm phiền (Do Not Disturb)"
+        >
+          <span className={`${size === 'lg' ? 'w-2.5 h-0.5' : 'w-1.5 h-[1.5px]'} bg-white rounded-full`} />
+        </span>
+      );
+    }
+    return (
+      <span
+        className={`absolute ${sizeClasses} rounded-full border-black`}
+        style={{ backgroundColor: accentColor, boxShadow: `0 0 6px ${accentColor}` }}
+        title="Trực tuyến (Online)"
+      />
+    );
+  };
 
   // User's following list (stored in localStorage)
   const [followingUserIds, setFollowingUserIds] = useState<Set<string>>(() => {
@@ -553,7 +656,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               display_name: p.display_name || p.username || cleanHandle,
               avatar: p.avatar || null,
               role: 'AGENT',
-              status: 'online',
+              status: 'offline',
               bio: 'Thành viên Spytify từ hệ thống cộng đồng.',
               listening: null,
               isHost: false,
@@ -677,31 +780,88 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setTimeout(() => setInviteCopied(false), 2500);
   };
 
-  // Online members list synced with registered users
-  const onlineMembers = [
-    ...registeredUsers.map(u => ({
-      id: u.id,
-      name: u.display_name,
-      role: u.role,
-      listening: u.listening || null,
-      listeningTrack: u.listeningTrack || null,
-      isHost: Boolean(u.isHost),
-      userProfile: u,
-    })),
+  // Determine real-time effective status for any user
+  const getEffectiveStatus = (u: CommunityUserProfile): 'online' | 'dnd' | 'offline' => {
+    if (ACTIVE_BOT_IDS.has(u.id)) return 'online';
+    const rt = realtimeUserPresences[u.id] || Object.values(realtimeUserPresences).find(p => p.username.toLowerCase() === u.username.toLowerCase());
+    if (rt && (rt.status === 'online' || rt.status === 'dnd')) return rt.status;
+    return 'offline';
+  };
+
+  // Online & server members list synced with real-time presence + server nicknames
+  const myEffectivePublicStatus: 'online' | 'dnd' | 'offline' = myStatus === 'invisible' ? 'offline' : myStatus;
+  const rawMembers = [
+    ...registeredUsers
+      .filter(u => !currentUser || (u.id !== currentUser.id && u.username.toLowerCase() !== (currentUser.username || '').toLowerCase()))
+      .map(u => {
+        const rt = realtimeUserPresences[u.id] || Object.values(realtimeUserPresences).find(p => p.username.toLowerCase() === u.username.toLowerCase());
+        const effStatus = getEffectiveStatus(u);
+        const effName = rt?.display_name || u.display_name;
+        const effListening = effStatus === 'offline' && !ACTIVE_BOT_IDS.has(u.id) ? null : (rt?.listening !== undefined ? rt.listening : (u.listening || null));
+        const effTrack = effStatus === 'offline' && !ACTIVE_BOT_IDS.has(u.id) ? null : (rt?.listeningTrack !== undefined ? rt.listeningTrack : (u.listeningTrack || null));
+        return {
+          id: u.id,
+          name: effName,
+          role: u.role,
+          status: effStatus,
+          listening: effListening,
+          listeningTrack: effTrack,
+          isHost: Boolean(u.isHost),
+          userProfile: {
+            ...u,
+            display_name: effName,
+            status: effStatus,
+            listening: effListening,
+            listeningTrack: effTrack,
+          },
+        };
+      }),
+    // Include any real-time connected users not yet in registeredUsers
+    ...Object.values(realtimeUserPresences)
+      .filter(rt =>
+        rt.id !== (currentUser?.id || myParticipantIdRef.current) &&
+        !registeredUsers.some(u => u.id === rt.id || u.username.toLowerCase() === rt.username.toLowerCase())
+      )
+      .map(rt => {
+        const effStatus: 'online' | 'dnd' | 'offline' = rt.status === 'online' || rt.status === 'dnd' ? rt.status : 'offline';
+        return {
+          id: rt.id,
+          name: rt.display_name,
+          role: 'AGENT',
+          status: effStatus,
+          listening: effStatus === 'offline' ? null : (rt.listening || null),
+          listeningTrack: effStatus === 'offline' ? null : (rt.listeningTrack || null),
+          isHost: false,
+          userProfile: {
+            id: rt.id,
+            username: rt.username,
+            display_name: rt.display_name,
+            avatar: rt.avatar || null,
+            role: 'AGENT',
+            status: effStatus,
+            bio: `Thành viên tại ${selectedServer.name}`,
+            listening: effStatus === 'offline' ? null : (rt.listening || null),
+            listeningTrack: effStatus === 'offline' ? null : (rt.listeningTrack || null),
+            isHost: false,
+            followsCurrentUser: false,
+          },
+        };
+      }),
     {
       id: 'usr_me',
-      name: currentUser?.display_name || 'Bạn (Operative)',
+      name: myServerDisplayName,
       role: 'BẠN',
+      status: myEffectivePublicStatus,
       listening: currentTrack ? `${currentTrack.title} - ${currentTrack.artist}` : null,
       listeningTrack: currentTrack,
       isHost: false,
       userProfile: {
         id: 'usr_me',
-        username: currentUser?.email?.split('@')[0] || 'me',
-        display_name: currentUser?.display_name || 'Bạn (Operative)',
+        username: currentUser?.username || currentUser?.email?.split('@')[0] || 'me',
+        display_name: myServerDisplayName,
         avatar: currentUser?.avatar || null,
         role: 'BẠN',
-        status: 'online' as const,
+        status: myEffectivePublicStatus,
         bio: 'Đang lắng nghe âm nhạc trên Spytify.',
         listening: currentTrack ? `${currentTrack.title} - ${currentTrack.artist}` : null,
         listeningTrack: currentTrack,
@@ -710,6 +870,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     }
   ];
+
+  // Sort: Online / DND members first, Offline members below
+  const onlineMembers = [...rawMembers].sort((a, b) => {
+    const aActive = a.status === 'online' || a.status === 'dnd' ? 0 : 1;
+    const bActive = b.status === 'online' || b.status === 'dnd' ? 0 : 1;
+    return aActive - bActive;
+  });
+  const activeOnlineCount = onlineMembers.filter(m => m.status === 'online' || m.status === 'dnd').length;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeChannelRef = useRef<any>(null);
@@ -910,6 +1078,40 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
   };
 
+  // Keep ref to latest user presence payload for real-time responses
+  const myPresencePayloadRef = useRef<any>(null);
+  myPresencePayloadRef.current = {
+    id: currentUser?.id || myParticipantIdRef.current,
+    username: currentUser?.username || currentUser?.email?.split('@')[0] || 'operative',
+    display_name: myServerDisplayName,
+    avatar: currentUser?.avatar || null,
+    status: myStatus === 'invisible' ? 'offline' : myStatus,
+    listening: currentTrack ? `${currentTrack.title} - ${currentTrack.artist}` : null,
+    listeningTrack: currentTrack,
+  };
+
+  // Broadcast presence updates whenever status, server nickname, or track changes
+  useEffect(() => {
+    if (activeChannelRef.current && myPresencePayloadRef.current) {
+      activeChannelRef.current.send({
+        type: 'broadcast',
+        event: 'user_presence',
+        payload: myPresencePayloadRef.current,
+      });
+    }
+    if (myVoiceParticipantRef.current && activeChannelRef.current) {
+      myVoiceParticipantRef.current = {
+        ...myVoiceParticipantRef.current,
+        name: myServerDisplayName,
+      };
+      activeChannelRef.current.send({
+        type: 'broadcast',
+        event: 'voice_presence',
+        payload: { action: 'here', participant: myVoiceParticipantRef.current },
+      });
+    }
+  }, [myStatus, myServerDisplayName, currentTrack?.id]);
+
   // ──────── SUPABASE REALTIME SYNC (MESSAGES & VOICE STATE THEO SERVER) ────────
   useEffect(() => {
     const client = getSupabaseClient();
@@ -942,7 +1144,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     });
 
-    // 3. ĐỒNG BỘ HỘI THOẠI REALTIME (VOICE CALL STATE SYNC)
+    // 3. ĐỒNG BỘ TRẠNG THÁI TRỰC TUYẾN / BẬN / VÔ HÌNH & TÊN HIỂN THỊ TRÊN SERVER
+    channel.on('broadcast', { event: 'user_presence_sync_request' }, () => {
+      if (myPresencePayloadRef.current && myPresencePayloadRef.current.status !== 'offline') {
+        channel.send({
+          type: 'broadcast',
+          event: 'user_presence',
+          payload: myPresencePayloadRef.current,
+        });
+      }
+    });
+
+    channel.on('broadcast', { event: 'user_presence' }, ({ payload }) => {
+      if (!payload || !payload.id) return;
+      setRealtimeUserPresences(prev => ({
+        ...prev,
+        [payload.id]: payload,
+      }));
+    });
+
+    // 4. ĐỒNG BỘ HỘI THOẠI REALTIME (VOICE CALL STATE SYNC)
     channel.on('broadcast', { event: 'voice_sync_request' }, () => {
       if (myVoiceParticipantRef.current) {
         channel.send({
@@ -957,7 +1178,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (!payload) return;
       if ((payload.action === 'join' || payload.action === 'here') && payload.participant) {
         setVoiceParticipants(prev => {
-          if (prev.some(p => p.id === payload.participant.id)) return prev;
+          const exists = prev.some(p => p.id === payload.participant.id);
+          if (exists) {
+            return prev.map(p => (p.id === payload.participant.id ? { ...p, ...payload.participant } : p));
+          }
           return [...prev, payload.participant];
         });
         // Người đã ở trong phòng báo danh lại để người mới thấy đủ danh sách
@@ -990,6 +1214,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     channel.subscribe((status: string) => {
       if (status === 'SUBSCRIBED') {
         channel.send({ type: 'broadcast', event: 'voice_sync_request', payload: {} });
+        channel.send({ type: 'broadcast', event: 'user_presence_sync_request', payload: {} });
+        if (myPresencePayloadRef.current && myPresencePayloadRef.current.status !== 'offline') {
+          channel.send({
+            type: 'broadcast',
+            event: 'user_presence',
+            payload: myPresencePayloadRef.current,
+          });
+        }
         if (myVoiceParticipantRef.current) {
           channel.send({
             type: 'broadcast',
@@ -1001,6 +1233,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     });
 
     return () => {
+      if (myPresencePayloadRef.current) {
+        channel.send({
+          type: 'broadcast',
+          event: 'user_presence',
+          payload: { ...myPresencePayloadRef.current, status: 'offline' },
+        });
+      }
       channel.unsubscribe();
       activeChannelRef.current = null;
     };
@@ -1027,7 +1266,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     const myParticipant: VoiceParticipant = {
       id: myId,
-      name: currentUser?.display_name || 'Bạn',
+      name: myServerDisplayName,
       username: currentUser?.username || 'operative',
       avatar: currentUser?.avatar || null,
       isMuted: false,
@@ -1343,7 +1582,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       channel_id: selectedChannel.id,
       user_id: currentUser?.id || 'guest',
       username: currentUser?.username || 'operative',
-      display_name: currentUser?.display_name || 'Khách Vô Danh',
+      display_name: myServerDisplayName,
       avatar: currentUser?.avatar || null,
       content: clean,
       track_embed: attachCurrentTrack ? currentTrack : null,
@@ -1721,10 +1960,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                     boxShadow: isUserSpeaking ? `0 0 6px ${accentColor}` : undefined,
                                   }}
                                 >
-                                  {(currentUser?.display_name || 'B').charAt(0)}
+                                  {myServerDisplayName.charAt(0)}
                                 </span>
                               </div>
-                              <span className="truncate">{currentUser?.display_name || getTranslation(language, 'community.you')} ({getTranslation(language, 'community.you')})</span>
+                              <span className="truncate">{myServerDisplayName} ({getTranslation(language, 'community.you')})</span>
                               {isMuted && <MicOff className="w-2.5 h-2.5 text-red-400 ml-auto" />}
                             </div>
                           )}
@@ -1848,6 +2087,130 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* ──────── DISCORD-STYLE USER STATUS & SERVER NICKNAME BAR ──────── */}
+        <div className={`relative p-2 border-t flex items-center justify-between gap-2 select-none ${
+          isLight ? 'bg-[#f1f5f9] border-[#e2e8f0]' : 'bg-[#08080e] border-[#151520]'
+        }`}>
+          <button
+            type="button"
+            onClick={() => setIsStatusMenuOpen(p => !p)}
+            className={`flex items-center gap-2 p-1 rounded-lg flex-1 min-w-0 text-left transition-colors cursor-pointer ${
+              isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#141420]'
+            }`}
+            title="Bấm để đổi trạng thái (Trực tuyến / Bận / Vô hình) hoặc tên hiển thị trên Server"
+          >
+            <div className="relative flex-shrink-0">
+              <div
+                className="w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-xs overflow-hidden"
+                style={{
+                  backgroundColor: `${accentColor}20`,
+                  borderColor: `${accentColor}40`,
+                  color: accentColor,
+                }}
+              >
+                {currentUser?.avatar ? (
+                  <img src={currentUser.avatar} alt={myServerDisplayName} className="w-full h-full object-cover" />
+                ) : (
+                  <span>{myServerDisplayName.charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              {renderStatusDot(myEffectivePublicStatus, 'sm')}
+            </div>
+
+            <div className="truncate flex-1 min-w-0">
+              <p className={`text-[11px] font-bold truncate leading-tight ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>
+                {myServerDisplayName}
+              </p>
+              <p className="text-[9px] font-mono truncate flex items-center gap-1 text-[#888]">
+                {myStatus === 'online' && <span style={{ color: accentColor }}>● Trực tuyến</span>}
+                {myStatus === 'dnd' && <span className="text-red-400">⛔ Chế độ Bận</span>}
+                {myStatus === 'invisible' && <span className="text-zinc-400">👻 Vô hình</span>}
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleOpenNicknameModal}
+            className={`p-1.5 rounded-lg border transition-colors cursor-pointer flex-shrink-0 ${
+              isLight
+                ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-600 hover:text-slate-900'
+                : 'bg-[#12121c] hover:bg-[#1c1c2c] border-[#222234] text-[#888] hover:text-white'
+            }`}
+            title="Đổi tên hiển thị trên Server này"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+          </button>
+
+          {/* Status & Server Nickname Popover Menu */}
+          {isStatusMenuOpen && (
+            <div
+              className={`absolute bottom-full left-2 right-2 mb-2 rounded-xl border shadow-2xl p-1.5 z-50 text-xs animate-in fade-in duration-150 ${
+                isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0e0e18] border-[#26263a] text-white'
+              }`}
+            >
+              <p className="px-2 py-1 text-[9px] font-mono font-bold uppercase tracking-wider text-[#777]">
+                TRẠNG THÁI HIỂN THỊ
+              </p>
+              <button
+                type="button"
+                onClick={() => handleChangeMyStatus('online')}
+                className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
+                  myStatus === 'online' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accentColor, boxShadow: `0 0 6px ${accentColor}` }} />
+                  <span>Trực tuyến</span>
+                </span>
+                {myStatus === 'online' && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleChangeMyStatus('dnd')}
+                className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
+                  myStatus === 'dnd' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex items-center justify-center">
+                    <span className="w-1.5 h-[1.5px] bg-white rounded-full" />
+                  </span>
+                  <span>Bận (Không làm phiền)</span>
+                </span>
+                {myStatus === 'dnd' && <Check className="w-3.5 h-3.5 text-red-400" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleChangeMyStatus('invisible')}
+                className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
+                  myStatus === 'invisible' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <EyeOff className="w-3 h-3 text-zinc-400" />
+                  <span>Vô hình (Ẩn đèn online)</span>
+                </span>
+                {myStatus === 'invisible' && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+              </button>
+
+              <div className="my-1 border-t border-white/10" />
+
+              <button
+                type="button"
+                onClick={handleOpenNicknameModal}
+                className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white/5 cursor-pointer transition-colors"
+                style={{ color: accentColor }}
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span className="font-semibold">Đổi tên hiển thị trên Server</span>
+              </button>
+            </div>
+          )}
+        </div>
           </>
         )}
       </div>
@@ -2051,7 +2414,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <div className="pb-2 flex items-center justify-between text-xs text-[#777] font-mono">
                     <span>
                       {friendsTab === 'online' 
-                        ? `BẠN BÈ TRỰC TUYẾN — ${registeredUsers.filter(u => isMutualFriend(u) && u.status === 'online').length}`
+                        ? `BẠN BÈ TRỰC TUYẾN — ${registeredUsers.filter(u => isMutualFriend(u) && (getEffectiveStatus(u) === 'online' || getEffectiveStatus(u) === 'dnd')).length}`
                         : friendsTab === 'all'
                         ? `TẤT CẢ BẠN BÈ — ${registeredUsers.filter(u => isMutualFriend(u)).length}`
                         : `DANH SÁCH ĐANG THEO DÕI — ${followingUserIds.size}`}
@@ -2064,13 +2427,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         const q = friendSearchQuery.toLowerCase();
                         if (!u.display_name.toLowerCase().includes(q) && !u.username.toLowerCase().includes(q)) return false;
                       }
-                      if (friendsTab === 'online') return isMutualFriend(u) && u.status === 'online';
+                      const effSt = getEffectiveStatus(u);
+                      if (friendsTab === 'online') return isMutualFriend(u) && (effSt === 'online' || effSt === 'dnd');
                       if (friendsTab === 'all') return isMutualFriend(u);
                       if (friendsTab === 'pending') return followingUserIds.has(u.id);
                       return true;
                     })
                     .map(fr => {
                       const isFriend = isMutualFriend(fr);
+                      const effSt = getEffectiveStatus(fr);
                       return (
                         <div
                           key={fr.id}
@@ -2085,9 +2450,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               <div className="w-11 h-11 rounded-2xl bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-base text-white shadow-md">
                                 {fr.display_name.charAt(0)}
                               </div>
-                              <span className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-black ${
-                                fr.status === 'online' ? 'bg-emerald-400' : 'bg-amber-400'
-                              }`} />
+                              {renderStatusDot(effSt, 'md')}
                             </div>
 
                             <div className="truncate">
@@ -2646,7 +3009,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       >
         <div className={`flex items-center justify-between mb-2.5 pb-1 border-b ${isLight ? 'border-[#e2e8f0]' : 'border-[#14141e]'}`}>
           <p className={`text-[10px] font-mono font-bold uppercase tracking-wider ${isLight ? 'text-[#64748b]' : 'text-[#666]'}`}>
-            {getTranslation(language, 'community.online')} — {onlineMembers.length}
+            {getTranslation(language, 'community.online')} — {activeOnlineCount}
           </p>
           <button
             onClick={toggleMemberList}
@@ -2666,13 +3029,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 e.preventDefault();
                 setMemberMenu({
                   x: Math.min(e.clientX, window.innerWidth - 220),
-                  y: Math.min(e.clientY, window.innerHeight - 200),
+                  y: Math.min(e.clientY, window.innerHeight - 240),
                   member: mem,
                 });
               }}
-              className={`flex items-center gap-2 p-1.5 rounded-lg transition-colors cursor-pointer group ${
+              className={`flex items-center gap-2 p-1.5 rounded-lg transition-all cursor-pointer group ${
                 isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#12121c]'
-              }`}
+              } ${mem.status === 'offline' ? 'opacity-60 hover:opacity-100' : ''}`}
             >
               <div className="relative flex-shrink-0">
                 <div 
@@ -2682,10 +3045,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 >
                   {mem.name.charAt(0).toUpperCase()}
                 </div>
-                <span 
-                  className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-black" 
-                  style={{ backgroundColor: accentColor }}
-                />
+                {renderStatusDot(mem.status, 'sm')}
               </div>
               <div className="truncate flex-1 min-w-0">
                 <div className="flex items-center gap-1">
@@ -2705,23 +3065,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               {/* 3-dots Menu Button */}
-              {mem.id !== 'usr_me' && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setMemberMenu({
-                      x: Math.min(rect.left - 180, window.innerWidth - 220),
-                      y: Math.min(rect.bottom + 4, window.innerHeight - 200),
-                      member: mem,
-                    });
-                  }}
-                  title={getTranslation(language, 'community.inviteToVoice')}
-                  className="p-1 rounded hover:bg-white/10 text-[#666] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity ml-auto cursor-pointer flex-shrink-0"
-                >
-                  <MoreVertical className="w-3.5 h-3.5" />
-                </button>
-              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setMemberMenu({
+                    x: Math.min(rect.left - 180, window.innerWidth - 220),
+                    y: Math.min(rect.bottom + 4, window.innerHeight - 240),
+                    member: mem,
+                  });
+                }}
+                title={mem.id === 'usr_me' ? 'Tùy chỉnh trạng thái & Biệt danh Server' : getTranslation(language, 'community.inviteToVoice')}
+                className="p-1 rounded hover:bg-white/10 text-[#666] hover:text-white opacity-0 group-hover:opacity-100 transition-opacity ml-auto cursor-pointer flex-shrink-0"
+              >
+                <MoreVertical className="w-3.5 h-3.5" />
+              </button>
             </div>
           ))}
         </div>
@@ -2749,6 +3107,61 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           </div>
 
           <div className="p-1 space-y-0.5">
+            {memberMenu.member.id === 'usr_me' && (
+              <>
+                <div className="px-2 py-1 text-[9px] font-mono font-bold uppercase tracking-wider text-[#777]">
+                  Trạng thái của bạn
+                </div>
+                <button
+                  onClick={() => { handleChangeMyStatus('online'); setMemberMenu(null); }}
+                  className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left cursor-pointer transition-colors ${
+                    myStatus === 'online' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: accentColor }} />
+                    <span>Trực tuyến</span>
+                  </span>
+                  {myStatus === 'online' && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
+                </button>
+                <button
+                  onClick={() => { handleChangeMyStatus('dnd'); setMemberMenu(null); }}
+                  className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left cursor-pointer transition-colors ${
+                    myStatus === 'dnd' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex items-center justify-center">
+                      <span className="w-1.5 h-[1.5px] bg-white rounded-full" />
+                    </span>
+                    <span>Bận (Không làm phiền)</span>
+                  </span>
+                  {myStatus === 'dnd' && <Check className="w-3.5 h-3.5 text-red-400" />}
+                </button>
+                <button
+                  onClick={() => { handleChangeMyStatus('invisible'); setMemberMenu(null); }}
+                  className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left cursor-pointer transition-colors ${
+                    myStatus === 'invisible' ? 'bg-white/10 font-bold' : 'hover:bg-white/5'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <EyeOff className="w-3 h-3 text-zinc-400" />
+                    <span>Vô hình (Ẩn đèn online)</span>
+                  </span>
+                  {myStatus === 'invisible' && <Check className="w-3.5 h-3.5 text-zinc-400" />}
+                </button>
+                <button
+                  onClick={handleOpenNicknameModal}
+                  className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-left cursor-pointer transition-colors border-t border-white/10 mt-1 pt-1.5"
+                  style={{ color: accentColor }}
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span className="font-semibold">Đổi tên hiển thị trên Server</span>
+                </button>
+                <div className="my-1 border-t border-white/10" />
+              </>
+            )}
+
             {/* Play listening track */}
             {memberMenu.member.listening && (
               <button
@@ -3687,9 +4100,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   >
                     {selectedProfileUser.display_name.charAt(0)}
                   </div>
-                  <span className={`absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-black ${
-                    selectedProfileUser.status === 'online' ? 'bg-emerald-400' : 'bg-amber-400'
-                  }`} />
+                  {renderStatusDot(
+                    selectedProfileUser.id === 'usr_me' ? myEffectivePublicStatus : getEffectiveStatus(selectedProfileUser),
+                    'lg'
+                  )}
                 </div>
 
                 {selectedProfileUser.id !== 'usr_me' && (
@@ -3773,6 +4187,91 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ──────────────── 9. MODAL ĐỔI TÊN HIỂN THỊ TRÊN SERVER (SERVER NICKNAME) ──────────────── */}
+      {isNicknameModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <form
+            onSubmit={handleSaveServerNickname}
+            className={`w-full max-w-md border rounded-2xl p-6 shadow-2xl relative ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0c0c14] border-[#222234] text-white'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setIsNicknameModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full text-[#666] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center font-bold"
+                style={{
+                  backgroundColor: `${accentColor}20`,
+                  color: accentColor,
+                  border: `1px solid ${accentColor}40`,
+                }}
+              >
+                <Edit3 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black tracking-tight">Đổi Tên Hiển Thị Trên Server</h3>
+                <p className="text-[11px] text-[#777] font-mono">
+                  Máy chủ: <span style={{ color: accentColor }}>{selectedServer.name}</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold font-mono text-[#aaa] block mb-1.5">
+                  BIỆT DANH TRÊN SERVER NÀY
+                </label>
+                <input
+                  type="text"
+                  maxLength={32}
+                  value={nicknameDraft}
+                  onChange={e => setNicknameDraft(e.target.value)}
+                  placeholder={currentUser?.display_name || 'Nhập biệt danh mới...'}
+                  autoFocus
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-sans border outline-none transition-colors ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-500'
+                      : 'bg-[#12121c] border-[#242436] text-white focus:border-white/50'
+                  }`}
+                />
+                <p className="text-[10px] text-[#777] font-mono mt-1.5">
+                  Để trống nếu muốn dùng tên tài khoản gốc ({currentUser?.display_name || 'Operative'}).
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNicknameDraft('');
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs font-mono text-[#888] hover:text-white hover:bg-white/5 cursor-pointer transition-colors"
+                >
+                  Đặt lại mặc định
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    backgroundColor: accentColor,
+                    color: getContrastTextColor(accentColor),
+                  }}
+                  className="px-5 py-2 rounded-xl text-xs font-bold font-mono cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-lg"
+                >
+                  Lưu thay đổi
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
     </div>
