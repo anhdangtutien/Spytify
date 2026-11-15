@@ -302,13 +302,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const [selectedServer, setSelectedServer] = useState<CommunityServer>(servers[0]);
   const [selectedChannel, setSelectedChannel] = useState<CommunityChannel>(servers[0].channels[0]);
-  const [messages, setMessages] = useState<CommunityMessage[]>([]);
+  const [messages, setMessages] = useState<CommunityMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('spytify_server_messages');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [inputText, setInputText] = useState('');
   const [attachCurrentTrack, setAttachCurrentTrack] = useState(false);
 
-  // ──────── TẠO PHÒNG CHAT / PHÒNG THOẠI MỚI TRONG SERVER ────────
-  const [creatingChannelType, setCreatingChannelType] = useState<'text' | 'voice' | null>(null);
+  // ──────── TẠO PHÒNG CHAT / PHÒNG THOẠI MỚI TRONG SERVER (RIÊNG BIỆT TỪNG SERVER) ────────
+  const [creatingChannelState, setCreatingChannelState] = useState<{
+    serverId: string;
+    type: 'text' | 'voice';
+  } | null>(null);
   const [newChannelName, setNewChannelName] = useState('');
+  const creatingChannelType =
+    creatingChannelState && creatingChannelState.serverId === selectedServer.id
+      ? creatingChannelState.type
+      : null;
 
   // ──────── MODAL TẠO SERVER MỚI ────────
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -331,6 +347,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // ──────── VOICE CALL STATE & SUPABASE SYNC ────────
   const [connectedVoiceChannel, setConnectedVoiceChannel] = useState<string | null>(null);
+  const [connectedVoiceServerId, setConnectedVoiceServerId] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -440,10 +457,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   }, []);
 
   const handleInviteMemberToVoice = (member: { id: string; name: string; isHost?: boolean }) => {
-    // If not currently in voice, join voice first!
-    if (!connectedVoiceChannel) {
-      const voiceCh = selectedServer.channels.find(c => c.type === 'voice') || selectedChannel;
-      handleJoinVoiceCall(voiceCh.id);
+    const defaultVoiceCh = selectedServer.channels.find(c => c.type === 'voice') || selectedChannel;
+    const targetVoiceChId =
+      connectedVoiceServerId === selectedServer.id && connectedVoiceChannel
+        ? connectedVoiceChannel
+        : defaultVoiceCh.id;
+
+    // If not currently in this server's voice channel, join voice first!
+    if (connectedVoiceServerId !== selectedServer.id || !connectedVoiceChannel) {
+      handleJoinVoiceCall(targetVoiceChId);
     }
 
     const newVp: VoiceParticipant = {
@@ -455,10 +477,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       isDeafened: false,
       isSpeaking: !!member.isHost,
       isHost: !!member.isHost,
+      serverId: selectedServer.id,
+      channelId: targetVoiceChId,
     };
 
     setVoiceParticipants(prev => {
-      if (prev.some(p => p.id === member.id)) return prev;
+      if (prev.some(p => p.id === member.id && (p.serverId || selectedServer.id) === selectedServer.id)) return prev;
       return [...prev, newVp];
     });
 
@@ -467,7 +491,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleRemoveMemberFromVoice = (memberId: string) => {
-    setVoiceParticipants(prev => prev.filter(p => p.id !== memberId));
+    setVoiceParticipants(prev =>
+      prev.filter(p => !(p.id === memberId && (!p.serverId || p.serverId === selectedServer.id)))
+    );
     playAudioChime('leave');
     setMemberMenu(null);
   };
@@ -876,7 +902,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setServers(nextServers);
     setSelectedServer(updatedSrv);
     persistServers(nextServers);
-    setCreatingChannelType(null);
+    setCreatingChannelState(null);
     setNewChannelName('');
     handleSelectChannel(newCh);
   };
@@ -1190,21 +1216,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     onActiveServerChange?.(selectedServer);
   }, [selectedServer, onActiveServerChange]);
 
-  // Handle server switch
+  // Handle server switch (mỗi server hoạt động hoàn toàn độc lập)
   const handleSelectServer = (server: CommunityServer) => {
     setSelectedServer(server);
     setSelectedChannel(server.channels[0]);
-    setMessages([]);
+    setCreatingChannelState(null);
+    setNewChannelName('');
+    setInputText('');
+    setAttachCurrentTrack(false);
+    setMemberMenu(null);
+    setIsStatusMenuOpen(false);
     onActiveServerChange?.(server);
   };
 
   // Handle channel switch
   const handleSelectChannel = (channel: CommunityChannel) => {
     setSelectedChannel(channel);
+    setCreatingChannelState(null);
+    setNewChannelName('');
 
     // Nếu là kênh Voice: Tự động tham gia cuộc gọi ngay lập tức giống Discord!
     if (channel.type === 'voice') {
-      if (connectedVoiceChannel !== channel.id) {
+      if (connectedVoiceChannel !== channel.id || connectedVoiceServerId !== selectedServer.id) {
         handleJoinVoiceCall(channel.id);
       }
     }
@@ -1264,7 +1297,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (payload && payload.id) {
         setMessages(prev => {
           if (prev.some(m => m.id === payload.id)) return prev;
-          return [...prev, payload].slice(-120);
+          const next = [...prev, payload].slice(-200);
+          try {
+            localStorage.setItem('spytify_server_messages', JSON.stringify(next));
+          } catch {}
+          return next;
         });
       }
     });
@@ -1309,12 +1346,22 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     channel.on('broadcast', { event: 'voice_presence' }, ({ payload }) => {
       if (!payload) return;
       if ((payload.action === 'join' || payload.action === 'here') && payload.participant) {
+        const incomingVp: VoiceParticipant = {
+          ...payload.participant,
+          serverId: payload.participant.serverId || selectedServer.id,
+        };
         setVoiceParticipants(prev => {
-          const exists = prev.some(p => p.id === payload.participant.id);
+          const exists = prev.some(
+            p => p.id === incomingVp.id && (p.serverId || selectedServer.id) === incomingVp.serverId
+          );
           if (exists) {
-            return prev.map(p => (p.id === payload.participant.id ? { ...p, ...payload.participant } : p));
+            return prev.map(p =>
+              p.id === incomingVp.id && (p.serverId || selectedServer.id) === incomingVp.serverId
+                ? { ...p, ...incomingVp }
+                : p
+            );
           }
-          return [...prev, payload.participant];
+          return [...prev, incomingVp];
         });
         // Người đã ở trong phòng báo danh lại để người mới thấy đủ danh sách
         if (payload.action === 'join' && myVoiceParticipantRef.current && payload.participant.id !== myParticipantIdRef.current) {
@@ -1325,7 +1372,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           });
         }
       } else if (payload.action === 'leave' && payload.userId) {
-        setVoiceParticipants(prev => prev.filter(p => p.id !== payload.userId));
+        setVoiceParticipants(prev =>
+          prev.filter(p => !(p.id === payload.userId && (!p.serverId || p.serverId === selectedServer.id)))
+        );
       }
     });
 
@@ -1405,6 +1454,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       isDeafened: false,
       isSpeaking: false,
       isHost: selectedServer.id.startsWith('srv_custom_'),
+      serverId: selectedServer.id,
+      channelId: channelIdToConnect,
     };
 
     try {
@@ -1466,6 +1517,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       checkAudioActivity();
 
       setConnectedVoiceChannel(channelIdToConnect);
+      setConnectedVoiceServerId(selectedServer.id);
       playAudioChime('join');
 
       // Phát sóng trạng thái tham gia cuộc gọi qua Supabase!
@@ -1479,6 +1531,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     } catch {
       setConnectedVoiceChannel(channelIdToConnect);
+      setConnectedVoiceServerId(selectedServer.id);
       setIsMuted(true);
       playAudioChime('join');
       myVoiceParticipantRef.current = { ...myParticipant, isMuted: true };
@@ -1516,6 +1569,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
 
     setConnectedVoiceChannel(null);
+    setConnectedVoiceServerId(null);
     setIsUserSpeaking(false);
     playAudioChime('leave');
   };
@@ -1694,9 +1748,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     persistServers(updated);
 
     setIsCreateModalOpen(false);
+    setCreatingChannelState(null);
+    setNewChannelName('');
     setSelectedServer(createdServer);
     setSelectedChannel(createdServer.channels[0]);
-    setMessages([]);
   };
 
   // Send message
@@ -1718,7 +1773,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages(prev => [...prev.slice(-79), newMsg]);
+    setMessages(prev => {
+      const next = [...prev.slice(-199), newMsg];
+      try {
+        localStorage.setItem('spytify_server_messages', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
     setInputText('');
     setAttachCurrentTrack(false);
 
@@ -1758,7 +1819,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const isStage = selectedChannel.type === 'stage';
   const isVoice = selectedChannel.type === 'voice';
-  const isConnectedToCurrentVoice = connectedVoiceChannel === selectedChannel.id;
+  const isConnectedToCurrentVoice =
+    connectedVoiceServerId === selectedServer.id && connectedVoiceChannel === selectedChannel.id;
 
   return (
     <div className={`flex-1 flex h-full select-none overflow-hidden font-sans ${isLight ? 'bg-[#f8fafc] text-[#0f172a]' : 'bg-[#07070a] text-white'}`}>
@@ -2008,7 +2070,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setCreatingChannelType(prev => (prev === 'text' ? null : 'text'));
+                  setCreatingChannelState(prev =>
+                    prev && prev.serverId === selectedServer.id && prev.type === 'text'
+                      ? null
+                      : { serverId: selectedServer.id, type: 'text' }
+                  );
                   setNewChannelName('');
                 }}
                 title="Thêm phòng trò chuyện mới"
@@ -2038,7 +2104,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 <div className="flex items-center justify-end gap-1">
                   <button
                     type="button"
-                    onClick={() => { setCreatingChannelType(null); setNewChannelName(''); }}
+                    onClick={() => { setCreatingChannelState(null); setNewChannelName(''); }}
                     className="px-2 py-0.5 rounded text-[10px] font-mono text-[#888] hover:text-white cursor-pointer"
                   >
                     Hủy
@@ -2104,7 +2170,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setCreatingChannelType(prev => (prev === 'voice' ? null : 'voice'));
+                  setCreatingChannelState(prev =>
+                    prev && prev.serverId === selectedServer.id && prev.type === 'voice'
+                      ? null
+                      : { serverId: selectedServer.id, type: 'voice' }
+                  );
                   setNewChannelName('');
                 }}
                 title="Thêm phòng đàm thoại (Voice) mới"
@@ -2134,7 +2204,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 <div className="flex items-center justify-end gap-1">
                   <button
                     type="button"
-                    onClick={() => { setCreatingChannelType(null); setNewChannelName(''); }}
+                    onClick={() => { setCreatingChannelState(null); setNewChannelName(''); }}
                     className="px-2 py-0.5 rounded text-[10px] font-mono text-[#888] hover:text-white cursor-pointer"
                   >
                     Hủy
@@ -2159,8 +2229,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 .filter(c => c.type === 'voice')
                 .map(channel => {
                   const isCur = selectedChannel.id === channel.id;
-                  const isVoiceActive = connectedVoiceChannel === channel.id;
-                  const otherVoiceParticipants = voiceParticipants.filter(p => p.id !== myParticipantIdRef.current);
+                  const isVoiceActive =
+                    connectedVoiceServerId === selectedServer.id && connectedVoiceChannel === channel.id;
+                  const otherVoiceParticipants = voiceParticipants.filter(
+                    p =>
+                      p.id !== myParticipantIdRef.current &&
+                      (!p.serverId || p.serverId === selectedServer.id) &&
+                      (!p.channelId || p.channelId === channel.id)
+                  );
                   const totalVoiceCount = (isVoiceActive ? 1 : 0) + otherVoiceParticipants.length;
                   const voiceCount = selectedServer.channels.filter(c => c.type === 'voice').length;
 
@@ -2282,7 +2358,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         </div>
 
         {/* Persistent Bottom Voice Status Bar */}
-        {connectedVoiceChannel && (
+        {connectedVoiceChannel && connectedVoiceServerId === selectedServer.id && (
           <div className={`p-2.5 border-t flex flex-col gap-2 animate-in fade-in duration-200 ${isLight ? 'bg-[#f1f5f9] border-[#e2e8f0]' : 'bg-[#0c0c14] border-[#181824]'}`}>
             <div className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-1.5">
@@ -2891,7 +2967,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                 {/* Other Invited / Real Participants */}
                 {voiceParticipants
-                  .filter(vp => vp.id !== myParticipantIdRef.current)
+                  .filter(
+                    vp =>
+                      vp.id !== myParticipantIdRef.current &&
+                      (!vp.serverId || vp.serverId === selectedServer.id) &&
+                      (!vp.channelId || vp.channelId === selectedChannel.id)
+                  )
                   .map(vp => (
                     <div 
                       key={vp.id}
@@ -3124,7 +3205,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
             {/* Messages Stream */}
             <div className={`flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar ${isLight ? 'bg-[#ffffff]' : 'bg-[#0a0a0f]'}`}>
-              {messages.filter(msg => !msg.channel_id || msg.channel_id === selectedChannel.id).map(msg => (
+              {messages
+                .filter(
+                  msg =>
+                    (!msg.server_id || msg.server_id === selectedServer.id) &&
+                    (!msg.channel_id || msg.channel_id === selectedChannel.id)
+                )
+                .map(msg => (
                 <div key={msg.id} className={`flex items-start gap-3 -mx-2 px-2 py-1 rounded-lg transition-colors ${
                   isLight ? 'hover:bg-[#f1f5f9]' : 'hover:bg-[#101016]/40'
                 }`}>

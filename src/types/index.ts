@@ -112,6 +112,8 @@ export interface VoiceParticipant {
   isDeafened: boolean;
   isSpeaking: boolean;
   isHost?: boolean;
+  serverId?: string;
+  channelId?: string;
 }
 
 export interface CommunityServer {
