@@ -37,6 +37,7 @@ export interface User {
   display_name: string;
   avatar?: string | null;
   email?: string | null;
+  bio?: string;
   created_at: string;
 }
 
@@ -101,6 +102,11 @@ export interface CommunityChannel {
   name: string;
   type: 'text' | 'stage' | 'voice';
   topic?: string;
+  is_radio?: boolean;
+  dj_bot_id?: string;
+  custom_stream_url?: string;
+  custom_stream_title?: string;
+  is_loop_single?: boolean;
 }
 
 export interface VoiceParticipant {
@@ -112,8 +118,21 @@ export interface VoiceParticipant {
   isDeafened: boolean;
   isSpeaking: boolean;
   isHost?: boolean;
+  isBot?: boolean;
+  isStreaming?: boolean;
+  listening?: string | null;
+  listeningTrack?: Track | null;
+  isScreenSharing?: boolean;
   serverId?: string;
   channelId?: string;
+  role?: string;
+}
+
+export interface CommunityServerTag {
+  id: string;
+  name: string;
+  color: string;
+  icon?: string;
 }
 
 export interface CommunityServer {
@@ -131,6 +150,21 @@ export interface CommunityServer {
   member_ids?: string[];
   moderator_ids?: string[];
   kicked_ids?: string[];
+  tags?: CommunityServerTag[];
+  member_tags?: Record<string, string[]>;
+}
+
+export interface RequestBotTrack {
+  id: string;
+  title: string;
+  artist: string;
+  url_or_id: string;
+  requestedBy: {
+    id: string;
+    name: string;
+  };
+  duration_secs?: number;
+  thumbnail?: string;
 }
 
 export interface CommunityUserProfile {
@@ -159,6 +193,7 @@ export interface CommunityMessage {
   content: string;
   created_at: string;
   track_embed?: Track | null;
+  image_url?: string | null;
 }
 
 export interface StageSession {

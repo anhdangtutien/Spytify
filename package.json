@@ -1,7 +1,8 @@
 {
   "name": "spytify",
   "private": true,
-  "version": "1.0.0",
+  "license": "UNLICENSED",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",

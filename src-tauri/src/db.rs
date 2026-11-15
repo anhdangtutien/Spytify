@@ -402,23 +402,7 @@ impl DatabaseManager {
 
         match res {
             Ok(u) => Ok(Some(u)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => {
-                // Fallback: If user ID was migrated from UUID to deterministic ID, return active user
-                let mut fallback_stmt = conn
-                    .prepare("SELECT id, username, display_name, avatar, created_at, email FROM users ORDER BY created_at DESC LIMIT 1")
-                    .map_err(|e| e.to_string())?;
-                let fallback = fallback_stmt.query_row([], |row| {
-                    Ok(User {
-                        id: row.get(0)?,
-                        username: row.get(1)?,
-                        display_name: row.get(2)?,
-                        avatar: row.get(3)?,
-                        created_at: row.get(4)?,
-                        email: row.get(5)?,
-                    })
-                }).ok();
-                Ok(fallback)
-            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
     }

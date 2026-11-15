@@ -1339,12 +1339,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // ─── RESTORE USER SESSION FROM SQLITE ──────────────────────────────────────
   useEffect(() => {
-    const savedUserId = localStorage.getItem('soundify_active_user_id');
-    if (savedUserId) {
-      invoke<User | null>('auth_get_current_user', { userId: savedUserId })
+    const savedUserId = localStorage.getItem('spytify_active_user_id') || localStorage.getItem('soundify_active_user_id');
+    if (savedUserId && savedUserId.trim() && savedUserId !== 'null' && savedUserId !== 'undefined') {
+      invoke<User | null>('auth_get_current_user', { userId: savedUserId.trim() })
         .then(user => {
           if (user) {
             setCurrentUser(user);
+            localStorage.setItem('spytify_active_user_id', user.id);
             localStorage.setItem('soundify_active_user_id', user.id);
             loadFavoritesFromDb(user.id);
 
@@ -1378,9 +1379,21 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 }
               }).catch(() => {});
             }
+          } else {
+            // Không tìm thấy phiên đăng nhập trên máy này -> Giữ giao diện chưa đăng nhập
+            localStorage.removeItem('spytify_active_user_id');
+            localStorage.removeItem('soundify_active_user_id');
+            setCurrentUser(null);
           }
         })
-        .catch(console.error);
+        .catch(() => {
+          localStorage.removeItem('spytify_active_user_id');
+          localStorage.removeItem('soundify_active_user_id');
+          setCurrentUser(null);
+        });
+    } else {
+      // Người dùng mới hoặc chưa đăng nhập -> Khởi tạo ở giao diện Logout
+      setCurrentUser(null);
     }
   }, []);
 
@@ -1399,6 +1412,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
+    localStorage.setItem('spytify_active_user_id', user.id);
     localStorage.setItem('soundify_active_user_id', user.id);
     loadFavoritesFromDb(user.id);
     showNotification(getTranslation(language, 'toast.welcomeUser', { name: user.display_name }));
@@ -1460,6 +1474,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const handleLogout = () => {
     setCurrentUser(null);
     setCommunityServerColor(null);
+    localStorage.removeItem('spytify_active_user_id');
     localStorage.removeItem('soundify_active_user_id');
     showNotification(getTranslation(language, 'toast.loggedOut'));
     setCurrentView('library');
@@ -1829,6 +1844,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   useEffect(() => {
     const onMsg = (event: MessageEvent) => {
       try {
+        // Chỉ xử lý tin nhắn từ iframe YouTube của App chính nếu iframe tồn tại
+        if (ytIframeRef.current && event.source && event.source !== ytIframeRef.current.contentWindow) {
+          return;
+        }
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data) return;
 
@@ -1842,6 +1861,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               sendYtCmd('unMute');
             }
             sendYtCmd('setVolume', [curVol * 100]);
+            ytHasStartedPlayingRef.current = true;
+            if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
           }
         }
 
@@ -1870,7 +1891,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             }
             ytHasStartedPlayingRef.current = true;
             if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-          } else if (data.info === 3) {
+          } else if (data.info === 3 || data.info === -1) {
             ytHasStartedPlayingRef.current = true;
             if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
           } else if (data.info === 2) {
@@ -1920,10 +1941,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               if (!isTrayModeRef.current) setDuration(0);
             }
           }
-          if (data.info.playerState === 1) {
-            isPlayingRef.current = true;
-            if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
-            if (!isTrayModeRef.current) setIsPlaying(true);
+          if (data.info.playerState === 1 || data.info.playerState === 3) {
+            ytHasStartedPlayingRef.current = true;
+            if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+            if (data.info.playerState === 1) {
+              isPlayingRef.current = true;
+              if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
+              if (!isTrayModeRef.current) setIsPlaying(true);
+            }
           }
           if (data.info.playerState === 2) {
             isPlayingRef.current = false;
@@ -2330,7 +2355,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       ytUnavailableTimerRef.current = setTimeout(() => {
         if (!ytHasStartedPlayingRef.current && currentTrackRef.current?.source === 'youtube') {
           const stalledTrack = currentTrackRef.current;
-          console.warn('[YouTube Watchdog] Embed stalled after 3.5s, trying YouTube Music API stream...');
+          console.warn('[YouTube Watchdog] Embed stalled after 10s...');
+          const isLive = checkIsLiveTrack(stalledTrack);
+          if (isLive) {
+            // Luồng phát sóng trực tiếp / Radio 24/7: tiếp tục gửi lệnh play mà không bỏ qua bài
+            sendYtCmd('playVideo');
+            return;
+          }
           fallbackToYoutubeMusicStream(stalledTrack).then((recovered) => {
             if (!recovered && currentTrackRef.current?.id === stalledTrack.id && !ytHasStartedPlayingRef.current) {
               showNotification('⚠️ Bài hát này không khả dụng. Tự động chuyển bài tiếp theo...');
@@ -2340,7 +2371,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             }
           });
         }
-      }, 3500);
+      }, 10000);
 
     } else if (track.source === 'soundcloud') {
       if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
@@ -2432,6 +2463,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handlePlayTrack = (track: Track, customQueue?: Track[]) => {
+    // Nếu bài hát này đang phát, giữ phát liên tục (không reload giật lag hay bắt đầu lại từ 0:00)
+    if (currentTrackRef.current?.id === track.id && isPlayingRef.current) {
+      if (customQueue && customQueue.length > 0) {
+        activeQueueRef.current = customQueue;
+        setActiveQueue(customQueue);
+      }
+      return;
+    }
+    // Nếu là bài hiện tại nhưng đang tạm dừng, tiếp tục phát tức thì
+    if (currentTrackRef.current?.id === track.id && !isPlayingRef.current) {
+      handleTogglePlay();
+      return;
+    }
+
     if (customQueue && customQueue.length > 0) {
       activeQueueRef.current = customQueue;
       setActiveQueue(customQueue);
@@ -2497,6 +2542,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       } else {
         onlineAudioRef.current?.play().catch(console.error);
       }
+    }
+  };
+
+  const handlePauseTrack = () => {
+    if (isPlayingRef.current) {
+      handleTogglePlay();
     }
   };
 
@@ -3411,8 +3462,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             </div>
           </header>
 
-          {/* Body Content */}
-          <div className={`flex-1 ${currentView === 'community' ? 'p-0 overflow-hidden flex flex-col' : 'overflow-y-auto px-7 py-5'}`}>
+          {/* ─── Persistent Spy Jam / Community View Container (Keep WebRTC Voice & Bot Radio alive in background) ─── */}
+          <div className={`flex-1 p-0 overflow-hidden flex flex-col ${currentView === 'community' ? '' : 'hidden'}`}>
+            <CommunityView
+              currentUser={currentUser}
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              onPlayTrack={handlePlayTrack}
+              onPauseTrack={handlePauseTrack}
+              onOpenAuth={() => setIsAuthModalOpen(true)}
+              accentColor={activeAccentColor}
+              language={language}
+              themeMode={themeMode}
+              onActiveServerChange={(server) => setCommunityServerColor(server ? server.accent_color : null)}
+            />
+          </div>
+
+          {/* ─── Main Standard Views Container ─── */}
+          <div className={`flex-1 overflow-y-auto px-7 py-5 ${currentView !== 'community' ? '' : 'hidden'}`}>
             {showVisualizer && currentView !== 'profile' && currentView !== 'ai_mix' && currentView !== 'community' && (
               <AudioVisualizer 
                 isPlaying={isPlaying} 
@@ -3472,18 +3539,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onToggleSmartDj={() => setSmartDjEnabled(p => !p)}
                 accentColor={activeAccentColor}
                 language={language}
-              />
-            ) : currentView === 'community' ? (
-              <CommunityView
-                currentUser={currentUser}
-                currentTrack={currentTrack}
-                isPlaying={isPlaying}
-                onPlayTrack={handlePlayTrack}
-                onOpenAuth={() => setIsAuthModalOpen(true)}
-                accentColor={activeAccentColor}
-                language={language}
-                themeMode={themeMode}
-                onActiveServerChange={(server) => setCommunityServerColor(server ? server.accent_color : null)}
               />
             ) : currentView === 'profile' ? (
               <ProfileView

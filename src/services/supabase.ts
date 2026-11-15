@@ -492,6 +492,7 @@ export interface CloudDirectMessageRow {
   sender_avatar?: string | null;
   content: string;
   track_embed?: Track | null;
+  image_url?: string | null;
   created_at: string;
   sent_at?: string;
 }
@@ -545,13 +546,24 @@ export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promis
   const client = getSupabaseClient();
   if (!client || !msg.room_id) return;
   try {
-    const { error } = await client.from('spytify_direct_messages').upsert(
+    let { error } = await client.from('spytify_direct_messages').upsert(
       {
         ...msg,
         sent_at: msg.sent_at || new Date().toISOString(),
       },
       { onConflict: 'id' }
     );
+    if (error && msg.image_url) {
+      const { image_url: _, ...withoutImg } = msg;
+      const res = await client.from('spytify_direct_messages').upsert(
+        {
+          ...withoutImg,
+          sent_at: msg.sent_at || new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+      error = res.error;
+    }
     if (error) return;
 
     // Giữ tối đa 80 tin nhắn gần nhất cho mỗi room_id để tránh quá tải database
