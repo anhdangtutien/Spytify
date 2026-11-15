@@ -3110,7 +3110,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {/* Toast Notification — Invincible Accent (Hiển thị ngay trên thanh Play) */}
       {!isTrayMode && statusMessage && (
         <div 
-          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full font-mono text-xs flex items-center gap-2.5 transition-all animate-in fade-in slide-in-from-bottom-3 duration-200 border shadow-2xl backdrop-blur-xl whitespace-nowrap pointer-events-none"
+          className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full font-mono text-xs flex items-center gap-2.5 transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 border shadow-2xl backdrop-blur-xl whitespace-nowrap pointer-events-none`}
           style={{
             backgroundColor: themeMode === 'light' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(14, 14, 20, 0.95)',
             color: themeMode === 'light' ? '#0f172a' : '#ffffff',
