@@ -295,6 +295,83 @@ async fn get_search_suggestions(query: String) -> Result<Vec<String>, String> {
     Ok(suggestions)
 }
 
+/// Sinh danh sách "thể loại động" từ các từ khóa đang thịnh hành trên YouTube (autocomplete).
+#[tauri::command]
+async fn get_trending_keywords(language: Option<String>) -> Result<Vec<String>, String> {
+    let lang = language.unwrap_or_else(|| "vi".to_string()).to_lowercase();
+    let (hl, seeds): (&str, Vec<&str>) = match lang.as_str() {
+        "vi" => ("vi", vec!["nhạc trending", "nhạc hot tiktok", "top hits", "remix", "nhạc chill"]),
+        "ja" => ("ja", vec!["人気曲", "jpop", "ボカロ", "anime song", "top hits"]),
+        "ko" => ("ko", vec!["인기 노래", "kpop", "top hits", "playlist", "remix"]),
+        "zh-cn" => ("zh-CN", vec!["热门歌曲", "抖音 热歌", "top hits", "playlist", "remix"]),
+        _ => ("en", vec!["trending songs", "viral tiktok songs", "top hits", "playlist", "remix"]),
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let futures = seeds.iter().map(|seed| {
+        let client = client.clone();
+        let seed = seed.to_string();
+        let hl = hl.to_string();
+        async move {
+            let res = client
+                .get("https://suggestqueries.google.com/complete/search")
+                .query(&[("client", "firefox"), ("ds", "yt"), ("hl", hl.as_str()), ("q", seed.as_str())])
+                .send()
+                .await
+                .ok()?;
+            let val = res.json::<serde_json::Value>().await.ok()?;
+            let arr = val.get(1)?.as_array()?.clone();
+            Some(
+                arr.into_iter()
+                    .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.eq_ignore_ascii_case(&seed))
+                    .collect::<Vec<String>>(),
+            )
+        }
+    });
+
+    let all = futures_util_join(futures).await;
+    let banned = ["karaoke", "lyrics", "lyric", "reaction", "review", "hour", "giờ", "beat", "download", "mp3", "loi bai hat", "lời bài hát"];
+
+    // Xen kẽ kết quả từ từng seed để chip đa dạng hơn
+    let lists: Vec<Vec<String>> = all.into_iter().flatten().collect();
+    let max_len = lists.iter().map(|l| l.len()).max().unwrap_or(0);
+    let mut keywords: Vec<String> = Vec::new();
+    for i in 0..max_len {
+        for list in &lists {
+            if let Some(k) = list.get(i) {
+                let low = k.to_lowercase();
+                if k.chars().count() < 3 || k.chars().count() > 32 { continue; }
+                if banned.iter().any(|b| low.contains(b)) { continue; }
+                if keywords.iter().any(|e| e.to_lowercase() == low) { continue; }
+                keywords.push(k.clone());
+            }
+        }
+    }
+    keywords.truncate(10);
+    Ok(keywords)
+}
+
+async fn futures_util_join<F, T>(futs: impl Iterator<Item = F>) -> Vec<T>
+where
+    F: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let handles: Vec<_> = futs.map(tokio::spawn).collect();
+    let mut out = Vec::with_capacity(handles.len());
+    for h in handles {
+        if let Ok(v) = h.await {
+            out.push(v);
+        }
+    }
+    out
+}
+
 #[tauri::command]
 async fn search_online(query: String, source: String) -> Result<Vec<SearchResult>, String> {
     match source.to_lowercase().as_str() {
@@ -1254,6 +1331,7 @@ pub fn run() {
             get_search_suggestions,
             get_related_tracks,
             get_trending_hits,
+            get_trending_keywords,
             auth_register,
             auth_login,
             auth_google_login,

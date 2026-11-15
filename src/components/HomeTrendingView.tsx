@@ -865,14 +865,45 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   const [trendingTracks, setTrendingTracks] = useState<SearchResult[]>(CURATED_BY_CATEGORY.usuk);
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('usuk');
+  const [trendingKeywords, setTrendingKeywords] = useState<string[]>([]);
+  const [keywordsLoading, setKeywordsLoading] = useState(false);
+
+  // Thể loại động: sinh từ khóa theo top trending (YouTube autocomplete) — fallback: nghệ sĩ hot nhất
+  const loadTrendingKeywords = async () => {
+    setKeywordsLoading(true);
+    try {
+      const kws = await invoke<string[]>('get_trending_keywords', { language });
+      if (kws && kws.length > 0) {
+        setTrendingKeywords(kws);
+        return;
+      }
+      throw new Error('empty');
+    } catch {
+      const freq = new Map<string, number>();
+      Object.values(CURATED_BY_CATEGORY).flat().forEach(t => {
+        const a = (t.artist || '').split(/,|&| x | ft\.?| feat\.?/i)[0].trim();
+        if (a && a.length > 1) freq.set(a, (freq.get(a) || 0) + 1);
+      });
+      setTrendingKeywords([...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => k));
+    } finally {
+      setKeywordsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadTrendingKeywords();
+  }, [language]);
 
   const fetchTrending = async (category: string) => {
     setLoading(true);
     setTrendingTracks([]);
 
     try {
-      const results = await invoke<SearchResult[]>('get_trending_hits', { category });
-      const curated = CURATED_BY_CATEGORY[category] || [];
+      const isKeyword = category.startsWith('kw:');
+      const results = isKeyword
+        ? await invoke<SearchResult[]>('search_online', { query: category.slice(3), source: 'youtube' })
+        : await invoke<SearchResult[]>('get_trending_hits', { category });
+      const curated = isKeyword ? [] : (CURATED_BY_CATEGORY[category] || []);
       const pool = results && results.length > 0
         ? (category === 'lofi' ? [...curated, ...results] : [...results, ...curated])
         : curated;
@@ -1099,6 +1130,53 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
           <span className="hidden sm:inline">{getTranslation(language, 'aimix.refresh')}</span>
         </button>
       </div>
+
+      {/* ─── DYNAMIC TRENDING KEYWORD GENRES ───────────────────────────────── */}
+      {(keywordsLoading || trendingKeywords.length > 0) && (
+        <div className="flex items-center gap-2 flex-wrap -mt-3">
+          <span
+            className="text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1 mr-1"
+            style={{ color: accentColor }}
+          >
+            <Sparkles className="w-3 h-3" />
+            {language === 'vi' ? 'Đang hot' : 'Trending now'}
+          </span>
+          {keywordsLoading && trendingKeywords.length === 0
+            ? Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-7 w-24 rounded-xl bg-white/5 border border-[#1c1c24] animate-pulse" />
+              ))
+            : trendingKeywords.map((kw) => {
+                const id = `kw:${kw}`;
+                const isActive = activeCategory === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActiveCategory(id)}
+                    title={kw}
+                    style={isActive ? {
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                      boxShadow: `0 0 14px ${accentColor}40`,
+                      borderColor: accentColor,
+                    } : { borderColor: `${accentColor}30` }}
+                    className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition-all cursor-pointer border max-w-[200px] truncate ${
+                      isActive ? 'font-bold' : 'bg-[#0e0e12] text-[#a0a0b2] hover:text-white hover:bg-[#16161e]'
+                    }`}
+                  >
+                    #{kw}
+                  </button>
+                );
+              })}
+          <button
+            onClick={loadTrendingKeywords}
+            disabled={keywordsLoading}
+            className="p-1.5 rounded-lg text-[#666] hover:text-white transition-colors cursor-pointer"
+            title={language === 'vi' ? 'Làm mới từ khóa thịnh hành' : 'Refresh trending keywords'}
+          >
+            <RefreshCw className={`w-3 h-3 ${keywordsLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      )}
 
       {/* ─── TOP 10 LEADERBOARD CHART ─────────────────────────────────────── */}
       <div className="space-y-4">

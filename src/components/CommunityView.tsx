@@ -714,6 +714,169 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeChannelRef = useRef<any>(null);
 
+  // ──────── WEBRTC REAL-TIME VOICE (P2P MESH, SIGNALING QUA SUPABASE BROADCAST) ────────
+  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const remoteAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const outboundStreamRef = useRef<MediaStream | null>(null);
+  const voiceServerIdRef = useRef<string>('');
+  const myVoiceParticipantRef = useRef<VoiceParticipant | null>(null);
+  const voiceVolRef = useRef({ speaker: 100, deafened: false, users: {} as Record<string, number> });
+
+  const applyRemoteVolume = (peerId: string) => {
+    const el = remoteAudioRef.current.get(peerId);
+    if (!el) return;
+    const { speaker, deafened, users } = voiceVolRef.current;
+    el.muted = deafened;
+    el.volume = Math.max(0, Math.min(1, (speaker / 100) * ((users[peerId] ?? 100) / 100)));
+  };
+
+  useEffect(() => {
+    voiceVolRef.current = { speaker: speakerVolume, deafened: isDeafened, users: userVolumes };
+    remoteAudioRef.current.forEach((_, id) => applyRemoteVolume(id));
+  }, [speakerVolume, isDeafened, userVolumes]);
+
+  const closePeer = (peerId: string) => {
+    const pc = peersRef.current.get(peerId);
+    if (pc) {
+      try { pc.close(); } catch {}
+      peersRef.current.delete(peerId);
+    }
+    pendingIceRef.current.delete(peerId);
+    const el = remoteAudioRef.current.get(peerId);
+    if (el) {
+      el.pause();
+      el.srcObject = null;
+      remoteAudioRef.current.delete(peerId);
+    }
+  };
+
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client || !connectedVoiceChannel) return;
+    const myId = myParticipantIdRef.current;
+    const topic = `spytify_voice_${voiceServerIdRef.current}_${connectedVoiceChannel}`;
+    const ch = client.channel(topic, { config: { broadcast: { ack: false, self: false } } });
+    const send = (event: string, payload: any) => {
+      ch.send({ type: 'broadcast', event, payload });
+    };
+    const ICE_SERVERS: RTCIceServer[] = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+
+    const createPeer = (peerId: string): RTCPeerConnection => {
+      const existing = peersRef.current.get(peerId);
+      if (existing) return existing;
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+      peersRef.current.set(peerId, pc);
+
+      const out = outboundStreamRef.current;
+      if (out && out.getAudioTracks().length > 0) {
+        out.getAudioTracks().forEach(t => pc.addTrack(t, out));
+      } else {
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+      }
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) send('rtc_ice', { from: myId, to: peerId, candidate: e.candidate.toJSON() });
+      };
+      pc.ontrack = (e) => {
+        let el = remoteAudioRef.current.get(peerId);
+        if (!el) {
+          el = new Audio();
+          el.autoplay = true;
+          remoteAudioRef.current.set(peerId, el);
+        }
+        el.srcObject = e.streams[0] || new MediaStream([e.track]);
+        applyRemoteVolume(peerId);
+        el.play().catch(() => {});
+      };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') closePeer(peerId);
+      };
+      return pc;
+    };
+
+    const flushIce = async (peerId: string, pc: RTCPeerConnection) => {
+      const queued = pendingIceRef.current.get(peerId) || [];
+      pendingIceRef.current.delete(peerId);
+      for (const c of queued) {
+        try { await pc.addIceCandidate(c); } catch {}
+      }
+    };
+
+    const makeOffer = async (peerId: string) => {
+      const pc = createPeer(peerId);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      send('rtc_offer', { from: myId, to: peerId, sdp: pc.localDescription });
+    };
+
+    // Người có ID nhỏ hơn luôn là bên gửi offer -> tránh xung đột (glare)
+    ch.on('broadcast', { event: 'rtc_hello' }, ({ payload }) => {
+      if (!payload?.from || payload.from === myId) return;
+      if (payload.to && payload.to !== myId) return;
+      if (myId < payload.from) {
+        makeOffer(payload.from).catch(err => console.error('RTC offer error:', err));
+      } else if (!payload.to) {
+        send('rtc_hello', { from: myId, to: payload.from });
+      }
+    });
+
+    ch.on('broadcast', { event: 'rtc_offer' }, async ({ payload }) => {
+      if (!payload || payload.to !== myId) return;
+      try {
+        const pc = createPeer(payload.from);
+        await pc.setRemoteDescription(payload.sdp);
+        await flushIce(payload.from, pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        send('rtc_answer', { from: myId, to: payload.from, sdp: pc.localDescription });
+      } catch (err) {
+        console.error('RTC answer error:', err);
+      }
+    });
+
+    ch.on('broadcast', { event: 'rtc_answer' }, async ({ payload }) => {
+      if (!payload || payload.to !== myId) return;
+      const pc = peersRef.current.get(payload.from);
+      if (!pc) return;
+      try {
+        await pc.setRemoteDescription(payload.sdp);
+        await flushIce(payload.from, pc);
+      } catch (err) {
+        console.error('RTC set answer error:', err);
+      }
+    });
+
+    ch.on('broadcast', { event: 'rtc_ice' }, async ({ payload }) => {
+      if (!payload || payload.to !== myId || !payload.candidate) return;
+      const pc = peersRef.current.get(payload.from);
+      if (pc && pc.remoteDescription) {
+        try { await pc.addIceCandidate(payload.candidate); } catch {}
+      } else {
+        const q = pendingIceRef.current.get(payload.from) || [];
+        q.push(payload.candidate);
+        pendingIceRef.current.set(payload.from, q);
+      }
+    });
+
+    ch.on('broadcast', { event: 'rtc_bye' }, ({ payload }) => {
+      if (payload?.from) closePeer(payload.from);
+    });
+
+    ch.subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') send('rtc_hello', { from: myId });
+    });
+
+    return () => {
+      send('rtc_bye', { from: myId });
+      Array.from(peersRef.current.keys()).forEach(closePeer);
+      ch.unsubscribe();
+    };
+  }, [connectedVoiceChannel]);
+
   // Auto-scroll chat to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -738,7 +901,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Handle channel switch
   const handleSelectChannel = (channel: CommunityChannel) => {
     setSelectedChannel(channel);
-    setMessages([]);
 
     // Nếu là kênh Voice: Tự động tham gia cuộc gọi ngay lập tức giống Discord!
     if (channel.type === 'voice') {
@@ -748,12 +910,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
   };
 
-  // ──────── SUPABASE REALTIME SYNC (MESSAGES & VOICE STATE) ────────
+  // ──────── SUPABASE REALTIME SYNC (MESSAGES & VOICE STATE THEO SERVER) ────────
   useEffect(() => {
     const client = getSupabaseClient();
     if (!client) return;
 
-    const channelTopic = `spytify_room_${selectedServer.id}_${selectedChannel.id}`;
+    const channelTopic = `spytify_server_${selectedServer.id}`;
     const channel = client.channel(channelTopic, {
       config: {
         broadcast: { ack: false },
@@ -763,12 +925,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     activeChannelRef.current = channel;
 
-    // 1. Nhận tin nhắn chat mới từ mọi máy khác
+    // 1. Nhận tin nhắn chat mới từ mọi máy khác trong cùng server
     channel.on('broadcast', { event: 'new_message' }, ({ payload }) => {
       if (payload && payload.id) {
         setMessages(prev => {
           if (prev.some(m => m.id === payload.id)) return prev;
-          return [...prev, payload].slice(-80);
+          return [...prev, payload].slice(-120);
         });
       }
     });
@@ -781,13 +943,31 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     });
 
     // 3. ĐỒNG BỘ HỘI THOẠI REALTIME (VOICE CALL STATE SYNC)
+    channel.on('broadcast', { event: 'voice_sync_request' }, () => {
+      if (myVoiceParticipantRef.current) {
+        channel.send({
+          type: 'broadcast',
+          event: 'voice_presence',
+          payload: { action: 'here', participant: myVoiceParticipantRef.current },
+        });
+      }
+    });
+
     channel.on('broadcast', { event: 'voice_presence' }, ({ payload }) => {
       if (!payload) return;
-      if (payload.action === 'join' && payload.participant) {
+      if ((payload.action === 'join' || payload.action === 'here') && payload.participant) {
         setVoiceParticipants(prev => {
           if (prev.some(p => p.id === payload.participant.id)) return prev;
           return [...prev, payload.participant];
         });
+        // Người đã ở trong phòng báo danh lại để người mới thấy đủ danh sách
+        if (payload.action === 'join' && myVoiceParticipantRef.current && payload.participant.id !== myParticipantIdRef.current) {
+          channel.send({
+            type: 'broadcast',
+            event: 'voice_presence',
+            payload: { action: 'here', participant: myVoiceParticipantRef.current },
+          });
+        }
       } else if (payload.action === 'leave' && payload.userId) {
         setVoiceParticipants(prev => prev.filter(p => p.id !== payload.userId));
       }
@@ -807,18 +987,31 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       );
     });
 
-    channel.subscribe();
+    channel.subscribe((status: string) => {
+      if (status === 'SUBSCRIBED') {
+        channel.send({ type: 'broadcast', event: 'voice_sync_request', payload: {} });
+        if (myVoiceParticipantRef.current) {
+          channel.send({
+            type: 'broadcast',
+            event: 'voice_presence',
+            payload: { action: 'join', participant: myVoiceParticipantRef.current },
+          });
+        }
+      }
+    });
 
     return () => {
       channel.unsubscribe();
       activeChannelRef.current = null;
     };
-  }, [selectedServer.id, selectedChannel.id]);
+  }, [selectedServer.id]);
 
   // ──────── THAM GIA / RỜI CUỘC GỌI VOICE CALL ────────
   const handleJoinVoiceCall = async (targetChannelId?: string) => {
     const myId = myParticipantIdRef.current;
     const channelIdToConnect = targetChannelId || selectedChannel.id;
+    voiceServerIdRef.current = selectedServer.id;
+    outboundStreamRef.current = null;
 
     // Dọn dẹp session cũ nếu đang kết nối ở kênh khác
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -861,6 +1054,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       source.connect(micGain);
       micGain.connect(analyser);
 
+      // Luồng mic đã qua gain -> gửi tới các peer WebRTC (giọng nói thật real-time)
+      const outboundDest = audioCtx.createMediaStreamDestination();
+      micGain.connect(outboundDest);
+      outboundStreamRef.current = outboundDest.stream;
+
       audioContextRef.current = audioCtx;
       analyserRef.current = analyser;
       micGainRef.current = micGain;
@@ -900,6 +1098,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       playAudioChime('join');
 
       // Phát sóng trạng thái tham gia cuộc gọi qua Supabase!
+      myVoiceParticipantRef.current = myParticipant;
       if (activeChannelRef.current) {
         activeChannelRef.current.send({
           type: 'broadcast',
@@ -911,6 +1110,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       setConnectedVoiceChannel(channelIdToConnect);
       setIsMuted(true);
       playAudioChime('join');
+      myVoiceParticipantRef.current = { ...myParticipant, isMuted: true };
 
       if (activeChannelRef.current) {
         activeChannelRef.current.send({
@@ -934,7 +1134,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       audioContextRef.current = null;
     }
     micGainRef.current = null;
-
+    outboundStreamRef.current = null;
+    myVoiceParticipantRef.current = null;
     if (activeChannelRef.current) {
       activeChannelRef.current.send({
         type: 'broadcast',
@@ -2297,7 +2498,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
             {/* Messages Stream */}
             <div className={`flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar ${isLight ? 'bg-[#ffffff]' : 'bg-[#0a0a0f]'}`}>
-              {messages.map(msg => (
+              {messages.filter(msg => !msg.channel_id || msg.channel_id === selectedChannel.id).map(msg => (
                 <div key={msg.id} className={`flex items-start gap-3 -mx-2 px-2 py-1 rounded-lg transition-colors ${
                   isLight ? 'hover:bg-[#f1f5f9]' : 'hover:bg-[#101016]/40'
                 }`}>
