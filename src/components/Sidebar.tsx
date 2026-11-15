@@ -1,7 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { 
   Search, FolderPlus, HardDrive, Heart, Sparkles, User as UserIcon, LogIn, Flame, Layers,
-  PanelLeftClose, PanelLeftOpen
+  PanelLeftClose, PanelLeftOpen, Wand2
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, SpytifyBrandLogo } from './Icons';
 import { ViewType, User } from '../types';
@@ -202,7 +202,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {navItem('albums', getTranslation(language, 'nav.myAlbums'), <Layers className="w-4 h-4" />,
           <span className="text-[10px] text-[#666] font-mono">{albumCount}</span>
         )}
-        {navItem('ai_mix', getTranslation(language, 'nav.aiMix'), <Sparkles className="w-4 h-4" />,
+        {navItem('ai_mix', getTranslation(language, 'nav.aiMix'), <Wand2 className="w-4 h-4" />,
           <span 
             className="text-[9px] px-1.5 py-0.2 rounded font-mono border"
             style={{ 
@@ -213,14 +213,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             AI
           </span>
-        )}
-        {navItem('profile', getTranslation(language, 'nav.account'), <UserIcon className="w-4 h-4" />,
-          currentUser ? (
-            <span 
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: accentColor }}
-            ></span>
-          ) : undefined
         )}
       </div>
 

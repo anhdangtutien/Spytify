@@ -38,6 +38,7 @@ export interface User {
   avatar?: string | null;
   email?: string | null;
   bio?: string;
+  custom_status?: string;
   created_at: string;
 }
 
@@ -106,6 +107,9 @@ export interface CommunityChannel {
   dj_bot_id?: string;
   custom_stream_url?: string;
   custom_stream_title?: string;
+  custom_bot_name?: string;
+  custom_bot_avatar?: string;
+  custom_backup_streams?: string[];
   is_loop_single?: boolean;
 }
 
@@ -123,6 +127,7 @@ export interface VoiceParticipant {
   listening?: string | null;
   listeningTrack?: Track | null;
   isScreenSharing?: boolean;
+  custom_status?: string;
   serverId?: string;
   channelId?: string;
   role?: string;
@@ -133,6 +138,15 @@ export interface CommunityServerTag {
   name: string;
   color: string;
   icon?: string;
+}
+
+export interface CommunityPendingInvite {
+  id: string;
+  fromUserId: string;
+  fromUserName: string;
+  targetUserId: string;
+  targetUserName: string;
+  timestamp: number;
 }
 
 export interface CommunityServer {
@@ -152,6 +166,8 @@ export interface CommunityServer {
   kicked_ids?: string[];
   tags?: CommunityServerTag[];
   member_tags?: Record<string, string[]>;
+  allow_member_invites?: boolean;
+  pending_invites?: CommunityPendingInvite[];
 }
 
 export interface RequestBotTrack {
@@ -175,6 +191,7 @@ export interface CommunityUserProfile {
   role: string;
   status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline';
   bio?: string;
+  custom_status?: string;
   listening?: string | null;
   listeningTrack?: Track | null;
   isHost?: boolean;

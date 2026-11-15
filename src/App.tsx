@@ -715,6 +715,7 @@ export default function App() {
 
   const checkIsLiveTrack = (t: Track | null): boolean => {
     if (!t || t.source !== 'youtube') return false;
+    if (t.album === 'On-Demand Music Queue') return false;
     const title = t.title.toLowerCase();
     const isRecordedLive =
       title.includes('live lounge') ||

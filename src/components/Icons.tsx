@@ -49,22 +49,28 @@ export const SpytifyBrandLogo: React.FC<{
   iconClassName = 'w-[74%] h-[74%]',
 }) => {
   const isLight = themeMode === 'light';
+  const effectiveAccent = accentColor;
+  // Dùng nền xám nhạt có độ tương phản rõ rệt trên theme sáng, và nền xám than tối tinh tế cho theme tối
+  const bgColor = isLight ? '#e2e8f0' : '#14141e';
+  const isWhiteAccent = accentColor.toUpperCase() === '#FFFFFF' || accentColor.toLowerCase() === 'white';
+  const iconColor = isLight && isWhiteAccent ? '#0f172a' : effectiveAccent;
+
   return (
     <div
-      className={`overflow-hidden flex items-center justify-center flex-shrink-0 transition-all ${className}`}
+      className={`overflow-hidden flex items-center justify-center flex-shrink-0 transition-all border ${className}`}
       style={{
-        backgroundColor: isLight ? '#09090d' : '#ffffff',
-        border: `1.5px solid ${isLight ? `${accentColor}55` : `${accentColor}40`}`,
+        backgroundColor: bgColor,
+        borderColor: isLight ? '#cbd5e1' : (isWhiteAccent ? 'rgba(255, 255, 255, 0.4)' : `${accentColor}50`),
         boxShadow: isLight
-          ? `0 4px 12px rgba(9, 9, 13, 0.25), 0 0 10px ${accentColor}30`
-          : `0 0 14px ${accentColor}40`,
+          ? '0 2px 8px rgba(15, 23, 42, 0.12)'
+          : `0 0 14px ${isWhiteAccent ? 'rgba(255, 255, 255, 0.25)' : `${accentColor}40`}`,
       }}
     >
       <SpyJamIcon
         className={iconClassName}
         style={{
-          color: accentColor,
-          backgroundColor: accentColor,
+          color: iconColor,
+          backgroundColor: iconColor,
         }}
       />
     </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
+import { HoverMarquee } from './HoverMarquee';
 import { optimizeThumbnailUrl, handleImageError } from '../utils/trackUtils';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 
@@ -196,14 +197,31 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                   : 'hover:bg-[#0c0c10] text-[#888899] hover:text-white border-l-2 border-transparent'
               }`}
             >
-              {/* Col 1: Play button / Number */}
+              {/* Col 1: Play button / Number / Equalizer */}
               <div className="flex items-center justify-center relative">
-                <span 
-                  className={`text-[11px] font-mono ${isSelected ? 'font-bold' : 'group-hover:hidden text-[#444]'}`}
-                  style={{ color: isSelected ? accentColor : undefined }}
-                >
-                  {idx + 1}
-                </span>
+                {isSelected && isPlaying ? (
+                  <div className="flex items-end justify-center gap-[2.5px] h-3.5 group-hover:hidden">
+                    <span 
+                      className="w-[3px] rounded-full animate-[pulse_0.8s_ease-in-out_infinite] h-3.5"
+                      style={{ backgroundColor: accentColor }} 
+                    />
+                    <span 
+                      className="w-[3px] rounded-full animate-[pulse_1.2s_ease-in-out_infinite_200ms] h-2" 
+                      style={{ backgroundColor: accentColor }} 
+                    />
+                    <span 
+                      className="w-[3px] rounded-full animate-[pulse_0.9s_ease-in-out_infinite_400ms] h-3" 
+                      style={{ backgroundColor: accentColor }} 
+                    />
+                  </div>
+                ) : (
+                  <span 
+                    className={`text-[11px] font-mono ${isSelected ? 'font-bold' : 'group-hover:hidden text-[#444]'}`}
+                    style={{ color: isSelected ? accentColor : undefined }}
+                  >
+                    {idx + 1}
+                  </span>
+                )}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -245,18 +263,18 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                   )}
                 </div>
 
-                <div className="flex flex-col overflow-hidden">
-                  <span
-                    className={`font-semibold truncate text-xs ${
+                <div className="flex flex-col overflow-hidden min-w-0">
+                  <HoverMarquee
+                    text={track.title}
+                    className={`font-semibold text-xs ${
                       isSelected ? 'font-bold' : 'text-white'
                     }`}
                     style={{ color: isSelected ? accentColor : undefined }}
-                  >
-                    {track.title}
-                  </span>
-                  <span className="text-[11px] text-[#8e8e9f] truncate group-hover:text-white">
-                    {track.artist}
-                  </span>
+                  />
+                  <HoverMarquee
+                    text={track.artist}
+                    className="text-[11px] text-[#8e8e9f] group-hover:text-white"
+                  />
                 </div>
               </div>
 

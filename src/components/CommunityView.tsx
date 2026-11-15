@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { 
@@ -9,7 +9,7 @@ import {
   MoreVertical, UserPlus, UserCheck, Heart, UserMinus, Trash2, Copy, Crown, Info,
   Search, ShieldAlert, AlertCircle, Edit3, EyeOff, Lock, LogIn,
   Monitor, MonitorOff, Image as ImageIcon, Paperclip, Maximize2, Minimize2, Download, Tag, FileText,
-  ListMusic, SkipForward, Square
+  ListMusic, SkipForward, Square, AlertTriangle, LogOut
 } from 'lucide-react';
 import { Track, User, CommunityServer, CommunityChannel, CommunityMessage, StageSession, VoiceParticipant, CommunityUserProfile, CommunityServerTag, SearchResult, RequestBotTrack } from '../types';
 import {
@@ -254,19 +254,22 @@ const DJ_BOT_OPTIONS = [
   },
   {
     id: 'custom',
-    name: 'Trạm Tùy Biến (Custom YouTube)',
+    name: 'Custom Station',
     genre: 'Custom Stream / Video 24/7',
-    liveStreamId: '',
-    liveStreamTitle: 'Luồng YouTube Tùy Biến',
-    backupStreams: [],
-    trackName: 'Trạm YouTube Tùy Biến',
+    liveStreamId: 'jfKfPfyJRdk',
+    liveStreamTitle: 'Luồng YouTube 24/7 (Lofi Chill)',
+    backupStreams: [
+      { id: '5yx6BWlEVcY', title: '🔴 ChillSynth FM 24/7' },
+      { id: '5qap5aO4i9A', title: '🔴 Lofi Girl Sleep Beats 24/7' },
+    ],
+    trackName: 'Custom Station Bot',
     track: {
       id: 'yt_custom_station',
-      title: 'Trạm YouTube Tùy Biến',
-      artist: 'Custom Stream DJ',
+      title: 'Custom Station Stream',
+      artist: 'Custom Station Bot',
       album: 'Custom 24/7 Station',
       duration_secs: 0,
-      path_or_url: '',
+      path_or_url: 'jfKfPfyJRdk',
       source: 'youtube' as const,
       cover_art: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
     },
@@ -349,12 +352,16 @@ export const getCleanMemberUsername = (
   return member.id.replace(/^usr_/, '');
 };
 
+// Chỉ 4 bot gốc của hệ thống mới được phép follow / có mối quan hệ bạn bè
+export const CAN_FOLLOW_BOT_IDS = new Set(['usr_host', 'usr_agent_01', 'usr_luna_lofi', 'usr_music_bot']);
+
 const getMemberTags = (
   userId: string,
   server: CommunityServer,
   currentUserId?: string,
   myParticipantId?: string,
-  userNameOrDisplay?: string
+  userNameOrDisplay?: string,
+  realtimePresences?: Record<string, any>
 ): CommunityServerTag[] => {
   if (DJ_BOT_TAGS[userId]) {
     return DJ_BOT_TAGS[userId];
@@ -363,24 +370,82 @@ const getMemberTags = (
   const isMe =
     userId === 'usr_me' ||
     Boolean(currentUserId && userId === currentUserId) ||
-    Boolean(myParticipantId && userId === myParticipantId) ||
-    Boolean(userNameOrDisplay && (userId === userNameOrDisplay || userNameOrDisplay === 'usr_me'));
+    Boolean(myParticipantId && userId === myParticipantId);
+
+  // 1. Kiểm tra tag được đồng bộ realtime qua Supabase presence
+  const rtTags = realtimePresences?.[userId]?.tags || realtimePresences?.[userId]?.tag_ids;
+  if (Array.isArray(rtTags) && rtTags.length > 0) {
+    return allTags.filter(t => rtTags.includes(t.id));
+  }
 
   const memberTags = server.member_tags || {};
   let tagIds: string[] = [];
 
-  const candidateKeys = isMe
-    ? [currentUserId, myParticipantId, 'usr_me', userId, userNameOrDisplay].filter(Boolean) as string[]
-    : [userId, userNameOrDisplay].filter(Boolean) as string[];
-
-  for (const k of candidateKeys) {
-    if (Array.isArray(memberTags[k]) && memberTags[k].length > 0) {
-      tagIds = memberTags[k];
-      break;
+  if (isMe) {
+    const candidateKeys = [currentUserId, myParticipantId, 'usr_me', userId].filter(Boolean) as string[];
+    for (const k of candidateKeys) {
+      if (Array.isArray(memberTags[k]) && memberTags[k].length > 0) {
+        tagIds = memberTags[k];
+        break;
+      }
+    }
+  } else {
+    // Với người khác, chỉ lấy tag của đúng userId đó, tuyệt đối không lấy usr_me của máy mình
+    if (Array.isArray(memberTags[userId]) && memberTags[userId].length > 0) {
+      tagIds = memberTags[userId];
+    } else if (userNameOrDisplay && Array.isArray(memberTags[userNameOrDisplay]) && memberTags[userNameOrDisplay].length > 0) {
+      tagIds = memberTags[userNameOrDisplay];
     }
   }
 
   return allTags.filter(t => tagIds.includes(t.id));
+};
+
+export const HoverMarquee: React.FC<{ text: string; className?: string; title?: string }> = ({ text, className = '', title }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [isHovered, setIsHovered] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    if (containerRef.current && textRef.current) {
+      setOverflows(textRef.current.scrollWidth > containerRef.current.clientWidth);
+    }
+  }, [text]);
+
+  const handleMouseEnter = () => {
+    if (containerRef.current && textRef.current) {
+      setOverflows(textRef.current.scrollWidth > containerRef.current.clientWidth);
+    }
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+  };
+
+  const scrollDistance = (textRef.current?.scrollWidth || 0) - (containerRef.current?.clientWidth || 0);
+
+  return (
+    <div
+      ref={containerRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      title={title || text}
+      className={`relative overflow-hidden whitespace-nowrap ${className}`}
+    >
+      <span
+        ref={textRef}
+        className="inline-block transition-transform ease-linear"
+        style={{
+          transform: isHovered && overflows && scrollDistance > 0 ? `translateX(-${scrollDistance}px)` : 'translateX(0px)',
+          transitionDuration: overflows && scrollDistance > 0 ? `${Math.max(1.5, scrollDistance / 35)}s` : '0.3s',
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
 };
 
 export interface SlashCommandItem {
@@ -397,25 +462,25 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_play',
     name: '/play',
-    syntax: '/play <tên bài hoặc link YouTube>',
+    syntax: '/play [@id_bot] <tên bài hoặc link YouTube>',
     alias: '/p',
-    description: 'Bot Rythm nhảy vào phòng thoại của bạn & phát nhạc',
+    description: 'Gọi bot yêu cầu đầu tiên (hoặc chỉ định @id_bot) vào phòng thoại phát nhạc',
     category: 'Âm nhạc',
     insertText: '/play ',
   },
   {
     id: 'cmd_p',
     name: '/p',
-    syntax: '/p <tên bài hoặc link YouTube>',
+    syntax: '/p [@id_bot] <tên bài hoặc link YouTube>',
     alias: '/play',
-    description: 'Lệnh tắt: Bot Rythm vào phòng thoại & phát nhạc ngay',
+    description: 'Lệnh tắt: Gọi bot đầu tiên hoặc /p @id_bot <tên bài / link> để phát nhạc',
     category: 'Âm nhạc',
     insertText: '/p ',
   },
   {
     id: 'cmd_skip',
     name: '/skip',
-    syntax: '/skip',
+    syntax: '/skip [@id_bot]',
     alias: '/sk',
     description: 'Bỏ qua bài hiện tại, phát bài tiếp theo trong hàng đợi',
     category: 'Điều khiển',
@@ -424,7 +489,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_sk',
     name: '/sk',
-    syntax: '/sk',
+    syntax: '/sk [@id_bot]',
     alias: '/skip',
     description: 'Lệnh tắt: Bỏ qua bài hát hiện tại',
     category: 'Điều khiển',
@@ -433,7 +498,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_stop',
     name: '/stop',
-    syntax: '/stop',
+    syntax: '/stop [@id_bot]',
     alias: '/st',
     description: 'Dừng phát nhạc, dọn sạch hàng đợi & bot rời phòng thoại',
     category: 'Điều khiển',
@@ -442,7 +507,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_st',
     name: '/st',
-    syntax: '/st',
+    syntax: '/st [@id_bot]',
     alias: '/stop',
     description: 'Lệnh tắt: Dừng phát nhạc và bot rời phòng thoại',
     category: 'Điều khiển',
@@ -451,7 +516,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_queue',
     name: '/queue',
-    syntax: '/queue',
+    syntax: '/queue [@id_bot]',
     alias: '/q',
     description: 'Xem danh sách bài hát đang chờ trong hàng đợi',
     category: 'Thông tin',
@@ -460,7 +525,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_q',
     name: '/q',
-    syntax: '/q',
+    syntax: '/q [@id_bot]',
     alias: '/queue',
     description: 'Lệnh tắt: Xem danh sách hàng đợi',
     category: 'Thông tin',
@@ -469,7 +534,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_pause',
     name: '/pause',
-    syntax: '/pause',
+    syntax: '/pause [@id_bot]',
     description: 'Tạm dừng phát nhạc trong phòng thoại',
     category: 'Điều khiển',
     insertText: '/pause',
@@ -477,7 +542,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_resume',
     name: '/resume',
-    syntax: '/resume',
+    syntax: '/resume [@id_bot]',
     description: 'Tiếp tục phát nhạc đang tạm dừng',
     category: 'Điều khiển',
     insertText: '/resume',
@@ -485,7 +550,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_loop',
     name: '/loop',
-    syntax: '/loop',
+    syntax: '/loop [@id_bot]',
     alias: '/l',
     description: 'Bật hoặc tắt chế độ phát lặp lại bài hát hiện tại (Single Track Loop)',
     category: 'Điều khiển',
@@ -494,7 +559,7 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   {
     id: 'cmd_l',
     name: '/l',
-    syntax: '/l',
+    syntax: '/l [@id_bot]',
     alias: '/loop',
     description: 'Lệnh tắt: Bật/tắt lặp lại bài hát hiện tại',
     category: 'Điều khiển',
@@ -510,13 +575,22 @@ export const BOT_SLASH_COMMANDS: SlashCommandItem[] = [
   },
 ];
 
-// Helper trích xuất video ID 11 ký tự từ link YouTube hoặc chuỗi ID
+// Helper trích xuất video ID 11 ký tự từ link YouTube hoặc chuỗi ID (hỗ trợ watch, live, embed, shorts, youtu.be)
 export const extractYouTubeId = (urlOrQuery: string): string | null => {
+  if (!urlOrQuery) return null;
   const trimmed = urlOrQuery.trim();
-  const regExp = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/;
+  const regExp = /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|live\/|shorts\/))([\w-]{11})/;
   const match = trimmed.match(regExp);
   if (match && match[1]) return match[1];
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+  try {
+    const urlObj = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+    const v = urlObj.searchParams.get('v');
+    if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+    const pathParts = urlObj.pathname.split('/').filter(Boolean);
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && /^[a-zA-Z0-9_-]{11}$/.test(lastPart)) return lastPart;
+  } catch {}
   return null;
 };
 
@@ -839,11 +913,38 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         localStorage.getItem('spytify_server_messages');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        }
       }
     } catch {}
     return [];
   });
+
+  // Thêm tin nhắn mới vào server - giới hạn 80 tin nhắn độc lập cho từng server và bảo đảm thứ tự thời gian
+  const appendServerMessage = (newMsg: CommunityMessage) => {
+    setMessages(prev => {
+      if (prev.some(m => m.id === newMsg.id)) return prev;
+      const targetSrvId = newMsg.server_id || selectedServer.id;
+      const thisSrvMsgs = prev.filter(m => (m.server_id || selectedServer.id) === targetSrvId);
+      const otherSrvMsgs = prev.filter(m => (m.server_id || selectedServer.id) !== targetSrvId);
+
+      const updatedThisSrv = [...thisSrvMsgs, newMsg]
+        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .slice(-MAX_CHAT_MESSAGES_LIMIT);
+
+      const merged = [...otherSrvMsgs, ...updatedThisSrv].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+
+      try {
+        if (currentUser?.id) {
+          localStorage.setItem(`spytify_server_messages_${currentUser.id}`, JSON.stringify(merged));
+        }
+      } catch {}
+      return merged;
+    });
+  };
   const [inputText, setInputText] = useState('');
   const [attachCurrentTrack, setAttachCurrentTrack] = useState(false);
 
@@ -864,6 +965,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [editStationUrlDraft, setEditStationUrlDraft] = useState('');
   const [editStationTitleDraft, setEditStationTitleDraft] = useState('');
   const [editStationIsLoopDraft, setEditStationIsLoopDraft] = useState(false);
+  const [editStationBotNameDraft, setEditStationBotNameDraft] = useState('');
+  const [editStationBotAvatarDraft, setEditStationBotAvatarDraft] = useState('');
 
   // ──────── GỬI ẢNH CHAT & LIGHTBOX PREVIEW ────────
   const [pendingChatImage, setPendingChatImage] = useState<string | null>(null);
@@ -899,13 +1002,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       ? creatingChannelState.type
       : null;
 
-  // ──────── MODAL TẠO SERVER MỚI ────────
+  // ──────── MODAL TẠO SERVER MỚI (DISCORD-STYLE STEP WIZARD) ────────
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createServerStep, setCreateServerStep] = useState<1 | 2 | 3>(1);
   const [newServerPreset, setNewServerPreset] = useState('cyber');
   const [newServerName, setNewServerName] = useState('My Cyber Lounge');
   const [newServerDesc, setNewServerDesc] = useState('Trạm phát sóng âm nhạc');
   const [newServerIcon, setNewServerIcon] = useState('⚡');
   const [newServerColor, setNewServerColor] = useState('#00E5FF');
+
+  // ──────── CUSTOM BOT MODAL & STATE (CHIA THÀNH 2 LOẠI: BOT TRẠM LIVE 24/7 & BOT THEO YÊU CẦU) ────────
+  const [isBotModalOpen, setIsBotModalOpen] = useState(false);
+  const [editingBotTargetId, setEditingBotTargetId] = useState<string | null>(null);
+  const [botDraftType, setBotDraftType] = useState<'station' | 'demand'>('station');
+  const [botDraftName, setBotDraftName] = useState('');
+  const [botDraftAvatar, setBotDraftAvatar] = useState('');
+  const [botDraftTag, setBotDraftTag] = useState('DJ');
+  const [botDraftListening, setBotDraftListening] = useState('');
+  const [botDraftStreamUrl, setBotDraftStreamUrl] = useState('');
+  const [botDraftBackupUrls, setBotDraftBackupUrls] = useState('');
+  const [botDraftIsLoopSingle, setBotDraftIsLoopSingle] = useState(false);
 
   const getChannelName = (channel: CommunityChannel) => {
     return channel.name;
@@ -930,53 +1046,95 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [isDeafened, setIsDeafened] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
 
-  // ──────── ON-DEMAND MUSIC BOT (RYTHM / USR_MUSIC_BOT) & SLASH COMMANDS ────────
-  const requestBotIframeRef = useRef<HTMLIFrameElement | null>(null);
+  // ──────── ON-DEMAND MUSIC BOT (RYTHM / USR_MUSIC_BOT) RIÊNG BIỆT CHO TỪNG SERVER ────────
+  const requestBotIframesRef = useRef<Record<string, HTMLIFrameElement | null>>({});
+  const lastEndedBotTrackRef = useRef<Record<string, string>>({});
   const chatTextInputRef = useRef<HTMLInputElement | null>(null);
-  const [requestBotCurrentTrack, setRequestBotCurrentTrack] = useState<RequestBotTrack | null>(() => {
-    try {
-      const s = localStorage.getItem('spytify_request_bot_current');
-      return s ? JSON.parse(s) : null;
-    } catch {
-      return null;
+
+  type ServerDemandBotState = {
+    currentTrack: RequestBotTrack | null;
+    queue: RequestBotTrack[];
+    isPlaying: boolean;
+    isLooping: boolean;
+    voiceChannelId: string | null;
+    startedAt?: number;
+  };
+
+  const EMPTY_DEMAND_BOT_STATE: ServerDemandBotState = {
+    currentTrack: null,
+    queue: [],
+    isPlaying: false,
+    isLooping: false,
+    voiceChannelId: null,
+    startedAt: undefined,
+  };
+
+  const getDemandBotKey = (srvId: string, botId: string = 'usr_music_bot') => `${srvId}::${botId}`;
+  const parseDemandBotKey = (key: string): { srvId: string; botId: string } => {
+    const idx = key.indexOf('::');
+    if (idx !== -1) {
+      return { srvId: key.slice(0, idx), botId: key.slice(idx + 2) };
     }
-  });
-  const [requestBotQueue, setRequestBotQueue] = useState<RequestBotTrack[]>(() => {
+    return { srvId: key, botId: 'usr_music_bot' };
+  };
+
+  const [serverRythmBots, setServerRythmBots] = useState<Record<string, ServerDemandBotState>>(() => {
     try {
-      const s = localStorage.getItem('spytify_request_bot_queue');
-      return s ? JSON.parse(s) : [];
-    } catch {
-      return [];
-    }
+      const s = localStorage.getItem('spytify_server_rythm_bots');
+      if (s) return JSON.parse(s);
+    } catch {}
+    return {};
   });
-  const [isRequestBotPlaying, setIsRequestBotPlaying] = useState<boolean>(false);
-  const [isRequestBotLooping, setIsRequestBotLooping] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('spytify_request_bot_loop') === 'true';
-    } catch {
-      return false;
+
+  const serverRythmBotsRef = useRef(serverRythmBots);
+  serverRythmBotsRef.current = serverRythmBots;
+
+  const getServerRythmBotFromRecord = (
+    all: Record<string, ServerDemandBotState>,
+    srvId: string = selectedServer.id,
+    botId: string = 'usr_music_bot'
+  ): ServerDemandBotState => {
+    const key = getDemandBotKey(srvId, botId);
+    if (all[key]) return all[key];
+    if (all[srvId] && (botId === 'usr_music_bot' || !Object.keys(all).some(k => k.startsWith(`${srvId}::`)))) {
+      return all[srvId];
     }
-  });
-  const [requestBotVoiceChannelId, setRequestBotVoiceChannelId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('spytify_request_bot_voice_channel') || null;
-    } catch {
-      return null;
-    }
-  });
-  const [requestBotVoiceServerId, setRequestBotVoiceServerId] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem('spytify_request_bot_voice_server') || null;
-    } catch {
-      return null;
-    }
-  });
+    return EMPTY_DEMAND_BOT_STATE;
+  };
+
+  const getServerRythmBot = (srvId: string = selectedServer.id, botId: string = 'usr_music_bot'): ServerDemandBotState => {
+    return getServerRythmBotFromRecord(serverRythmBots, srvId, botId);
+  };
+
+  const updateServerRythmBot = (
+    srvId: string,
+    botId: string,
+    updater: (prev: ServerDemandBotState) => ServerDemandBotState
+  ) => {
+    setServerRythmBots(all => {
+      const key = getDemandBotKey(srvId, botId);
+      const current = getServerRythmBotFromRecord(all, srvId, botId);
+      const next = updater(current);
+      const updated = { ...all, [key]: next };
+      if (updated[srvId] && (botId === 'usr_music_bot' || !Object.keys(all).some(k => k.startsWith(`${srvId}::`)))) {
+        delete updated[srvId];
+      }
+      try {
+        localStorage.setItem('spytify_server_rythm_bots', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
   const [slashDismissed, setSlashDismissed] = useState(false);
+  const [selectedMentionBotIndex, setSelectedMentionBotIndex] = useState(0);
+  const [mentionBotDismissed, setMentionBotDismissed] = useState(false);
   const [kickedRadioBots, setKickedRadioBots] = useState<Record<string, boolean>>({});
 
   // ──────── AUDIO & VOICE SETTINGS (MIC & SPEAKER) ────────
   const [isAudioSettingsOpen, setIsAudioSettingsOpen] = useState(false);
+  const [audioSettingsTab, setAudioSettingsTab] = useState<'mic' | 'speaker' | 'bot' | 'processing'>('mic');
   const [micVolume, setMicVolume] = useState<number>(() => {
     try {
       const v = localStorage.getItem('spytify_mic_volume');
@@ -1069,6 +1227,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       status?: string;
       listening?: string | null;
       isHost?: boolean;
+      thought?: string | null;
+      custom_status?: string | null;
     };
     rect: DOMRect;
     tags: CommunityServerTag[];
@@ -1181,6 +1341,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       status?: string;
       listeningTrack?: Track | null;
     };
+    fromVoice?: boolean;
   } | null>(null);
 
   // Right-click context menu for channels (Text & Voice)
@@ -1332,60 +1493,78 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (!hasDj) {
         const djOpt = DJ_BOT_OPTIONS.find(d => d.id === djId) || DJ_BOT_OPTIONS[0];
         const botProfile = registeredUsers.find(u => u.id === djId) || INITIAL_USERS.find(u => u.id === djId);
+        const resolvedBotName = channel.custom_bot_name || (djId === 'custom' ? (channel.custom_stream_title ? `${channel.custom_stream_title} DJ` : 'Custom Station Bot') : (botProfile?.display_name || djOpt.name));
         list.unshift({
           id: djId,
-          name: botProfile?.display_name || djOpt.name,
-          username: botProfile?.username || djOpt.name.toLowerCase().replace(/\s+/g, ''),
-          avatar: botProfile?.avatar || null,
+          name: resolvedBotName,
+          username: botProfile?.username || resolvedBotName.toLowerCase().replace(/\s+/g, ''),
+          avatar: channel.custom_bot_avatar || botProfile?.avatar || null,
           isMuted: isBotMuted,
           isDeafened: false,
           isSpeaking: isConnectedVoiceRadio && (channel.id === connectedVoiceChannel) ? isBotSpeaking : true,
           isHost: true,
           isBot: true,
-          listening: djOpt.liveStreamTitle || djOpt.trackName,
-          listeningTrack: djOpt.track,
+          listening: channel.custom_stream_title || djOpt.liveStreamTitle || djOpt.trackName,
+          listeningTrack: (() => {
+            const customVid = channel.custom_stream_url ? extractYouTubeId(channel.custom_stream_url) : null;
+            if (customVid) {
+              return {
+                id: `yt_station_${djId}`,
+                title: channel.custom_stream_title || channel.name || resolvedBotName,
+                artist: resolvedBotName,
+                album: 'Spytify 24/7 Live Radio',
+                duration_secs: 0,
+                path_or_url: customVid,
+                source: 'youtube' as const,
+                cover_art: 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=500&auto=format&fit=crop&q=60',
+              };
+            }
+            return djOpt.track;
+          })(),
           serverId: selectedServer.id,
           channelId: channel.id,
         });
       }
     }
 
-    // On-Demand Music Bot (Rythm): Hiển thị trong phòng thoại khi đang phát theo yêu cầu
-    if (requestBotVoiceChannelId === channel.id && isRequestBotPlaying && requestBotCurrentTrack) {
-      const botProfile = registeredUsers.find(u => u.id === 'usr_music_bot') || INITIAL_USERS.find(u => u.id === 'usr_music_bot');
-      const rythmIndex = list.findIndex(p => p.id === 'usr_music_bot');
-      const isRythmLocallyMuted = Boolean(locallyMutedUsers['usr_music_bot']);
-      const rythmParticipant: VoiceParticipant = {
-        id: 'usr_music_bot',
-        name: botProfile?.display_name || 'Rythm',
-        username: botProfile?.username || 'rythm',
-        avatar: botProfile?.avatar || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
-        isMuted: isRythmLocallyMuted,
-        isDeafened: false,
-        isSpeaking: isRequestBotPlaying,
-        isHost: false,
-        isBot: true,
-        role: 'DJ BOT',
-        serverId: requestBotVoiceServerId || selectedServer.id,
-        channelId: channel.id,
-        listening: `🎶 ${requestBotCurrentTrack.title} - ${requestBotCurrentTrack.artist}`,
-        listeningTrack: {
-          id: requestBotCurrentTrack.id,
-          title: requestBotCurrentTrack.title,
-          artist: requestBotCurrentTrack.artist,
-          album: 'On-Demand Music Queue',
-          duration_secs: 0,
-          path_or_url: requestBotCurrentTrack.url_or_id,
-          source: 'youtube' as const,
-          cover_art: requestBotCurrentTrack.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
-        },
-      };
-      if (rythmIndex >= 0) {
-        list[rythmIndex] = rythmParticipant;
-      } else {
-        list.push(rythmParticipant);
+    // On-Demand Music Bots (hiển thị tất cả Bot Yêu Cầu đang giữ phòng / phát nhạc trên Server, kể cả khi người dùng đã out)
+    demandMusicBots.forEach((dbot: CommunityUserProfile) => {
+      const dbotState = getServerRythmBot(selectedServer.id, dbot.id);
+      if (dbotState.voiceChannelId === channel.id && dbotState.currentTrack) {
+        const idx = list.findIndex(p => p.id === dbot.id);
+        const isDbotLocallyMuted = Boolean(locallyMutedUsers[dbot.id]);
+        const botParticipant: VoiceParticipant = {
+          id: dbot.id,
+          name: dbot.display_name || 'Rythm',
+          username: dbot.username || 'rythm',
+          avatar: dbot.avatar || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+          isMuted: isDbotLocallyMuted,
+          isDeafened: false,
+          isSpeaking: dbotState.isPlaying && !isDbotLocallyMuted,
+          isHost: false,
+          isBot: true,
+          role: dbot.role || 'ON-DEMAND',
+          serverId: selectedServer.id,
+          channelId: channel.id,
+          listening: `🎶 ${dbotState.currentTrack.title} - ${dbotState.currentTrack.artist}`,
+          listeningTrack: {
+            id: dbotState.currentTrack.id,
+            title: dbotState.currentTrack.title,
+            artist: dbotState.currentTrack.artist,
+            album: 'On-Demand Music Queue',
+            duration_secs: 180,
+            path_or_url: dbotState.currentTrack.url_or_id,
+            source: 'youtube' as const,
+            cover_art: dbotState.currentTrack.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+          },
+        };
+        if (idx >= 0) {
+          list[idx] = botParticipant;
+        } else {
+          list.push(botParticipant);
+        }
       }
-    }
+    });
 
     return list;
   };
@@ -1404,7 +1583,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   });
 
   // ──────── REGISTERED USERS & MUTUAL FOLLOW FRIENDS SYSTEM ────────
-  const ACTIVE_BOT_IDS = new Set(['usr_host', 'usr_agent_01', 'usr_luna_lofi', 'usr_music_bot', 'custom']);
+  const BASE_BOT_IDS = new Set(['usr_host', 'usr_agent_01', 'usr_luna_lofi', 'usr_music_bot', 'custom']);
+  const isBaseOrCustomBotId = (id: string, role?: string) =>
+    BASE_BOT_IDS.has(id) ||
+    id.startsWith('usr_music_bot') ||
+    id.startsWith('bot_custom') ||
+    id.startsWith('bot_') ||
+    (role ? (role.includes('DEMAND') || role.includes('RADIO') || role.includes('DJ')) : false);
+
   const [registeredUsers, setRegisteredUsers] = useState<CommunityUserProfile[]>(() => {
     try {
       const saved = localStorage.getItem('spytify_registered_users');
@@ -1416,7 +1602,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           .map(u => ({
             ...u,
             followsCurrentUser: false,
-            status: (ACTIVE_BOT_IDS.has(u.id) ? 'online' : 'offline') as CommunityUserProfile['status'],
+            status: (isBaseOrCustomBotId(u.id, u.role) ? 'online' : 'offline') as CommunityUserProfile['status'],
           }));
         const map = new Map<string, CommunityUserProfile>();
         INITIAL_USERS.forEach(u => map.set(u.id, u));
@@ -1428,6 +1614,64 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     } catch {}
     return INITIAL_USERS;
   });
+
+  const ACTIVE_BOT_IDS = useMemo(() => {
+    const ids = new Set(['usr_host', 'usr_agent_01', 'usr_luna_lofi', 'usr_music_bot', 'custom']);
+    registeredUsers.forEach(u => {
+      if (isBaseOrCustomBotId(u.id, u.role)) {
+        ids.add(u.id);
+      }
+    });
+    return ids;
+  }, [registeredUsers]);
+
+  // Danh sách các Bot yêu cầu nhạc (On-Demand Music Bots) của Server hiện tại, sắp xếp theo thứ tự tạo (ưu tiên bot tạo trước)
+  const demandMusicBots = useMemo(() => {
+    const isRestrictedSrv = Boolean(
+      selectedServer.is_custom ||
+      selectedServer.id.startsWith('srv_custom_') ||
+      Array.isArray(selectedServer.member_ids)
+    );
+    const hasMember = (botId: string) => {
+      if (Array.isArray(selectedServer.kicked_ids) && selectedServer.kicked_ids.includes(botId)) return false;
+      if (Array.isArray(selectedServer.member_ids) && selectedServer.member_ids.includes(botId)) return true;
+      if (messages.some(m => m.server_id === selectedServer.id && m.user_id === botId)) return true;
+      return !isRestrictedSrv;
+    };
+
+    const bots: CommunityUserProfile[] = [];
+    const baseBot = registeredUsers.find(u => u.id === 'usr_music_bot') || INITIAL_USERS.find(u => u.id === 'usr_music_bot');
+    if (baseBot && hasMember(baseBot.id)) bots.push(baseBot);
+    registeredUsers.forEach(u => {
+      if (u.id !== 'usr_music_bot' && (u.id.startsWith('usr_music_bot') || (u.role || '').toUpperCase().includes('DEMAND'))) {
+        if (hasMember(u.id)) {
+          bots.push(u);
+        }
+      }
+    });
+
+    if (bots.length === 0 && baseBot && !(Array.isArray(selectedServer.kicked_ids) && selectedServer.kicked_ids.includes(baseBot.id))) {
+      bots.push(baseBot);
+    }
+
+    return bots.sort((a, b) => {
+      const timeA = a.joinedAt ? new Date(a.joinedAt).getTime() : 0;
+      const timeB = b.joinedAt ? new Date(b.joinedAt).getTime() : 0;
+      return timeA - timeB;
+    });
+  }, [registeredUsers, selectedServer, messages]);
+
+  const isDemandBotId = (botId: string) =>
+    botId === 'usr_music_bot' ||
+    botId.startsWith('usr_music_bot') ||
+    demandMusicBots.some(b => b.id === botId);
+
+  const primaryDemandBotId = demandMusicBots[0]?.id || 'usr_music_bot';
+  const curServerBot = getServerRythmBot(selectedServer.id, primaryDemandBotId);
+  const requestBotCurrentTrack = curServerBot.currentTrack;
+  const requestBotQueue = curServerBot.queue;
+  const isRequestBotPlaying = curServerBot.isPlaying;
+  const requestBotVoiceChannelId = curServerBot.voiceChannelId;
 
   // Cloud Follow Graph: danh sách những người đã gửi lời mời kết bạn / theo dõi currentUser
   const [followersOfMeMap, setFollowersOfMeMap] = useState<Record<string, CloudFollowEdge>>({});
@@ -1500,9 +1744,38 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setIsBioModalOpen(false);
   };
 
+  const handleOpenThoughtModal = () => {
+    setThoughtDraft(myUserThought);
+    setIsStatusMenuOpen(false);
+    setIsEditingThoughtModal(true);
+  };
+
+  const handleSaveThought = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = thoughtDraft.trim();
+    setMyUserThought(trimmed);
+    try {
+      if (currentUser?.id) {
+        localStorage.setItem(`spytify_user_thought_${currentUser.id}`, trimmed);
+      }
+      localStorage.setItem('spytify_user_thought', trimmed);
+    } catch {}
+    if (activeChannelRef.current) {
+      activeChannelRef.current.send({
+        type: 'broadcast',
+        event: 'user_presence',
+        payload: {
+          ...myPresencePayloadRef.current,
+          custom_status: trimmed,
+        },
+      });
+    }
+    setIsEditingThoughtModal(false);
+  };
+
   // Helper truy xuất toàn diện tag của thành viên (xử lý cả 'usr_me' và ID thật)
   const resolveMemberTags = (userId: string, server: CommunityServer = selectedServer, userNameOrDisplay?: string): CommunityServerTag[] => {
-    return getMemberTags(userId, server, currentUser?.id, myParticipantIdRef.current, userNameOrDisplay || myServerDisplayName);
+    return getMemberTags(userId, server, currentUser?.id, myParticipantIdRef.current, userNameOrDisplay, realtimeUserPresences);
   };
 
   // Real-time online presence map keyed by user id / username
@@ -1514,6 +1787,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       avatar?: string | null;
       status: 'online' | 'dnd' | 'invisible' | 'offline';
       bio?: string | null;
+      thought?: string | null;
+      custom_status?: string | null;
+      tags?: string[] | null;
       listening?: string | null;
       listeningTrack?: Track | null;
     }>
@@ -1732,23 +2008,49 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // Active stream index for each DJ Bot (supports automatic and manual rotation across live stream candidates)
   const [botActiveStreamIdx, setBotActiveStreamIdx] = useState<Record<string, number>>({});
+  const [editServerAllowInvites, setEditServerAllowInvites] = useState<boolean>(true);
+
+  const [myUserThought, setMyUserThought] = useState<string>(() => {
+    try {
+      return localStorage.getItem('spytify_user_thought') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [isEditingThoughtModal, setIsEditingThoughtModal] = useState(false);
+  const [thoughtDraft, setThoughtDraft] = useState('');
+  const [openMemberActionsMenuId, setOpenMemberActionsMenuId] = useState<string | null>(null);
+  const [newChannelCustomBackupUrls, setNewChannelCustomBackupUrls] = useState<string>('');
+  const [editStationBackupStreamsDraft, setEditStationBackupStreamsDraft] = useState<string>('');
 
   const getBotCurrentStream = (botId: string) => {
     // Luồng YouTube tùy biến được gắn trực tiếp trên kênh Radio hiện tại (Custom YouTube Station)
-    if (connectedVoiceChannelObj?.is_radio && connectedVoiceChannelObj.custom_stream_url) {
-      const rawUrl = connectedVoiceChannelObj.custom_stream_url.trim();
-      const extractedId = extractYouTubeId(rawUrl) || rawUrl;
-      const customTitle = connectedVoiceChannelObj.custom_stream_title || 'Trạm YouTube Tùy Biến';
+    if (connectedVoiceChannelObj?.is_radio && (connectedVoiceChannelObj.custom_stream_url || connectedVoiceChannelObj.custom_backup_streams?.length)) {
+      const primaryUrl = (connectedVoiceChannelObj.custom_stream_url || '').trim();
+      const backupUrls = connectedVoiceChannelObj.custom_backup_streams || [];
+      const allUrls = [primaryUrl, ...backupUrls].filter(Boolean);
       const dj = DJ_BOT_OPTIONS.find(d => d.id === botId) || DJ_BOT_OPTIONS.find(d => d.id === 'custom') || DJ_BOT_OPTIONS[0];
-      return {
-        id: extractedId,
-        title: customTitle,
-        index: 0,
-        total: 1,
-        dj,
-        isCustom: true,
-        isLoopSingle: Boolean(connectedVoiceChannelObj.is_loop_single),
-      };
+
+      if (allUrls.length > 0) {
+        const candidates = allUrls.map((u, i) => {
+          const extracted = extractYouTubeId(u) || (u.length === 11 ? u : 'jfKfPfyJRdk');
+          return {
+            id: extracted,
+            title: i === 0
+              ? (connectedVoiceChannelObj.custom_stream_title || 'Trạm YouTube Tùy Biến')
+              : `${connectedVoiceChannelObj.custom_stream_title || 'Trạm Tùy Biến'} (Dự phòng #${i})`
+          };
+        });
+        const curIdx = (botActiveStreamIdx[botId] || 0) % candidates.length;
+        return {
+          ...candidates[curIdx],
+          index: curIdx,
+          total: candidates.length,
+          dj,
+          isCustom: true,
+          isLoopSingle: Boolean(connectedVoiceChannelObj.is_loop_single),
+        };
+      }
     }
     const dj = DJ_BOT_OPTIONS.find(d => d.id === botId) || DJ_BOT_OPTIONS[0];
     const candidates = [
@@ -1767,16 +2069,31 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleRotateBotStream = (botId: string, reason?: string) => {
+    if (!canManageServer) {
+      showVoiceToast(language === 'vi' ? 'Chỉ Chủ server và Mod mới có quyền điều chỉnh bot!' : 'Only Server Owner and Mod can adjust bots!');
+      return;
+    }
     setBotActiveStreamIdx(prev => {
-      const dj = DJ_BOT_OPTIONS.find(d => d.id === botId);
-      if (!dj) return prev;
-      const candidates = [
-        { id: dj.liveStreamId, title: dj.liveStreamTitle },
-        ...(dj.backupStreams || [])
-      ];
+      let total = 1;
+      let botTitle = botId;
+      if (connectedVoiceChannelObj?.is_radio && (connectedVoiceChannelObj.custom_stream_url || connectedVoiceChannelObj.custom_backup_streams?.length)) {
+        const primary = (connectedVoiceChannelObj.custom_stream_url || '').trim();
+        const backups = connectedVoiceChannelObj.custom_backup_streams || [];
+        const all = [primary, ...backups].filter(Boolean);
+        total = Math.max(1, all.length);
+        botTitle = connectedVoiceChannelObj.custom_stream_title || 'Trạm Tùy Biến';
+      } else {
+        const dj = DJ_BOT_OPTIONS.find(d => d.id === botId) || DJ_BOT_OPTIONS[0];
+        const candidates = [
+          { id: dj.liveStreamId, title: dj.liveStreamTitle },
+          ...(dj.backupStreams || [])
+        ];
+        total = candidates.length;
+        botTitle = dj.name;
+      }
       const curIdx = prev[botId] || 0;
-      const nextIdx = (curIdx + 1) % candidates.length;
-      console.warn(`[DJ Bot Stream Rotation] ${dj.name} switched to #${nextIdx + 1}/${candidates.length}: ${candidates[nextIdx].title} (Lý do: ${reason || 'Chuyển luồng'})`);
+      const nextIdx = (curIdx + 1) % total;
+      console.warn(`[DJ Bot Stream Rotation] ${botTitle} switched to #${nextIdx + 1}/${total} (Lý do: ${reason || 'Chuyển luồng'})`);
       return { ...prev, [botId]: nextIdx };
     });
   };
@@ -1807,34 +2124,50 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     } catch {}
   };
 
-  const sendBotChatMessage = (content: string) => {
+  const sendBotChatMessage = (
+    content: string,
+    botProfile?: { id?: string; name?: string; display_name?: string; username?: string; avatar?: string | null },
+    explicitServerId?: string
+  ) => {
+    const activeBot = botProfile || demandMusicBots[0] || {
+      id: 'usr_music_bot',
+      display_name: 'Rythm',
+      username: 'rythm',
+      avatar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+    };
+    const bId = activeBot.id || 'usr_music_bot';
+    const bName = (activeBot as any).display_name || (activeBot as any).name || 'Rythm';
+    const bUser = (activeBot as any).username || bName.toLowerCase().replace(/\s+/g, '_');
+    const bAvatar = activeBot.avatar || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60';
     const createdAtStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const targetSrvId = explicitServerId || selectedServer.id;
+    const targetChId =
+      targetSrvId === selectedServer.id
+        ? selectedChannel.id
+        : (servers.find(s => s.id === targetSrvId)?.channels.find(c => c.type === 'text')?.id || selectedChannel.id);
+
     const botMsg: CommunityMessage = {
       id: `msg_bot_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      server_id: selectedServer.id,
-      channel_id: selectedChannel.id,
-      user_id: 'usr_music_bot',
-      username: 'rythm',
-      display_name: 'Rythm',
-      avatar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+      server_id: targetSrvId,
+      channel_id: targetChId,
+      user_id: bId,
+      username: bUser,
+      display_name: bName,
+      avatar: bAvatar,
       content,
       track_embed: null,
       created_at: createdAtStr,
     };
 
-    setMessages(prev => {
-      const next = [...prev.slice(-(MAX_CHAT_MESSAGES_LIMIT - 1)), botMsg];
-      if (currentUser?.id) {
-        try { localStorage.setItem(`spytify_server_messages_${currentUser.id}`, JSON.stringify(next)); } catch {}
-      }
-      return next;
-    });
+    appendServerMessage(botMsg);
 
-    activeChannelRef.current?.send({
-      type: 'broadcast',
-      event: 'new_message',
-      payload: botMsg,
-    });
+    if (targetSrvId === selectedServer.id) {
+      activeChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'new_message',
+        payload: botMsg,
+      });
+    }
   };
 
   const syncBotState = (
@@ -1842,119 +2175,318 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     q: RequestBotTrack[],
     playing: boolean,
     vChId?: string | null,
-    vSrvId?: string | null
+    vSrvId?: string | null,
+    botId: string = 'usr_music_bot',
+    looping?: boolean,
+    startedAt?: number
   ) => {
-    const finalVChId = vChId !== undefined ? vChId : requestBotVoiceChannelId;
-    const finalVSrvId = vSrvId !== undefined ? vSrvId : requestBotVoiceServerId;
+    const finalVSrvId = vSrvId !== undefined && vSrvId !== null ? vSrvId : selectedServer.id;
+    const currentBotState = getServerRythmBotFromRecord(serverRythmBotsRef.current, finalVSrvId, botId);
+    const finalVChId = vChId !== undefined ? vChId : currentBotState.voiceChannelId;
     activeChannelRef.current?.send({
       type: 'broadcast',
       event: 'request_bot_sync',
       payload: {
+        serverId: finalVSrvId,
+        botId,
         currentTrack: cur,
         queue: q,
         isPlaying: playing,
+        isLooping: looping !== undefined ? looping : currentBotState.isLooping,
         voiceChannelId: finalVChId,
         voiceServerId: finalVSrvId,
+        startedAt: startedAt !== undefined ? startedAt : currentBotState.startedAt,
       },
     });
   };
 
-  const handleRequestBotTrackEnded = () => {
-    // "bot rythm nếu có ng thoát ra không có ai trong phòng thì cứ phát liên tục hết bài r mới out, chứ k phải out ra là pause vô lại là tiếp tục bài hát"
-    const hasHumanInRoom =
-      (connectedVoiceChannel === requestBotVoiceChannelId) ||
-      voiceParticipants.some(p => p.channelId === requestBotVoiceChannelId && !p.isBot && !ACTIVE_BOT_IDS.has(p.id));
+  const resolveBotProfileById = (botId: string) =>
+    registeredUsers.find(u => u.id === botId) ||
+    INITIAL_USERS.find(u => u.id === botId) || {
+      id: botId,
+      display_name: botId === 'usr_music_bot' ? 'Rythm' : 'Music Bot',
+      username: botId === 'usr_music_bot' ? 'rythm' : botId,
+      avatar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+    };
 
-    if (!hasHumanInRoom) {
-      setRequestBotQueue([]);
-      setRequestBotCurrentTrack(null);
-      setIsRequestBotPlaying(false);
-      setRequestBotVoiceChannelId(null);
-      setRequestBotVoiceServerId(null);
+  const handleRequestBotTrackEnded = (targetSrvId?: string, botId: string = 'usr_music_bot', endedTrackId?: string) => {
+    const srvId = targetSrvId || connectedVoiceServerId || selectedServer.id;
+    const botKey = getDemandBotKey(srvId, botId);
+    const botState = getServerRythmBotFromRecord(serverRythmBotsRef.current, srvId, botId);
+    if (!botState.currentTrack) return;
+
+    const curTrackId = botState.currentTrack.id;
+    if (endedTrackId && endedTrackId !== curTrackId) return;
+    if (!botState.isLooping && lastEndedBotTrackRef.current[botKey] === curTrackId) return;
+    lastEndedBotTrackRef.current[botKey] = curTrackId;
+
+    const botProfile = resolveBotProfileById(botId);
+    const queue = botState.queue || [];
+
+    // Ưu tiên phát tiếp bài tiếp theo trong hàng đợi kể cả khi mọi người đã out phòng thoại
+    if (queue.length > 0) {
+      const nextTrack = queue[0];
+      const remainingQueue = queue.slice(1);
+      const startedAt = Date.now();
+      updateServerRythmBot(srvId, botId, prev => ({
+        ...prev,
+        currentTrack: nextTrack,
+        queue: remainingQueue,
+        isPlaying: true,
+        startedAt,
+      }));
+      requestBotTrackStartedAtRef.current = startedAt;
+      persistBotCurrentTrack(nextTrack);
+      persistBotQueue(remainingQueue);
+
       try {
-        localStorage.removeItem('spytify_request_bot_voice_channel');
-        localStorage.removeItem('spytify_request_bot_voice_server');
+        const iframe = requestBotIframesRef.current[botKey];
+        iframe?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'loadVideoById', args: [nextTrack.url_or_id] }), '*'
+        );
+        iframe?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'
+        );
       } catch {}
-      persistBotCurrentTrack(null);
-      persistBotQueue([]);
+
       sendBotChatMessage(
-        language === 'vi'
-          ? `⏹️ **PHÒNG THOẠI ĐÃ TRỐNG:** Mọi người đã rời phòng thoại. Bot Rythm đã phát xong hết bài và tự động out khỏi phòng!`
-          : `⏹️ **ROOM IS EMPTY:** All users left. Rythm finished playing the current song and left the room!`
+        `🎶 **TIẾP TỤC PHÁT TỰ ĐỘNG TỪ HÀNG ĐỢI**\n🎵 **${nextTrack.title}** - *${nextTrack.artist}*\n👤 Yêu cầu bởi: **@${nextTrack.requestedBy.name}**\n🔢 Còn **${remainingQueue.length}** bài trong hàng đợi.`,
+        botProfile,
+        srvId
       );
-      playAudioChime('leave');
-      syncBotState(null, [], false, null, null);
+      syncBotState(nextTrack, remainingQueue, true, botState.voiceChannelId, srvId, botId, botState.isLooping, startedAt);
       return;
     }
 
-    setRequestBotQueue(prevQueue => {
-      if (prevQueue.length > 0) {
-        const nextTrack = prevQueue[0];
-        const remainingQueue = prevQueue.slice(1);
-        setRequestBotCurrentTrack(nextTrack);
-        setIsRequestBotPlaying(true);
-        requestBotTrackStartedAtRef.current = Date.now();
-        persistBotCurrentTrack(nextTrack);
-        persistBotQueue(remainingQueue);
-
-        sendBotChatMessage(
-          `🎶 **TIẾP TỤC PHÁT TỰ ĐỘNG TỪ HÀNG ĐỢI**\n🎵 **${nextTrack.title}** - *${nextTrack.artist}*\n👤 Yêu cầu bởi: **@${nextTrack.requestedBy.name}**\n🔢 Còn **${remainingQueue.length}** bài trong hàng đợi.`
+    if (botState.isLooping && botState.currentTrack) {
+      const startedAt = Date.now();
+      delete lastEndedBotTrackRef.current[botKey];
+      requestBotTrackStartedAtRef.current = startedAt;
+      updateServerRythmBot(srvId, botId, prev => ({ ...prev, isPlaying: true, startedAt }));
+      try {
+        const iframe = requestBotIframesRef.current[botKey];
+        iframe?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*'
         );
-        syncBotState(nextTrack, remainingQueue, true);
-        return remainingQueue;
-      } else {
-        setRequestBotCurrentTrack(null);
-        setIsRequestBotPlaying(false);
-        setRequestBotVoiceChannelId(null);
-        setRequestBotVoiceServerId(null);
-        try {
-          localStorage.removeItem('spytify_request_bot_voice_channel');
-          localStorage.removeItem('spytify_request_bot_voice_server');
-        } catch {}
-        persistBotCurrentTrack(null);
-        persistBotQueue([]);
-
-        sendBotChatMessage(
-          `⏹️ **ĐÃ PHÁT XONG TOÀN BỘ HÀNG ĐỢI!**\n📭 Hàng đợi đã hết bài, bot Rythm đã rời khỏi phòng thoại. Dùng \`/play [tên bài hát]\` để tiếp tục nghe nhạc!`
+        iframe?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'
         );
-        playAudioChime('leave');
-        syncBotState(null, [], false, null, null);
-        return [];
-      }
-    });
+      } catch {}
+      sendBotChatMessage(
+        language === 'vi'
+          ? `🔂 **ĐANG LẶP LẠI BÀI HÁT:** **${botState.currentTrack.title}** - *${botState.currentTrack.artist}*`
+          : `🔂 **LOOPING TRACK:** **${botState.currentTrack.title}** - *${botState.currentTrack.artist}*`,
+        botProfile,
+        srvId
+      );
+      return;
+    }
+
+    // Chỉ rời phòng thoại khi đã phát xong toàn bộ hàng đợi
+    const prevVoiceChId = botState.voiceChannelId;
+    delete lastEndedBotTrackRef.current[botKey];
+    updateServerRythmBot(srvId, botId, () => ({ ...EMPTY_DEMAND_BOT_STATE }));
+    setVoiceParticipants(prev => prev.filter(p => !(p.id === botId && (!p.serverId || p.serverId === srvId))));
+    persistBotCurrentTrack(null);
+    persistBotQueue([]);
+    if (connectedVoiceServerId === srvId && connectedVoiceChannel && connectedVoiceChannel === prevVoiceChId) {
+      playAudioChime('leave');
+    }
+    sendBotChatMessage(
+      language === 'vi'
+        ? `⏹️ **ĐÃ PHÁT XONG TOÀN BỘ HÀNG ĐỢI!**\n📭 Hàng đợi đã hết bài, **${botProfile.display_name}** đã hoàn thành danh sách phát và rời phòng thoại. Dùng \`/play${botId === primaryDemandBotId ? '' : ` @${botId}`} [tên bài hát]\` để tiếp tục nghe nhạc!`
+        : `⏹️ **QUEUE FINISHED!**\n📭 Queue completed and **${botProfile.display_name}** left the voice channel. Use \`/play${botId === primaryDemandBotId ? '' : ` @${botId}`} [song name]\` to play more music!`,
+      botProfile,
+      srvId
+    );
+    syncBotState(null, [], false, null, srvId, botId, false, undefined);
   };
 
-  const handleRequestBotError = (errorCode?: number | string) => {
-    if (requestBotCurrentTrack) {
+  const handleRequestBotError = (errorCode?: number | string, targetSrvId?: string, botId: string = 'usr_music_bot') => {
+    const srvId = targetSrvId || connectedVoiceServerId || selectedServer.id;
+    const botState = getServerRythmBotFromRecord(serverRythmBotsRef.current, srvId, botId);
+    const botProfile = resolveBotProfileById(botId);
+    if (botState.currentTrack) {
       sendBotChatMessage(
-        `⚠️ Bài hát **${requestBotCurrentTrack.title}** không khả dụng trên trình phát (Mã lỗi YouTube: ${errorCode || 'Unavailable'}). Đang tự động chuyển bài tiếp theo...`
+        `⚠️ Bài hát **${botState.currentTrack.title}** không khả dụng trên trình phát (Mã lỗi YouTube: ${errorCode || 'Unavailable'}). Đang tự động chuyển bài tiếp theo...`,
+        botProfile,
+        srvId
       );
     }
-    handleRequestBotTrackEnded();
+    handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
   };
 
   const processBotMusicCommand = async (content: string, sender: { id: string; name: string; username: string }) => {
     const raw = content.trim();
-    const hasBotMention = /@(?:(?:\"rythm\")|(?:\"musicbot\")|rythm|musicbot|bot)\b/i.test(raw);
-    const startsWithSlashCmd = /^\/(?:p|play|st|stop|sk|skip|q|queue|pause|resume|help)\b/i.test(raw);
+    if (!raw) return;
 
-    if (!hasBotMention && !startsWithSlashCmd) {
+    const findDemandBotByToken = (token: string): CommunityUserProfile | undefined => {
+      const q = token.trim().toLowerCase();
+      if (!q) return undefined;
+      return demandMusicBots.find((b: CommunityUserProfile) => {
+        const bId = b.id.toLowerCase();
+        const bUser = (b.username || '').toLowerCase();
+        const bName = (b.display_name || '').toLowerCase();
+        return bId === q || bUser === q || bName === q;
+      });
+    };
+
+    let cmdName: string | null = null;
+    let explicitBotToken: string | null = null;
+    let resolvedMentionedBot: CommunityUserProfile | undefined = undefined;
+    let argsText = '';
+
+    const slashMatch = raw.match(/^\/(p|play|st|stop|sk|skip|q|queue|pause|resume|l|loop|help)(?:\s+([\s\S]*))?$/i);
+    if (slashMatch) {
+      cmdName = slashMatch[1].toLowerCase();
+      const afterCmd = (slashMatch[2] || '').trim();
+      if (afterCmd.startsWith('@')) {
+        const singleTok = afterCmd.match(/^@(?:"([^"]+)"|([^\s]+))(?:\s+([\s\S]*))?$/);
+        const tok = (singleTok?.[1] || singleTok?.[2] || '').trim();
+        const directMatch = tok ? findDemandBotByToken(tok) : undefined;
+        if (directMatch) {
+          explicitBotToken = tok;
+          resolvedMentionedBot = directMatch;
+          argsText = (singleTok?.[3] || '').trim();
+        } else {
+          // Hỗ trợ tên bot có khoảng trắng không cần dấu ngoặc kép (VD: /play @Music Bot 2 Tên bài)
+          const lowerAfterAt = afterCmd.slice(1).toLowerCase();
+          const prefixMatch = demandMusicBots.find((b: CommunityUserProfile) => {
+            const name = (b.display_name || '').toLowerCase();
+            return name && (lowerAfterAt === name || lowerAfterAt.startsWith(name + ' '));
+          });
+          if (prefixMatch) {
+            explicitBotToken = prefixMatch.display_name;
+            resolvedMentionedBot = prefixMatch;
+            argsText = afterCmd.slice(1 + (prefixMatch.display_name || '').length).trim();
+          } else {
+            explicitBotToken = tok || afterCmd.slice(1);
+            argsText = (singleTok?.[3] || '').trim();
+          }
+        }
+      } else {
+        argsText = afterCmd;
+      }
+    } else if (raw.startsWith('@')) {
+      const leadTok = raw.match(/^@(?:"([^"]+)"|([^\s]+))(?:\s+([\s\S]*))?$/);
+      const tok = (leadTok?.[1] || leadTok?.[2] || '').trim();
+      const directMatch = tok ? findDemandBotByToken(tok) : undefined;
+      if (directMatch) {
+        resolvedMentionedBot = directMatch;
+        explicitBotToken = tok;
+        const afterTok = (leadTok?.[3] || '').trim();
+        const innerSlash = afterTok.match(/^\/(p|play|st|stop|sk|skip|q|queue|pause|resume|l|loop|help)(?:\s+([\s\S]*))?$/i);
+        if (innerSlash) {
+          cmdName = innerSlash[1].toLowerCase();
+          argsText = (innerSlash[2] || '').trim();
+        } else {
+          cmdName = 'help';
+          argsText = afterTok;
+        }
+      }
+    }
+
+    if (!cmdName) return;
+
+    const firstDemandBot = demandMusicBots[0] || resolveBotProfileById('usr_music_bot');
+
+    // Nếu người dùng chỉ định @id_bot nhưng không khớp bot yêu cầu nào
+    if (explicitBotToken && !resolvedMentionedBot) {
+      const stationHit = registeredUsers.find(
+        u => !isDemandBotId(u.id) && (
+          u.id.toLowerCase() === explicitBotToken!.toLowerCase() ||
+          (u.username || '').toLowerCase() === explicitBotToken!.toLowerCase() ||
+          (u.display_name || '').toLowerCase() === explicitBotToken!.toLowerCase()
+        )
+      );
+      const availableList = demandMusicBots.map(b => `\`@${b.id}\` (**${b.display_name}**)`).join(', ');
+      if (stationHit) {
+        sendBotChatMessage(
+          `⚠️ **${stationHit.display_name}** là **Bot Trạm Live 24/7**, không nhận lệnh theo yêu cầu.\n🎵 Bot Yêu Cầu khả dụng trong server: ${availableList}`,
+          firstDemandBot
+        );
+      } else {
+        sendBotChatMessage(
+          `❌ Không tìm thấy Bot Yêu Cầu **@${explicitBotToken}** trong server này.\n🤖 Bot hợp lệ: ${availableList}\n💡 Cú pháp: \`/play @id_bot <tên bài hát hoặc link YouTube>\``,
+          firstDemandBot
+        );
+      }
       return;
     }
 
-    // Tách lệnh và tham số (loại bỏ mention như @Rythm hay @"Rythm")
-    const cleanWithoutMention = raw
-      .replace(/@(?:(?:\"[^\"]+\")|[^\s]+)/g, '')
-      .trim();
+    // /play hoặc /p không kèm @id_bot -> CHỈ gọi bot yêu cầu đầu tiên theo thứ tự được tạo
+    // Các lệnh điều khiển không kèm @id_bot -> ưu tiên bot đang phát ở phòng thoại hiện tại hoặc bot đầu tiên
+    const isPlayCmd = cmdName === 'p' || cmdName === 'play';
+    const selectedBot = resolvedMentionedBot || (
+      isPlayCmd
+        ? firstDemandBot
+        : (
+            demandMusicBots.find((b: CommunityUserProfile) => {
+              const st = getServerRythmBot(selectedServer.id, b.id);
+              return Boolean(connectedVoiceChannel && st.voiceChannelId === connectedVoiceChannel && st.currentTrack);
+            }) ||
+            demandMusicBots.find((b: CommunityUserProfile) => Boolean(getServerRythmBot(selectedServer.id, b.id).currentTrack)) ||
+            firstDemandBot
+          )
+    );
+    const targetBotId = selectedBot.id;
+    const targetBotName = selectedBot.display_name || 'Rythm';
+    const targetBotKey = getDemandBotKey(selectedServer.id, targetBotId);
+    const botState = getServerRythmBot(selectedServer.id, targetBotId);
+    const syntaxPrefix = targetBotId === firstDemandBot.id ? '/play' : `/play @${targetBotId}`;
+
+    // 2. Bắt buộc người dùng phải tham gia một phòng thoại trước khi yêu cầu nhạc
+    const isSenderInVoice =
+      (sender.id === currentUser?.id || sender.id === 'usr_me')
+        ? Boolean(connectedVoiceChannel)
+        : voiceParticipants.some(vp => vp.id === sender.id || vp.name === sender.name);
+
+    if (!isSenderInVoice) {
+      sendBotChatMessage(
+        language === 'vi'
+          ? `⚠️ **@${sender.name}**, vui lòng tham gia một phòng thoại (Voice Channel) trước khi yêu cầu bot phát nhạc!`
+          : `⚠️ **@${sender.name}**, please join a voice channel before requesting music!`,
+        selectedBot
+      );
+      return;
+    }
+
+    // Kiểm tra quyền điều khiển bot đối với các lệnh can thiệp (skip, stop, pause, loop)
+    const isControlCmd = ['st', 'stop', 'sk', 'skip', 'pause', 'l', 'loop'].includes(cmdName);
+    if (isControlCmd) {
+      const isRequester = botState.currentTrack?.requestedBy?.id === sender.id;
+      if (!canManageServer && !isRequester) {
+        sendBotChatMessage(`⚠️ Chỉ Chủ Server, Mod hoặc người đã yêu cầu bài hát này mới có quyền điều khiển **${targetBotName}**.`, selectedBot);
+        return;
+      }
+    }
+
+    // 0. Lệnh Lặp bài hát hiện hành (/l hoặc /loop)
+    if (cmdName === 'l' || cmdName === 'loop') {
+      if (!botState.currentTrack) {
+        sendBotChatMessage(`⚠️ Hiện tại **${targetBotName}** chưa phát bài hát nào để lặp. Dùng \`${syntaxPrefix} [tên bài hát]\` để phát nhạc trước.`, selectedBot);
+        return;
+      }
+      const nextLoop = !botState.isLooping;
+      updateServerRythmBot(selectedServer.id, targetBotId, prev => ({ ...prev, isLooping: nextLoop }));
+      try {
+        localStorage.setItem('spytify_bot_loop_state', JSON.stringify(nextLoop));
+      } catch {}
+      sendBotChatMessage(
+        nextLoop
+          ? `🔂 **ĐÃ BẬT LẶP BÀI HÁT HIỆN HÀNH:** **${botState.currentTrack.title}** - *${botState.currentTrack.artist}* (Theo yêu cầu của **@${sender.name}**)`
+          : `➡️ **ĐÃ TẮT LẶP BÀI HÁT:** **${targetBotName}** sẽ tiếp tục phát các bài tiếp theo trong hàng đợi khi bài hát kết thúc.`,
+        selectedBot
+      );
+      syncBotState(botState.currentTrack, botState.queue, botState.isPlaying, botState.voiceChannelId, selectedServer.id, targetBotId, nextLoop, botState.startedAt);
+      return;
+    }
 
     // 1. Lệnh Dừng (/st hoặc /stop) -> Dừng và bot rời phòng thoại
-    const isStop = /^\/(?:st|stop)\b/i.test(cleanWithoutMention) || /\/(?:st|stop)\b/i.test(raw);
-    if (isStop) {
-      setRequestBotCurrentTrack(null);
-      setRequestBotQueue([]);
-      setIsRequestBotPlaying(false);
-      setRequestBotVoiceChannelId(null);
-      setRequestBotVoiceServerId(null);
+    if (cmdName === 'st' || cmdName === 'stop') {
+      delete lastEndedBotTrackRef.current[targetBotKey];
+      updateServerRythmBot(selectedServer.id, targetBotId, () => ({ ...EMPTY_DEMAND_BOT_STATE }));
+      setVoiceParticipants(prev => prev.filter(p => !(p.id === targetBotId && (!p.serverId || p.serverId === selectedServer.id))));
       try {
         localStorage.removeItem('spytify_request_bot_voice_channel');
         localStorage.removeItem('spytify_request_bot_voice_server');
@@ -1964,38 +2496,42 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       playAudioChime('leave');
 
       sendBotChatMessage(
-        `⏹️ **ĐÃ DỪNG PHÁT VÀ RỜI PHÒNG THOẠI**\nBot Rythm đã dừng phát nhạc, dọn sạch hàng đợi và rời phòng thoại theo lệnh của **@${sender.name}**.`
+        `⏹️ **ĐÃ DỪNG PHÁT VÀ RỜI PHÒNG THOẠI**\n**${targetBotName}** đã dừng phát nhạc, dọn sạch hàng đợi và rời phòng thoại theo lệnh của **@${sender.name}**.`,
+        selectedBot
       );
-      syncBotState(null, [], false, null, null);
+      syncBotState(null, [], false, null, selectedServer.id, targetBotId, false, undefined);
       return;
     }
 
     // 2. Lệnh Bỏ qua (/sk hoặc /skip)
-    const isSkip = /^\/(?:sk|skip)\b/i.test(cleanWithoutMention) || /\/(?:sk|skip)\b/i.test(raw);
-    if (isSkip) {
-      if (!requestBotCurrentTrack) {
-        sendBotChatMessage(`⚠️ Hiện tại không có bài hát nào đang phát để skip.`);
+    if (cmdName === 'sk' || cmdName === 'skip') {
+      if (!botState.currentTrack) {
+        sendBotChatMessage(`⚠️ Hiện tại **${targetBotName}** không có bài hát nào đang phát để skip.`, selectedBot);
         return;
       }
-      if (requestBotQueue.length > 0) {
-        const nextTrack = requestBotQueue[0];
-        const nextQueue = requestBotQueue.slice(1);
-        setRequestBotCurrentTrack(nextTrack);
-        setRequestBotQueue(nextQueue);
-        setIsRequestBotPlaying(true);
+      if (botState.queue.length > 0) {
+        const nextTrack = botState.queue[0];
+        const nextQueue = botState.queue.slice(1);
+        const startedAt = Date.now();
+        updateServerRythmBot(selectedServer.id, targetBotId, prev => ({
+          ...prev,
+          currentTrack: nextTrack,
+          queue: nextQueue,
+          isPlaying: true,
+          startedAt,
+        }));
         persistBotCurrentTrack(nextTrack);
         persistBotQueue(nextQueue);
 
         sendBotChatMessage(
-          `⏭️ **ĐÃ SKIP BÀI HÁT** (Bởi @${sender.name})\n🎶 **Đang phát tiếp theo:** **${nextTrack.title}** - *${nextTrack.artist}*\n👤 Yêu cầu bởi: **@${nextTrack.requestedBy.name}**\n🔢 Còn **${nextQueue.length}** bài trong hàng đợi.`
+          `⏭️ **ĐÃ SKIP BÀI HÁT** (Bởi @${sender.name})\n🎶 **Đang phát tiếp theo:** **${nextTrack.title}** - *${nextTrack.artist}*\n👤 Yêu cầu bởi: **@${nextTrack.requestedBy.name}**\n🔢 Còn **${nextQueue.length}** bài trong hàng đợi.`,
+          selectedBot
         );
-        syncBotState(nextTrack, nextQueue, true);
+        syncBotState(nextTrack, nextQueue, true, botState.voiceChannelId, selectedServer.id, targetBotId, botState.isLooping, startedAt);
       } else {
-        setRequestBotCurrentTrack(null);
-        setRequestBotQueue([]);
-        setIsRequestBotPlaying(false);
-        setRequestBotVoiceChannelId(null);
-        setRequestBotVoiceServerId(null);
+        delete lastEndedBotTrackRef.current[targetBotKey];
+        updateServerRythmBot(selectedServer.id, targetBotId, () => ({ ...EMPTY_DEMAND_BOT_STATE }));
+        setVoiceParticipants(prev => prev.filter(p => !(p.id === targetBotId && (!p.serverId || p.serverId === selectedServer.id))));
         try {
           localStorage.removeItem('spytify_request_bot_voice_channel');
           localStorage.removeItem('spytify_request_bot_voice_server');
@@ -2005,78 +2541,78 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         playAudioChime('leave');
 
         sendBotChatMessage(
-          `⏭️ **ĐÃ SKIP BÀI HÁT CUỐI CÙNG** (Bởi @${sender.name})\n📭 Hàng đợi đã hết bài, bot Rythm đã rời khỏi phòng thoại. Dùng \`/play [tên bài hát]\` để tiếp tục nghe nhạc.`
+          `⏭️ **ĐÃ SKIP BÀI HÁT CUỐI CÙNG** (Bởi @${sender.name})\n📭 Hàng đợi đã hết bài, **${targetBotName}** đã rời khỏi phòng thoại. Dùng \`${syntaxPrefix} [tên bài hát]\` để tiếp tục nghe nhạc.`,
+          selectedBot
         );
-        syncBotState(null, [], false, null, null);
+        syncBotState(null, [], false, null, selectedServer.id, targetBotId, false, undefined);
       }
       return;
     }
 
     // 3. Lệnh Tạm dừng (/pause) & Tiếp tục (/resume)
-    const isPause = /^\/pause\b/i.test(cleanWithoutMention) || /\/pause\b/i.test(raw);
-    if (isPause) {
-      if (!isRequestBotPlaying || !requestBotCurrentTrack) {
-        sendBotChatMessage(`⚠️ Không có bài hát nào đang phát để tạm dừng.`);
+    if (cmdName === 'pause') {
+      if (!botState.isPlaying || !botState.currentTrack) {
+        sendBotChatMessage(`⚠️ **${targetBotName}** không có bài hát nào đang phát để tạm dừng.`, selectedBot);
         return;
       }
-      setIsRequestBotPlaying(false);
+      updateServerRythmBot(selectedServer.id, targetBotId, prev => ({ ...prev, isPlaying: false }));
       try {
-        requestBotIframeRef.current?.contentWindow?.postMessage(
+        requestBotIframesRef.current[targetBotKey]?.contentWindow?.postMessage(
           JSON.stringify({ event: 'command', func: 'pauseVideo', args: [] }), '*'
         );
       } catch {}
-      sendBotChatMessage(`⏸️ **ĐÃ TẠM DỪNG PHÁT NHẠC** (Bởi @${sender.name}). Dùng \`/resume\` để tiếp tục.`);
-      syncBotState(requestBotCurrentTrack, requestBotQueue, false);
+      sendBotChatMessage(`⏸️ **ĐÃ TẠM DỪNG PHÁT NHẠC** (Bởi @${sender.name}). Dùng \`/resume${targetBotId === firstDemandBot.id ? '' : ` @${targetBotId}`}\` để tiếp tục.`, selectedBot);
+      syncBotState(botState.currentTrack, botState.queue, false, botState.voiceChannelId, selectedServer.id, targetBotId, botState.isLooping, botState.startedAt);
       return;
     }
 
-    const isResume = /^\/resume\b/i.test(cleanWithoutMention) || /\/resume\b/i.test(raw);
-    if (isResume) {
-      if (isRequestBotPlaying || !requestBotCurrentTrack) {
-        sendBotChatMessage(`⚠️ Bot không trong trạng thái tạm dừng.`);
+    if (cmdName === 'resume') {
+      if (botState.isPlaying || !botState.currentTrack) {
+        sendBotChatMessage(`⚠️ **${targetBotName}** không trong trạng thái tạm dừng.`, selectedBot);
         return;
       }
-      setIsRequestBotPlaying(true);
+      updateServerRythmBot(selectedServer.id, targetBotId, prev => ({ ...prev, isPlaying: true }));
       try {
-        requestBotIframeRef.current?.contentWindow?.postMessage(
+        requestBotIframesRef.current[targetBotKey]?.contentWindow?.postMessage(
           JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'
         );
       } catch {}
-      sendBotChatMessage(`▶️ **TIẾP TỤC PHÁT NHẠC** (Bởi @${sender.name}): **${requestBotCurrentTrack.title}**.`);
-      syncBotState(requestBotCurrentTrack, requestBotQueue, true);
+      sendBotChatMessage(`▶️ **TIẾP TỤC PHÁT NHẠC** (Bởi @${sender.name}): **${botState.currentTrack.title}**.`, selectedBot);
+      syncBotState(botState.currentTrack, botState.queue, true, botState.voiceChannelId, selectedServer.id, targetBotId, botState.isLooping, botState.startedAt);
       return;
     }
 
     // 4. Lệnh Xem Hàng Đợi (/q hoặc /queue)
-    const isQueue = /^\/(?:q|queue)\b/i.test(cleanWithoutMention) || /\/(?:q|queue)\b/i.test(raw);
-    if (isQueue) {
-      if (!requestBotCurrentTrack) {
-        sendBotChatMessage(`📭 **Hàng đợi hiện đang trống.**\nDùng \`/play [link hoặc tên bài hát]\` để phát bài hát yêu thích!`);
+    if (cmdName === 'q' || cmdName === 'queue') {
+      if (!botState.currentTrack) {
+        sendBotChatMessage(`📭 **Hàng đợi của ${targetBotName} hiện đang trống.**\nDùng \`${syntaxPrefix} [link hoặc tên bài hát]\` để phát bài hát yêu thích!`, selectedBot);
         return;
       }
-      let text = `📜 **DANH SÁCH HÀNG ĐỢI NHẠC RYTHM**\n`;
-      text += `▶️ **Đang phát:** **${requestBotCurrentTrack.title}** - *${requestBotCurrentTrack.artist}* (Yêu cầu bởi @${requestBotCurrentTrack.requestedBy.name})\n\n`;
-      if (requestBotQueue.length === 0) {
-        text += `*Hàng đợi tiếp theo đang trống. Dùng \`/play [tên bài hát]\` để thêm nhạc vào danh sách!*`;
+      let text = `📜 **DANH SÁCH HÀNG ĐỢI — ${targetBotName.toUpperCase()}**\n`;
+      text += `▶️ **Đang phát:** **${botState.currentTrack.title}** - *${botState.currentTrack.artist}* (Yêu cầu bởi @${botState.currentTrack.requestedBy.name})\n\n`;
+      if (botState.queue.length === 0) {
+        text += `*Hàng đợi tiếp theo đang trống. Dùng \`${syntaxPrefix} [tên bài hát]\` để thêm nhạc vào danh sách!*`;
       } else {
-        text += `📋 **Tiếp theo trong hàng đợi (${requestBotQueue.length} bài):**\n`;
-        requestBotQueue.slice(0, 5).forEach((t, i) => {
+        text += `📋 **Tiếp theo trong hàng đợi (${botState.queue.length} bài):**\n`;
+        botState.queue.slice(0, 5).forEach((t, i) => {
           text += `${i + 1}. **${t.title}** - *${t.artist}* (bởi @${t.requestedBy.name})\n`;
         });
-        if (requestBotQueue.length > 5) {
-          text += `*... và còn ${requestBotQueue.length - 5} bài hát khác.*`;
+        if (botState.queue.length > 5) {
+          text += `*... và còn ${botState.queue.length - 5} bài hát khác.*`;
         }
       }
-      sendBotChatMessage(text);
+      sendBotChatMessage(text, selectedBot);
       return;
     }
 
-    // 5. Lệnh Phát nhạc (/p hoặc /play) -> Bot nhảy vào phòng thoại của người gọi và phát
-    const playMatch = cleanWithoutMention.match(/^\/(?:p|play)\s*(.*)$/i) || raw.match(/\/(?:p|play)\s+([^\n\r]+)/i);
-    if (playMatch) {
-      const rawQuery = (playMatch[1] || '').trim().replace(/^["']|["']$/g, '').trim();
+    // 5. Lệnh Phát nhạc (/p hoặc /play) -> /play <bài> chỉ gọi bot đầu tiên; /play @id_bot <bài> gọi đúng bot chỉ định
+    if (isPlayCmd) {
+      const rawQuery = argsText.replace(/^["']|["']$/g, '').trim();
       if (!rawQuery) {
-        sendBotChatMessage(`⚠️ **Cú pháp:** \`/play <link youtube hoặc tên bài hát>\` (hoặc viết tắt \`/p <bài hát>\`)\n*(Ví dụ: \`/p Faded Alan Walker\` hoặc \`/p https://youtu.be/...\`)*`);
+        sendBotChatMessage(
+          `⚠️ **Cú pháp:**\n• \`/play <tên bài hát hoặc link YouTube>\` *(gọi bot mặc định: **${firstDemandBot.display_name}**)*\n• \`/play @id_bot <tên bài hát hoặc link YouTube>\` *(chỉ định bot cụ thể)*`,
+          selectedBot
+        );
         return;
       }
 
@@ -2108,12 +2644,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             resolvedThumb = first.thumbnail || undefined;
           }
         } catch (err) {
-          console.warn('[Rythm Bot] Search failed:', err);
+          console.warn('[Demand Bot] Search failed:', err);
         }
       }
 
       if (!videoId) {
-        sendBotChatMessage(`❌ Không tìm thấy kết quả phù hợp cho: "${rawQuery}". Vui lòng thử link YouTube trực tiếp hoặc từ khóa khác!`);
+        sendBotChatMessage(`❌ Không tìm thấy kết quả phù hợp cho: "${rawQuery}". Vui lòng thử link YouTube trực tiếp hoặc từ khóa khác!`, selectedBot);
         return;
       }
 
@@ -2129,8 +2665,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         thumbnail: resolvedThumb,
       };
 
-      // Xác định phòng thoại người gọi đang ở để Bot nhảy vào cùng nghe:
+      const isBotCurrentlyActive = Boolean(botState.currentTrack && botState.isPlaying);
       const targetVoiceChId =
+        (isBotCurrentlyActive ? botState.voiceChannelId : null) ||
         connectedVoiceChannel ||
         selectedServer.channels.find(c => c.type === 'voice')?.id ||
         null;
@@ -2138,8 +2675,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       const targetVoiceChObj = selectedServer.channels.find(c => c.id === targetVoiceChId);
       const roomDisplayName = targetVoiceChObj ? getChannelName(targetVoiceChObj) : 'Phòng thoại';
 
-      setRequestBotVoiceChannelId(targetVoiceChId);
-      setRequestBotVoiceServerId(targetVoiceSrvId);
       if (targetVoiceChId) {
         try {
           localStorage.setItem('spytify_request_bot_voice_channel', targetVoiceChId);
@@ -2148,40 +2683,54 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
       playAudioChime('join');
 
-      if (!requestBotCurrentTrack || !isRequestBotPlaying) {
-        setRequestBotCurrentTrack(newTrack);
-        setIsRequestBotPlaying(true);
-        requestBotTrackStartedAtRef.current = Date.now();
+      const latestState = getServerRythmBotFromRecord(serverRythmBotsRef.current, targetVoiceSrvId, targetBotId);
+      if (!latestState.currentTrack || !latestState.isPlaying) {
+        const startedAt = Date.now();
+        delete lastEndedBotTrackRef.current[targetBotKey];
+        requestBotTrackStartedAtRef.current = startedAt;
+        updateServerRythmBot(targetVoiceSrvId, targetBotId, prev => ({
+          ...prev,
+          currentTrack: newTrack,
+          isPlaying: true,
+          voiceChannelId: targetVoiceChId,
+          startedAt,
+        }));
         persistBotCurrentTrack(newTrack);
 
         sendBotChatMessage(
-          `🎶 **RYTHM ĐÃ THAM GIA PHÒNG & ĐANG PHÁT**\n🎵 **${newTrack.title}** - *${newTrack.artist}*\n📍 Đang phát tại: **${roomDisplayName}**\n👤 Yêu cầu bởi: **@${sender.name}**\n⚡ Dùng \`/sk\` để skip • \`/st\` để dừng & rời phòng • \`/q\` để xem hàng đợi`
+          `🎶 **${targetBotName.toUpperCase()} ĐÃ THAM GIA PHÒNG & ĐANG PHÁT** (\`@${targetBotId}\`)\n🎵 **${newTrack.title}** - *${newTrack.artist}*\n📍 Đang phát tại: **${roomDisplayName}**\n👤 Yêu cầu bởi: **@${sender.name}**\n⚡ Dùng \`/sk\` để skip • \`/st\` để dừng & rời phòng • \`/q\` để xem hàng đợi`,
+          selectedBot
         );
-        syncBotState(newTrack, requestBotQueue, true, targetVoiceChId, targetVoiceSrvId);
+        syncBotState(newTrack, latestState.queue, true, targetVoiceChId, targetVoiceSrvId, targetBotId, latestState.isLooping, startedAt);
       } else {
-        const nextQueue = [...requestBotQueue, newTrack];
-        setRequestBotQueue(nextQueue);
+        const nextQueue = [...latestState.queue, newTrack];
+        updateServerRythmBot(targetVoiceSrvId, targetBotId, prev => ({
+          ...prev,
+          queue: nextQueue,
+          voiceChannelId: prev.voiceChannelId || targetVoiceChId,
+        }));
         persistBotQueue(nextQueue);
 
         sendBotChatMessage(
-          `📋 **ĐÃ THÊM VÀO HÀNG ĐỢI [#${nextQueue.length}]**\n🎵 **${newTrack.title}** - *${newTrack.artist}*\n📍 Phòng thoại: **${roomDisplayName}**\n👤 Yêu cầu bởi: **@${sender.name}**\n🔢 Hàng đợi hiện có **${nextQueue.length}** bài hát.`
+          `📋 **ĐÃ THÊM VÀO HÀNG ĐỢI — ${targetBotName.toUpperCase()} [#${nextQueue.length}]**\n🎵 **${newTrack.title}** - *${newTrack.artist}*\n📍 Phòng thoại: **${roomDisplayName}**\n👤 Yêu cầu bởi: **@${sender.name}**\n🔢 Hàng đợi hiện có **${nextQueue.length}** bài hát.`,
+          selectedBot
         );
-        syncBotState(requestBotCurrentTrack, nextQueue, isRequestBotPlaying, targetVoiceChId, targetVoiceSrvId);
+        syncBotState(latestState.currentTrack, nextQueue, latestState.isPlaying, latestState.voiceChannelId || targetVoiceChId, targetVoiceSrvId, targetBotId, latestState.isLooping, latestState.startedAt);
       }
       return;
     }
 
     // 6. Nếu chỉ tag bot mà không kèm lệnh (hoặc /help)
-    if (hasBotMention || /^\/help\b/i.test(cleanWithoutMention) || /^\/help\b/i.test(raw)) {
-      sendBotChatMessage(
-        `🤖 **Xin chào @${sender.name}! Tôi là Rythm - Bot phát nhạc theo yêu cầu:**\n` +
-        `• \`/play <link hoặc tên bài hát>\` (viết tắt \`/p\`): Bot nhảy vào phòng thoại & phát nhạc\n` +
-        `• \`/skip\` (viết tắt \`/sk\`): Bỏ qua bài hát hiện tại\n` +
-        `• \`/stop\` (viết tắt \`/st\`): Dừng phát, xóa hàng đợi & bot rời phòng thoại\n` +
-        `• \`/queue\` (viết tắt \`/q\`): Xem danh sách bài hát trong hàng đợi\n` +
-        `• \`/pause\` / \`/resume\`: Tạm dừng và tiếp tục phát nhạc`
-      );
-    }
+    const botListHint = demandMusicBots.length > 1
+      ? `\n🤖 **Bot Yêu Cầu trong server:** ${demandMusicBots.map((b, i) => `${i === 0 ? '★ ' : ''}\`@${b.id}\` (${b.display_name})`).join(', ')}`
+      : '';
+    sendBotChatMessage(
+      `🤖 **Xin chào @${sender.name}! Tôi là ${targetBotName} (\`@${targetBotId}\`) - Bot phát nhạc theo yêu cầu:**\n` +
+      `• \`/play <tên bài hoặc link>\` (viết tắt \`/p\`): Gọi bot đầu tiên (**${firstDemandBot.display_name}**)\n` +
+      `• \`/play @id_bot <tên bài hoặc link>\`: Chỉ định bot cụ thể phát nhạc\n` +
+      `• \`/skip\` / \`/stop\` / \`/queue\` / \`/pause\` / \`/resume\` (có thể thêm \`@id_bot\`)${botListHint}`,
+      selectedBot
+    );
   };
 
   // Xác định kênh thoại và máy chủ hiện tại đang kết nối (độc lập với server người dùng đang xem)
@@ -2190,7 +2739,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // Tìm bot DJ có mặt trong phòng thoại hiện tại (dù là đài radio hay phòng thoại thường được mời vào)
   const invitedBotInConnectedVoice = connectedVoiceChannel
-    ? voiceParticipants.find(p => p.channelId === connectedVoiceChannel && (ACTIVE_BOT_IDS.has(p.id) || p.isBot) && p.id !== 'usr_music_bot')
+    ? voiceParticipants.find(p => p.channelId === connectedVoiceChannel && (ACTIVE_BOT_IDS.has(p.id) || p.isBot) && !isDemandBotId(p.id))
     : null;
 
   const isConnectedVoiceRadio = Boolean(
@@ -2208,7 +2757,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Cập nhật âm lượng loa bot theo userVolumes[djBotId] và speakerVolume tổng của phòng
   useEffect(() => {
     if (!currentVoiceDjBot || !botRadioIframeRef.current) return;
-    const botUserVol = userVolumes[currentVoiceDjBot.id] ?? 80;
+    const botUserVol =
+      (connectedVoiceChannelObj?.dj_bot_id ? userVolumes[connectedVoiceChannelObj.dj_bot_id] : undefined) ??
+      userVolumes[currentVoiceDjBot.id] ??
+      80;
     const isBotLocallyMuted = Boolean(
       locallyMutedUsers[currentVoiceDjBot.id] ||
       (connectedVoiceChannelObj?.dj_bot_id && locallyMutedUsers[connectedVoiceChannelObj.dj_bot_id])
@@ -2248,26 +2800,43 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   useEffect(() => {
     const onBotMsg = (event: MessageEvent) => {
       try {
-        if (requestBotIframeRef.current && event.source === requestBotIframeRef.current.contentWindow) {
+        const matchedBotEntry = Object.entries(requestBotIframesRef.current).find(
+          ([, iframeEl]) => iframeEl && iframeEl.contentWindow === event.source
+        );
+        if (matchedBotEntry) {
+          const [matchedKey, matchedIframe] = matchedBotEntry;
+          const { srvId, botId } = parseDemandBotKey(matchedKey);
           const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
           if (!data) return;
           if (data.event === 'onError' || data.info?.errorCode) {
-            handleRequestBotError(data.data || data.info?.errorCode);
+            handleRequestBotError(data.data || data.info?.errorCode, srvId, botId);
             return;
           }
+          const botState = getServerRythmBotFromRecord(serverRythmBotsRef.current, srvId, botId);
           if (data.event === 'onReady') {
-            const botUserVol = userVolumes['usr_music_bot'] ?? 80;
-            const isUserInBotRoom = !requestBotVoiceChannelId || connectedVoiceChannel === requestBotVoiceChannelId;
-            const isMuted = Boolean(locallyMutedUsers['usr_music_bot'] || isDeafened || !isUserInBotRoom);
+            const botUserVol = userVolumes[botId] ?? userVolumes['usr_music_bot'] ?? 80;
+            const isUserInConnectedVoice = Boolean(connectedVoiceChannel);
+            const isUserInSameServer = connectedVoiceServerId === srvId;
+            const isUserInSameRoom = !botState.voiceChannelId || connectedVoiceChannel === botState.voiceChannelId;
+            const canUserHearBot = isUserInConnectedVoice && isUserInSameServer && isUserInSameRoom;
+            const isMuted = Boolean(locallyMutedUsers[botId] || isDeafened || !canUserHearBot);
             const effectiveVol = isMuted ? 0 : Math.round(botUserVol * (speakerVolume / 100));
             try {
-              requestBotIframeRef.current.contentWindow?.postMessage(
+              matchedIframe?.contentWindow?.postMessage(
                 JSON.stringify({ event: 'command', func: effectiveVol === 0 ? 'mute' : 'unMute', args: [] }), '*'
               );
-              requestBotIframeRef.current.contentWindow?.postMessage(
+              matchedIframe?.contentWindow?.postMessage(
                 JSON.stringify({ event: 'command', func: 'setVolume', args: [effectiveVol] }), '*'
               );
-              requestBotIframeRef.current.contentWindow?.postMessage(
+              if (botState.startedAt) {
+                const elapsedSecs = Math.floor((Date.now() - botState.startedAt) / 1000);
+                if (elapsedSecs > 3 && elapsedSecs < 14400) {
+                  matchedIframe?.contentWindow?.postMessage(
+                    JSON.stringify({ event: 'command', func: 'seekTo', args: [elapsedSecs, true] }), '*'
+                  );
+                }
+              }
+              matchedIframe?.contentWindow?.postMessage(
                 JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'
               );
             } catch {}
@@ -2275,8 +2844,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           if (data.event === 'onStateChange') {
             const state = data.info !== undefined ? data.info : data.data;
             if (state === 0) {
-              handleRequestBotTrackEnded();
+              handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
             }
+          }
+          if (data.event === 'infoDelivery' && data.info?.playerState === 0) {
+            handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
           }
           return;
         }
@@ -2296,7 +2868,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         }
 
         if (data.event === 'onReady') {
-          const botUserVol = currentVoiceDjBot ? (userVolumes[currentVoiceDjBot.id] ?? 80) : 80;
+          const botUserVol = currentVoiceDjBot
+            ? ((connectedVoiceChannelObj?.dj_bot_id ? userVolumes[connectedVoiceChannelObj.dj_bot_id] : undefined) ?? userVolumes[currentVoiceDjBot.id] ?? 80)
+            : 80;
           const isBotLocallyMuted = currentVoiceDjBot ? Boolean(
             locallyMutedUsers[currentVoiceDjBot.id] ||
             (connectedVoiceChannelObj?.dj_bot_id && locallyMutedUsers[connectedVoiceChannelObj.dj_bot_id])
@@ -2355,24 +2929,32 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     };
     window.addEventListener('message', onBotMsg);
     return () => window.removeEventListener('message', onBotMsg);
-  }, [currentVoiceDjBot, userVolumes, speakerVolume, isDeafened, isBotMuted, locallyMutedUsers, connectedVoiceChannelObj?.dj_bot_id, requestBotCurrentTrack, requestBotQueue, isRequestBotPlaying]);
+  }, [currentVoiceDjBot, userVolumes, speakerVolume, isDeafened, isBotMuted, locallyMutedUsers, connectedVoiceChannelObj?.dj_bot_id, serverRythmBots, connectedVoiceChannel, connectedVoiceServerId]);
 
-  // Đồng bộ âm lượng và trạng thái mute tới loa bot phát nhạc theo yêu cầu
+  // Đồng bộ âm lượng và trạng thái mute tới tất cả các loa bot phát nhạc theo yêu cầu đang hoạt động
   useEffect(() => {
-    if (!requestBotIframeRef.current || !requestBotCurrentTrack) return;
-    const botUserVol = userVolumes['usr_music_bot'] ?? 80;
-    const isUserInBotRoom = !requestBotVoiceChannelId || connectedVoiceChannel === requestBotVoiceChannelId;
-    const isMuted = Boolean(locallyMutedUsers['usr_music_bot'] || isDeafened || !isUserInBotRoom);
-    const effectiveVol = isMuted ? 0 : Math.round(botUserVol * (speakerVolume / 100));
-    try {
-      requestBotIframeRef.current.contentWindow?.postMessage(
-        JSON.stringify({ event: 'command', func: effectiveVol === 0 ? 'mute' : 'unMute', args: [] }), '*'
-      );
-      requestBotIframeRef.current.contentWindow?.postMessage(
-        JSON.stringify({ event: 'command', func: 'setVolume', args: [effectiveVol] }), '*'
-      );
-    } catch {}
-  }, [userVolumes, locallyMutedUsers, isDeafened, speakerVolume, requestBotCurrentTrack, requestBotVoiceChannelId, connectedVoiceChannel]);
+    Object.entries(requestBotIframesRef.current).forEach(([botKey, iframeEl]) => {
+      if (!iframeEl) return;
+      const { srvId, botId } = parseDemandBotKey(botKey);
+      const botState = getServerRythmBotFromRecord(serverRythmBots, srvId, botId);
+      if (!botState.currentTrack) return;
+      const botUserVol = userVolumes[botId] ?? userVolumes['usr_music_bot'] ?? 80;
+      const isUserInConnectedVoice = Boolean(connectedVoiceChannel);
+      const isUserInSameServer = connectedVoiceServerId === srvId;
+      const isUserInSameRoom = !botState.voiceChannelId || connectedVoiceChannel === botState.voiceChannelId;
+      const canUserHearBot = isUserInConnectedVoice && isUserInSameServer && isUserInSameRoom;
+      const isMuted = Boolean(locallyMutedUsers[botId] || isDeafened || !canUserHearBot);
+      const effectiveVol = isMuted ? 0 : Math.round(botUserVol * (speakerVolume / 100));
+      try {
+        iframeEl.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: effectiveVol === 0 ? 'mute' : 'unMute', args: [] }), '*'
+        );
+        iframeEl.contentWindow?.postMessage(
+          JSON.stringify({ event: 'command', func: 'setVolume', args: [effectiveVol] }), '*'
+        );
+      } catch {}
+    });
+  }, [userVolumes, locallyMutedUsers, isDeafened, speakerVolume, serverRythmBots, connectedVoiceChannel, connectedVoiceServerId]);
 
   const [isFriendsTabActive, setIsFriendsTabActive] = useState(() => servers.length === 0);
   const [friendsTab, setFriendsTab] = useState<'online' | 'all' | 'pending' | 'add'>('online');
@@ -2485,6 +3067,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [selectedTagIdsDraft, setSelectedTagIdsDraft] = useState<string[]>([]);
   const [newTagDraftName, setNewTagDraftName] = useState('');
   const [newTagDraftColor, setNewTagDraftColor] = useState('#00E5FF');
+  const [newTagDraftIcon, setNewTagDraftIcon] = useState('🎵');
 
   // Mở modal chọn tag cho thành viên hiện tại
   const handleOpenTagSelectModal = () => {
@@ -2506,7 +3089,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleSaveUserTags = () => {
-    const myId = currentUser?.id || myParticipantIdRef.current;
+    const myId = currentUser?.id || myParticipantIdRef.current || 'usr_me';
     const currentMemberTags = selectedServer.member_tags || {};
     const updatedMemberTags: Record<string, string[]> = {
       ...currentMemberTags,
@@ -2518,12 +3101,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
     if (myParticipantIdRef.current) {
       updatedMemberTags[myParticipantIdRef.current] = selectedTagIdsDraft;
-    }
-    if (myServerDisplayName) {
-      updatedMemberTags[myServerDisplayName] = selectedTagIdsDraft;
-    }
-    if (currentUser?.username) {
-      updatedMemberTags[currentUser.username] = selectedTagIdsDraft;
     }
     const updatedSrv: CommunityServer = {
       ...selectedServer,
@@ -2541,6 +3118,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       id: `tag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: newTagDraftName.trim(),
       color: newTagDraftColor,
+      icon: newTagDraftIcon || '🏷️',
     };
     const updatedSrv: CommunityServer = {
       ...selectedServer,
@@ -2578,6 +3156,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Follow / Unfollow logic (đồng bộ trực tiếp lên Supabase Cloud & phát thông báo real-time)
   const handleToggleFollow = (userId: string) => {
     if (!currentUser) return;
+    const isBot = ACTIVE_BOT_IDS.has(userId) || userId === 'custom' || userId.startsWith('bot_');
+    if (isBot && !CAN_FOLLOW_BOT_IDS.has(userId)) {
+      return;
+    }
     const isCurrentlyFollowing = followingUserIds.has(userId);
     setFollowingUserIds(prev => {
       const next = new Set(prev);
@@ -2831,22 +3413,133 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setTimeout(() => setAddFriendMessage(null), 4000);
   };
 
-  const handlePlayMemberTrack = (member: { listeningTrack?: Track | null, listening?: string | null }) => {
-    if (member.listeningTrack) {
-      onPlayTrack(member.listeningTrack);
-    } else if (member.listening) {
-      const parts = member.listening.split(' - ');
-      const t: Track = {
-        id: `yt_track_${Date.now()}`,
-        title: parts[0] || member.listening,
-        artist: parts[1] || 'Spytify Artist',
-        album: 'Cyber Station Radio',
-        duration_secs: 210,
-        path_or_url: member.listening,
-        source: 'youtube',
-        cover_art: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=500&auto=format&fit=crop&q=60',
-      };
-      onPlayTrack(t);
+  const handlePlayMemberTrack = async (member: { id?: string; name?: string; display_name?: string; listeningTrack?: Track | null; listening?: string | null }) => {
+    // 1. Nếu đã có Track hợp lệ (URL, YouTube Video ID 11 ký tự, hoặc đường dẫn cục bộ)
+    const lt = member.listeningTrack;
+    if (lt && lt.path_or_url) {
+      const ytId = extractYouTubeId(lt.path_or_url);
+      if (lt.source === 'youtube' && ytId) {
+        onPlayTrack({
+          ...lt,
+          path_or_url: ytId,
+          duration_secs: lt.album === 'On-Demand Music Queue' ? (lt.duration_secs > 0 ? lt.duration_secs : 180) : lt.duration_secs,
+        });
+        return;
+      }
+      if (lt.source !== 'youtube' || /^[a-zA-Z0-9_-]{11}$/.test(lt.path_or_url.replace(/^yt_/, ''))) {
+        onPlayTrack(lt);
+        return;
+      }
+    }
+
+    // 2. Nếu là Bot Yêu Cầu (/play): lấy trực tiếp bài hát hiện hành trong state của Bot đó
+    if (member.id && isDemandBotId(member.id)) {
+      const botState = getServerRythmBot(selectedServer.id, member.id);
+      if (botState.currentTrack) {
+        const cur = botState.currentTrack;
+        onPlayTrack({
+          id: cur.id,
+          title: cur.title,
+          artist: cur.artist,
+          album: 'On-Demand Music Queue',
+          duration_secs: 180,
+          path_or_url: cur.url_or_id,
+          source: 'youtube',
+          cover_art: cur.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+        });
+        return;
+      }
+      showVoiceToast(
+        language === 'vi'
+          ? 'Bot hiện đang chờ lệnh /play trong phòng thoại, chưa có bài hát nào đang phát.'
+          : 'This bot is idle and not playing any track yet.'
+      );
+      return;
+    }
+
+    // 3. Nếu là Bot Trạm Live: tìm đúng kênh radio / DJ option của bot để lấy YouTube Stream ID thực tế
+    if (member.id) {
+      const stationCh = selectedServer.channels.find(
+        c => c.is_radio && (c.dj_bot_id === member.id || (!c.dj_bot_id && member.id === 'usr_host'))
+      );
+      if (stationCh?.custom_stream_url) {
+        const stationVid = extractYouTubeId(stationCh.custom_stream_url);
+        if (stationVid) {
+          onPlayTrack({
+            id: `yt_station_${member.id}`,
+            title: stationCh.custom_stream_title || stationCh.name || member.display_name || member.name || 'Live Station',
+            artist: member.display_name || member.name || 'Custom DJ',
+            album: 'Spytify 24/7 Live Radio',
+            duration_secs: 0,
+            path_or_url: stationVid,
+            source: 'youtube',
+            cover_art: 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=500&auto=format&fit=crop&q=60',
+          });
+          return;
+        }
+      }
+      const djOpt = DJ_BOT_OPTIONS.find(d => d.id === member.id);
+      if (djOpt?.track) {
+        onPlayTrack(djOpt.track);
+        return;
+      }
+    }
+
+    // 4. Suy luận từ chuỗi text trạng thái listening: tìm link/ID YouTube hoặc tìm kiếm YouTube thực tế
+    if (member.listening) {
+      const cleaned = member.listening.replace(/^[\s🔴🎶🎵🎧▶️]+/, '').trim();
+      const lower = cleaned.toLowerCase();
+      if (!cleaned || lower.includes('sẵn sàng nhận lệnh') || lower === 'sẵn sàng' || lower === 'ready') {
+        showVoiceToast(
+          language === 'vi'
+            ? 'Không có bài hát đang phát ở trạng thái hiện tại.'
+            : 'No playable track in current status.'
+        );
+        return;
+      }
+
+      const directYt = extractYouTubeId(cleaned);
+      const parts = cleaned.split(' - ');
+      if (directYt) {
+        onPlayTrack({
+          id: `yt_track_${Date.now()}`,
+          title: parts[0] || cleaned,
+          artist: parts[1] || 'Spytify Artist',
+          album: 'Community Listen Along',
+          duration_secs: 180,
+          path_or_url: directYt,
+          source: 'youtube',
+          cover_art: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=500&auto=format&fit=crop&q=60',
+        });
+        return;
+      }
+
+      try {
+        const searchRes = await invoke<SearchResult[]>('search_online', { query: cleaned, source: 'youtube' });
+        if (searchRes && searchRes.length > 0) {
+          const first = searchRes[0];
+          const vid = first.url_or_id.replace(/^yt_/, '');
+          onPlayTrack({
+            id: `yt_track_${vid}_${Date.now()}`,
+            title: first.title || parts[0] || cleaned,
+            artist: first.artist || parts[1] || 'YouTube',
+            album: 'Community Listen Along',
+            duration_secs: first.duration_secs || 180,
+            path_or_url: vid,
+            source: 'youtube',
+            cover_art: first.thumbnail || 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=500&auto=format&fit=crop&q=60',
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn('[Listen Along] Failed resolving track:', err);
+      }
+
+      showVoiceToast(
+        language === 'vi'
+          ? `Không tìm thấy nguồn phát cho "${cleaned}"`
+          : `Could not find playable stream for "${cleaned}"`
+      );
     }
   };
 
@@ -2856,14 +3549,58 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setEditServerIcon(srv.icon);
     setEditServerColor(srv.accent_color);
     setEditServerMaxMembers(srv.max_members || 50);
+    setEditServerAllowInvites(srv.allow_member_invites ?? true);
+    setNicknameDraft(serverNicknames[srv.id] || currentUser?.display_name || '');
+    const myTags = resolveMemberTags(currentUser?.id || 'usr_me', srv, myServerDisplayName);
+    setSelectedTagIdsDraft(myTags.map(t => t.id));
     setServerSettingsTab('overview');
     setInviteCopied(false);
     setIsServerSettingsOpen(true);
   };
 
+  const handleSaveNicknameOnly = () => {
+    const trimmedNick = nicknameDraft.trim();
+    setServerNicknames(prev => {
+      const next = { ...prev };
+      if (trimmedNick) {
+        next[selectedServer.id] = trimmedNick;
+      } else {
+        delete next[selectedServer.id];
+      }
+      try {
+        localStorage.setItem('spytify_server_nicknames', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    showVoiceToast(language === 'vi' ? 'Đã lưu biệt danh máy chủ!' : 'Server nickname saved!');
+    setIsServerSettingsOpen(false);
+  };
+
   const handleSaveServerSettings = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editServerName.trim()) return;
+
+    const trimmedNick = nicknameDraft.trim();
+    setServerNicknames(prev => {
+      const next = { ...prev };
+      if (trimmedNick) {
+        next[selectedServer.id] = trimmedNick;
+      } else {
+        delete next[selectedServer.id];
+      }
+      try {
+        if (currentUser?.id) {
+          localStorage.setItem(`spytify_server_nicknames_${currentUser.id}`, JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+
+    if (!canManageServer) {
+      showVoiceToast('Đã lưu biệt danh trên máy chủ!');
+      setIsServerSettingsOpen(false);
+      return;
+    }
 
     const updatedSrv: CommunityServer = {
       ...selectedServer,
@@ -2872,6 +3609,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       icon: editServerIcon.trim() || '⚡',
       accent_color: editServerColor,
       max_members: editServerMaxMembers,
+      allow_member_invites: isServerOwner ? editServerAllowInvites : (selectedServer.allow_member_invites ?? true),
     };
 
     const updatedList = servers.map(s => s.id === selectedServer.id ? updatedSrv : s);
@@ -2889,20 +3627,185 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setIsServerSettingsOpen(false);
   };
 
+  const handleSaveBotConfig = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!canManageServer) {
+      showVoiceToast(language === 'vi' ? 'Chỉ Chủ server và Mod mới có quyền tùy biến bot!' : 'Only Server Owner and Mod can customize bots!');
+      return;
+    }
+    const isDemand = botDraftType === 'demand';
+    let botId = editingBotTargetId;
+    if (!botId) {
+      if (isDemand) {
+        const hasBase = registeredUsers.some(u => u.id === 'usr_music_bot');
+        botId = hasBase ? `usr_music_bot_${Date.now()}` : 'usr_music_bot';
+      } else {
+        botId = `bot_custom_${Date.now()}`;
+      }
+    }
+    const trimmedName = botDraftName.trim() || (isDemand ? (botId === 'usr_music_bot' ? 'Rythm' : `Music Bot ${demandMusicBots.length + 1}`) : 'Custom DJ');
+    const trimmedTag = botDraftTag.trim() || (isDemand ? 'ON-DEMAND' : 'RADIO');
+    const trimmedListening = botDraftListening.trim() || (isDemand ? 'Sẵn sàng nhận lệnh /play' : null);
+
+    const stationStreamVid = !isDemand && botDraftStreamUrl.trim() ? extractYouTubeId(botDraftStreamUrl.trim()) : null;
+    const savedStationTrack: Track | null = stationStreamVid
+      ? {
+          id: `yt_station_${botId}`,
+          title: trimmedListening || `${trimmedName} Live`,
+          artist: trimmedName,
+          album: 'Spytify 24/7 Live Radio',
+          duration_secs: 0,
+          path_or_url: stationStreamVid,
+          source: 'youtube',
+          cover_art: 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=500&auto=format&fit=crop&q=60',
+        }
+      : null;
+
+    setRegisteredUsers(prev => {
+      const exists = prev.some(u => u.id === botId);
+      const next = exists
+        ? prev.map(u => u.id === botId ? {
+            ...u,
+            display_name: trimmedName,
+            avatar: botDraftAvatar || u.avatar,
+            role: trimmedTag,
+            listening: trimmedListening,
+            ...(savedStationTrack ? { listeningTrack: savedStationTrack } : {}),
+          } : u)
+        : [
+            ...prev,
+            {
+              id: botId,
+              username: trimmedName.toLowerCase().replace(/\s+/g, '_'),
+              display_name: trimmedName,
+              avatar: botDraftAvatar || null,
+              role: trimmedTag,
+              status: 'online' as const,
+              bio: isDemand ? 'Bot phát nhạc theo yêu cầu (/play) hoạt động độc lập theo từng Server.' : 'Bot trạm phát nhạc Radio 24/7.',
+              listening: trimmedListening,
+              listeningTrack: savedStationTrack,
+              isHost: true,
+              followsCurrentUser: false,
+              joinedAt: new Date().toISOString(),
+            }
+          ];
+      try {
+        localStorage.setItem('spytify_registered_users', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    const existingOption = DJ_BOT_OPTIONS.find(d => d.id === botId);
+    if (existingOption) {
+      existingOption.name = trimmedName;
+      if (trimmedListening) {
+        existingOption.liveStreamTitle = trimmedListening;
+        existingOption.trackName = trimmedListening;
+      }
+    }
+
+    let nextChannels = selectedServer.channels;
+    let channelsChanged = false;
+
+    if (!isDemand) {
+      const cleanUrl = botDraftStreamUrl.trim();
+      const backupList = botDraftBackupUrls
+        .split('\n')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      // Cập nhật hoặc tạo kênh Radio tương ứng cho Bot Trạm Live
+      const targetCh = selectedServer.channels.find(
+        c => c.is_radio && (
+          c.dj_bot_id === botId ||
+          (!c.dj_bot_id && botId === 'usr_host') ||
+          (editingBotTargetId && c.id === 'custom')
+        )
+      );
+      if (targetCh) {
+        const updatedChannel: CommunityChannel = {
+          ...targetCh,
+          custom_bot_name: trimmedName,
+          custom_bot_avatar: botDraftAvatar || undefined,
+          custom_stream_url: cleanUrl || targetCh.custom_stream_url,
+          custom_backup_streams: backupList.length > 0 ? backupList : targetCh.custom_backup_streams,
+          is_loop_single: botDraftIsLoopSingle,
+          custom_stream_title: trimmedListening || targetCh.custom_stream_title,
+        };
+        nextChannels = selectedServer.channels.map(c => c.id === targetCh.id ? updatedChannel : c);
+        channelsChanged = true;
+      } else if (!editingBotTargetId && cleanUrl) {
+        const newCh: CommunityChannel = {
+          id: `radio_${botId}`,
+          name: trimmedName,
+          type: 'voice',
+          is_radio: true,
+          dj_bot_id: botId,
+          custom_bot_name: trimmedName,
+          custom_bot_avatar: botDraftAvatar || undefined,
+          custom_stream_url: cleanUrl,
+          custom_backup_streams: backupList.length > 0 ? backupList : undefined,
+          is_loop_single: botDraftIsLoopSingle,
+          custom_stream_title: trimmedListening || `${trimmedName} Live`,
+        };
+        nextChannels = [...selectedServer.channels, newCh];
+        channelsChanged = true;
+      }
+    }
+
+    // Luôn đảm bảo Bot (cả Trạm Live lẫn Theo Yêu Cầu) được add vào danh sách thành viên Server
+    const usesExplicitMembers = Boolean(
+      Array.isArray(selectedServer.member_ids) ||
+      selectedServer.is_custom ||
+      selectedServer.id.startsWith('srv_custom_')
+    );
+    const currentMemberIds = Array.isArray(selectedServer.member_ids) ? selectedServer.member_ids : [];
+    const needsMemberAdd = usesExplicitMembers && !currentMemberIds.includes(botId);
+    const nextMemberIds = usesExplicitMembers
+      ? (needsMemberAdd ? [...currentMemberIds, botId] : currentMemberIds)
+      : selectedServer.member_ids;
+    const hasKicked = Array.isArray(selectedServer.kicked_ids) && selectedServer.kicked_ids.includes(botId);
+    const nextKickedIds = hasKicked
+      ? (selectedServer.kicked_ids || []).filter(id => id !== botId)
+      : selectedServer.kicked_ids;
+
+    if (channelsChanged || needsMemberAdd || hasKicked) {
+      const updatedSrv: CommunityServer = {
+        ...selectedServer,
+        channels: nextChannels,
+        ...(usesExplicitMembers ? { member_ids: nextMemberIds } : {}),
+        ...(hasKicked ? { kicked_ids: nextKickedIds } : {}),
+      };
+      broadcastAndPersistServerUpdate(updatedSrv);
+    }
+
+    showVoiceToast(
+      language === 'vi'
+        ? `Đã lưu cấu hình ${isDemand ? 'Bot Theo Yêu Cầu' : 'Bot Trạm Live'}: ${trimmedName}`
+        : `Saved ${isDemand ? 'On-Demand' : 'Station'} Bot: ${trimmedName}`
+    );
+    setIsBotModalOpen(false);
+    setEditingBotTargetId(null);
+  };
+
   // ──────── QUYỀN HẠN TRONG SERVER (CHỦ SERVER / MOD / THÀNH VIÊN) ────────
   const myAccountUserId = currentUser?.id || null;
   const hasActiveServer = !isFriendsTabActive && servers.length > 0 && selectedServer.id !== 'srv_none';
   const isServerOwner = Boolean(
-    currentUser?.id &&
     selectedServer.id !== 'srv_none' &&
-    (selectedServer.owner_id === currentUser.id || (!selectedServer.owner_id && selectedServer.is_custom))
+    (selectedServer.owner_id === 'usr_me' ||
+     selectedServer.owner_id === '' ||
+     !selectedServer.owner_id ||
+     (currentUser?.id && selectedServer.owner_id === currentUser.id) ||
+     selectedServer.is_custom ||
+     selectedServer.badge === 'CHỦ SERVER' ||
+     selectedServer.badge === 'BẠN LÀ CHỦ SERVER')
   );
   const isServerMod = Boolean(
-    currentUser?.id &&
     selectedServer.id !== 'srv_none' &&
     !isServerOwner &&
     Array.isArray(selectedServer.moderator_ids) &&
-    selectedServer.moderator_ids.includes(currentUser.id)
+    (selectedServer.moderator_ids.includes('usr_me') || (currentUser?.id && selectedServer.moderator_ids.includes(currentUser.id)))
   );
   const canManageServer = isServerOwner || isServerMod;
 
@@ -2956,15 +3859,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       created_at: createdAtStr,
     };
 
-    setMessages(prev => {
-      const next = [...prev.slice(-(MAX_CHAT_MESSAGES_LIMIT - 1)), welcomeMsg];
-      try {
-        if (currentUser?.id) {
-          localStorage.setItem(`spytify_server_messages_${currentUser.id}`, JSON.stringify(next));
-        }
-      } catch {}
-      return next;
-    });
+    appendServerMessage(welcomeMsg);
 
     activeChannelRef.current?.send({
       type: 'broadcast',
@@ -3009,7 +3904,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const requestTransferOwnership = (memberId: string, memberName?: string) => {
-    if (!isServerOwner || memberId === 'usr_me' || memberId === myAccountUserId || ACTIVE_BOT_IDS.has(memberId)) return;
+    if (memberId === 'usr_me' || (currentUser?.id && memberId === currentUser.id) || ACTIVE_BOT_IDS.has(memberId)) return;
     const resolvedName =
       memberName ||
       onlineMembers.find(m => m.id === memberId)?.name ||
@@ -3024,7 +3919,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // Nhượng quyền Chủ Server cho thành viên khác & hạ quyền Chủ hiện tại xuống Điều hành viên (Mod)
   const handleTransferOwnership = (newOwnerId: string) => {
-    if (!isServerOwner || !newOwnerId || newOwnerId === 'usr_me' || newOwnerId === myAccountUserId || ACTIVE_BOT_IDS.has(newOwnerId)) return;
+    if (!newOwnerId || newOwnerId === 'usr_me' || (currentUser?.id && newOwnerId === currentUser.id) || ACTIVE_BOT_IDS.has(newOwnerId)) return;
     const currentMods = Array.isArray(selectedServer.moderator_ids) ? selectedServer.moderator_ids : [];
     const modSet = new Set(currentMods.filter(id => id !== newOwnerId));
     if (myAccountUserId) modSet.add(myAccountUserId);
@@ -3047,6 +3942,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     broadcastAndPersistServerUpdate(updatedSrv);
     onActiveServerChange?.(updatedSrv);
     setConfirmActionModal(null);
+    showVoiceToast(language === 'vi' ? 'Đã nhượng quyền Chủ Sở Hữu thành công!' : 'Transferred server ownership successfully!');
   };
 
   const requestDeleteServer = (srv: CommunityServer = selectedServer) => {
@@ -3095,6 +3991,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       setSelectedChannel(EMPTY_SERVER_FALLBACK.channels[0]);
       setIsFriendsTabActive(true);
     }
+  };
+
+  const handleLeaveServer = (srvId: string) => {
+    if (connectedVoiceServerId === srvId) {
+      handleLeaveVoiceCall();
+    }
+    const nextServers = servers.filter(s => s.id !== srvId);
+    setServers(nextServers);
+    persistServers(nextServers);
+    setIsServerSettingsOpen(false);
+    if (nextServers.length > 0) {
+      setSelectedServer(nextServers[0]);
+      setSelectedChannel(nextServers[0].channels[0]);
+      onActiveServerChange?.(nextServers[0]);
+    } else {
+      setSelectedServer(EMPTY_SERVER_FALLBACK);
+      setSelectedChannel(EMPTY_SERVER_FALLBACK.channels[0]);
+      setIsFriendsTabActive(true);
+    }
+    showVoiceToast('Bạn đã rời khỏi máy chủ.');
   };
 
   // Đồng bộ thông tin thành viên vào danh sách đặc vụ đã đăng ký & danh sách member_ids của Server
@@ -3292,6 +4208,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     }
 
     // Với người dùng thật: tạo lời mời chờ xác nhận (Pending Server Invite)
+    if (selectedServer.allow_member_invites === false && !isServerOwner && !isServerMod) {
+      showVoiceToast(
+        language === 'vi'
+          ? 'Chủ máy chủ đã tắt quyền mời tự do. Lời mời cần được Chủ server duyệt!'
+          : 'Server owner disabled free invites. Invites require owner approval!'
+      );
+      return;
+    }
+
     const alreadyInvited = outgoingServerInvites.some(
       inv => inv.serverId === selectedServer.id && inv.targetUserId === memberId
     );
@@ -3562,6 +4487,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       dj_bot_id: creatingChannelType === 'voice' && newChannelIsRadio ? newChannelDjBot : undefined,
       custom_stream_url: isCustomStation && cleanCustomUrl ? cleanCustomUrl : undefined,
       custom_stream_title: isCustomStation && (newChannelCustomTitle.trim() || formattedName) ? (newChannelCustomTitle.trim() || formattedName) : undefined,
+      custom_backup_streams: isCustomStation && newChannelCustomBackupUrls.trim()
+        ? newChannelCustomBackupUrls.split('\n').map(s => s.trim()).filter(Boolean)
+        : undefined,
       is_loop_single: isCustomStation ? newChannelIsLoopSingle : undefined,
     };
 
@@ -3586,26 +4514,40 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setNewChannelDjBot('usr_host');
     setNewChannelCustomUrl('');
     setNewChannelCustomTitle('');
+    setNewChannelCustomBackupUrls('');
     setNewChannelIsLoopSingle(false);
     handleSelectChannel(newCh);
   };
 
   const handleOpenEditStationModal = (channel: CommunityChannel) => {
+    if (!canManageServer) {
+      showVoiceToast(language === 'vi' ? 'Chỉ Chủ server và Mod mới có quyền cấu hình trạm phát!' : 'Only Server Owner and Mod can configure stations!');
+      return;
+    }
     setEditingStationChannel(channel);
     setEditStationUrlDraft(channel.custom_stream_url || '');
     setEditStationTitleDraft(channel.custom_stream_title || channel.name || '');
+    setEditStationBackupStreamsDraft((channel.custom_backup_streams || []).join('\n'));
     setEditStationIsLoopDraft(Boolean(channel.is_loop_single));
+    setEditStationBotNameDraft(channel.custom_bot_name || (channel.dj_bot_id === 'usr_host' ? 'DJ CyberHawk' : 'Custom Station Bot'));
+    setEditStationBotAvatarDraft(channel.custom_bot_avatar || '');
   };
 
   const handleSaveStationEdit = () => {
     if (!editingStationChannel) return;
     const cleanUrl = editStationUrlDraft.trim();
+    const cleanBotName = editStationBotNameDraft.trim();
     const updatedChannels = selectedServer.channels.map(c => {
       if (c.id === editingStationChannel.id) {
         return {
           ...c,
+          custom_bot_name: cleanBotName || undefined,
+          custom_bot_avatar: editStationBotAvatarDraft || undefined,
           custom_stream_url: cleanUrl || undefined,
           custom_stream_title: editStationTitleDraft.trim() || undefined,
+          custom_backup_streams: editStationBackupStreamsDraft.trim()
+            ? editStationBackupStreamsDraft.split('\n').map(s => s.trim()).filter(Boolean)
+            : undefined,
           is_loop_single: editStationIsLoopDraft,
           topic: cleanUrl
             ? `Trạm phát YouTube: ${editStationTitleDraft.trim() || cleanUrl} (${editStationIsLoopDraft ? 'Lặp lại liên tục' : 'Luồng Live 24/7'})`
@@ -3614,6 +4556,22 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
       return c;
     });
+
+    if (cleanBotName) {
+      const djId = editingStationChannel.dj_bot_id || 'usr_host';
+      setRegisteredUsers(prev => {
+        const exists = prev.some(u => u.id === djId);
+        if (exists) {
+          return prev.map(u => u.id === djId ? {
+            ...u,
+            display_name: cleanBotName,
+            avatar: editStationBotAvatarDraft || u.avatar,
+          } : u);
+        }
+        return prev;
+      });
+    }
+
     const updatedSrv: CommunityServer = {
       ...selectedServer,
       channels: updatedChannels,
@@ -3623,6 +4581,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       const updatedCur = updatedChannels.find(c => c.id === editingStationChannel.id);
       if (updatedCur) setSelectedChannel(updatedCur);
     }
+    showVoiceToast(language === 'vi' ? 'Đã lưu cấu hình trạm phát & tên Bot!' : 'Saved station & bot settings!');
     setEditingStationChannel(null);
   };
 
@@ -3675,6 +4634,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleCopyInvite = (srvId: string) => {
+    if (selectedServer.allow_member_invites === false && !isServerOwner && !isServerMod) {
+      showVoiceToast(
+        language === 'vi'
+          ? 'Chủ máy chủ đã tắt quyền mời tự do. Chỉ Chủ Server và Mod mới có thể lấy link mời!'
+          : 'Server owner disabled free invites. Only Owner & Mods can copy invite links!'
+      );
+      return;
+    }
     navigator.clipboard.writeText(`spytify://station/join/${srvId}`);
     setInviteCopied(true);
     setTimeout(() => setInviteCopied(false), 2500);
@@ -3757,21 +4724,41 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         const effStatus = getEffectiveStatus(u);
         const effName = rt?.display_name || u.display_name;
         const effAvatar = rt?.avatar || u.avatar || latestMsgWithAvatar?.avatar || followersOfMeMap[u.id]?.followerAvatar || null;
-        const effListening = u.id === 'usr_music_bot'
-          ? (requestBotCurrentTrack && isRequestBotPlaying ? `🎶 ${requestBotCurrentTrack.title} - ${requestBotCurrentTrack.artist}` : 'Sẵn sàng nhận lệnh /play')
-          : (effStatus === 'offline' && !ACTIVE_BOT_IDS.has(u.id) ? null : (rt?.listening !== undefined ? rt.listening : (u.listening || null)));
-        const effTrack = u.id === 'usr_music_bot'
-          ? (requestBotCurrentTrack && isRequestBotPlaying ? {
-              id: requestBotCurrentTrack.id,
-              title: requestBotCurrentTrack.title,
-              artist: requestBotCurrentTrack.artist,
-              album: 'On-Demand Music Queue',
+        const isDemandBotMember = isDemandBotId(u.id);
+        const demandBotState = isDemandBotMember ? getServerRythmBot(selectedServer.id, u.id) : null;
+        const stationChForBot = !isDemandBotMember
+          ? selectedServer.channels.find(c => c.is_radio && (c.dj_bot_id === u.id || (!c.dj_bot_id && u.id === 'usr_host')))
+          : null;
+        const stationVid = stationChForBot?.custom_stream_url ? extractYouTubeId(stationChForBot.custom_stream_url) : null;
+        const fallbackDjOpt = !isDemandBotMember ? DJ_BOT_OPTIONS.find(d => d.id === u.id) : null;
+        const resolvedStationTrack: Track | null = stationVid
+          ? {
+              id: `yt_station_${u.id}`,
+              title: stationChForBot?.custom_stream_title || effName,
+              artist: effName,
+              album: 'Spytify 24/7 Live Radio',
               duration_secs: 0,
-              path_or_url: requestBotCurrentTrack.url_or_id,
+              path_or_url: stationVid,
+              source: 'youtube',
+              cover_art: 'https://images.unsplash.com/photo-1614149162883-504ce4d13909?w=500&auto=format&fit=crop&q=60',
+            }
+          : (fallbackDjOpt?.track || null);
+
+        const effListening = isDemandBotMember && demandBotState
+          ? (demandBotState.currentTrack && demandBotState.isPlaying ? `🎶 ${demandBotState.currentTrack.title} - ${demandBotState.currentTrack.artist}` : (u.listening || 'Sẵn sàng nhận lệnh /play'))
+          : (effStatus === 'offline' && !ACTIVE_BOT_IDS.has(u.id) ? null : (rt?.listening !== undefined ? rt.listening : (stationChForBot?.custom_stream_title || u.listening || null)));
+        const effTrack = isDemandBotMember && demandBotState
+          ? (demandBotState.currentTrack && demandBotState.isPlaying ? {
+              id: demandBotState.currentTrack.id,
+              title: demandBotState.currentTrack.title,
+              artist: demandBotState.currentTrack.artist,
+              album: 'On-Demand Music Queue',
+              duration_secs: 180,
+              path_or_url: demandBotState.currentTrack.url_or_id,
               source: 'youtube' as const,
-              cover_art: requestBotCurrentTrack.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
+              cover_art: demandBotState.currentTrack.thumbnail || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=60',
             } : null)
-          : (effStatus === 'offline' && !ACTIVE_BOT_IDS.has(u.id) ? null : (rt?.listeningTrack !== undefined ? rt.listeningTrack : (u.listeningTrack || null)));
+          : (effStatus === 'offline' && !ACTIVE_BOT_IDS.has(u.id) ? null : (rt?.listeningTrack !== undefined ? rt.listeningTrack : (u.listeningTrack || resolvedStationTrack || null)));
         const effRole = isMemberServerOwner(u.id)
           ? 'CHỦ SERVER'
           : isMemberModerator(u.id)
@@ -4739,14 +5726,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         );
       }
 
-      setMessages(prev => {
-        if (prev.some(m => m.id === msg.id)) return prev;
-        const next = [...prev, msg].slice(-MAX_CHAT_MESSAGES_LIMIT);
-        try {
-          localStorage.setItem(`spytify_server_messages_${currentUser.id}`, JSON.stringify(next));
-        } catch {}
-        return next;
-      });
+      appendServerMessage(msg);
 
       const isViewingThisChannel =
         !viewStateRef.current.isFriendsTabActive &&
@@ -4977,11 +5957,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     avatar: currentUser?.avatar || null,
     status: myStatus === 'invisible' ? 'offline' : myStatus,
     bio: myBio,
+    thought: myUserThought,
+    custom_status: myUserThought,
+    tags: resolveMemberTags('usr_me', selectedServer).map(t => t.id),
     listening: myVisibleListening,
     listeningTrack: myVisibleTrack,
   };
 
-  // Broadcast presence updates whenever status, server nickname, avatar, or track changes
+  // Broadcast presence updates whenever status, server nickname, avatar, track, thought or tags change
   useEffect(() => {
     if (activeChannelRef.current && myPresencePayloadRef.current) {
       activeChannelRef.current.send({
@@ -5002,7 +5985,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         payload: { action: 'here', participant: myVoiceParticipantRef.current },
       });
     }
-  }, [myStatus, myServerDisplayName, myBio, currentTrack?.id, currentUser?.avatar]);
+  }, [myStatus, myServerDisplayName, myBio, myUserThought, currentTrack?.id, currentUser?.avatar, selectedServer.member_tags]);
 
   // ──────── SUPABASE REALTIME SYNC (MESSAGES & VOICE STATE THEO SERVER) ────────
   useEffect(() => {
@@ -5049,7 +6032,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               created_at: r.created_at || '',
             });
           });
-          const merged = Array.from(map.values()).slice(-MAX_CHAT_MESSAGES_LIMIT);
+          const allMsgs = Array.from(map.values());
+          const thisSrvMsgs = allMsgs
+            .filter(m => (m.server_id || selectedServer.id) === currentSrvId)
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            .slice(-MAX_CHAT_MESSAGES_LIMIT);
+          const otherSrvMsgs = allMsgs.filter(m => (m.server_id || selectedServer.id) !== currentSrvId);
+
+          const merged = [...otherSrvMsgs, ...thisSrvMsgs].sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
           try {
             localStorage.setItem(`spytify_server_messages_${currentUser.id}`, JSON.stringify(merged));
           } catch {}
@@ -5202,16 +6194,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           );
         }
 
-        setMessages(prev => {
-          if (prev.some(m => m.id === payload.id)) return prev;
-          const next = [...prev, payload].slice(-MAX_CHAT_MESSAGES_LIMIT);
-          try {
-            if (currentUser?.id) {
-              localStorage.setItem(`spytify_server_messages_${currentUser.id}`, JSON.stringify(next));
-            }
-          } catch {}
-          return next;
-        });
+        appendServerMessage(payload);
 
         const isViewingCh =
           !viewStateRef.current.isFriendsTabActive &&
@@ -5246,30 +6229,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     });
 
-    // 2b. Đồng bộ trạng thái và hàng đợi phát nhạc của On-Demand Bot (Rythm)
+    // 2b. Đồng bộ trạng thái và hàng đợi phát nhạc của On-Demand Bot (hỗ trợ đa bot theo botId)
     channel.on('broadcast', { event: 'request_bot_sync' }, ({ payload }) => {
       if (payload) {
-        setRequestBotCurrentTrack(payload.currentTrack || null);
-        setRequestBotQueue(Array.isArray(payload.queue) ? payload.queue : []);
-        setIsRequestBotPlaying(Boolean(payload.isPlaying));
-        persistBotCurrentTrack(payload.currentTrack || null);
-        persistBotQueue(Array.isArray(payload.queue) ? payload.queue : []);
-        if (payload.voiceChannelId !== undefined) {
-          setRequestBotVoiceChannelId(payload.voiceChannelId || null);
-          if (payload.voiceChannelId) {
-            try { localStorage.setItem('spytify_request_bot_voice_channel', payload.voiceChannelId); } catch {}
-          } else {
-            try { localStorage.removeItem('spytify_request_bot_voice_channel'); } catch {}
-          }
-        }
-        if (payload.voiceServerId !== undefined) {
-          setRequestBotVoiceServerId(payload.voiceServerId || null);
-          if (payload.voiceServerId) {
-            try { localStorage.setItem('spytify_request_bot_voice_server', payload.voiceServerId); } catch {}
-          } else {
-            try { localStorage.removeItem('spytify_request_bot_voice_server'); } catch {}
-          }
-        }
+        const srvId = payload.serverId || payload.voiceServerId || selectedServer.id;
+        const bId = payload.botId || 'usr_music_bot';
+        updateServerRythmBot(srvId, bId, () => ({
+          currentTrack: payload.currentTrack || null,
+          queue: Array.isArray(payload.queue) ? payload.queue : [],
+          isPlaying: Boolean(payload.isPlaying),
+          isLooping: Boolean(payload.isLooping),
+          voiceChannelId: payload.voiceChannelId || null,
+          startedAt: payload.startedAt,
+        }));
       }
     });
 
@@ -5293,6 +6265,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           status: payload.status || 'offline',
           username: payload.username || prev[payload.id]?.username || '',
           display_name: payload.display_name || prev[payload.id]?.display_name || payload.username || 'Operative',
+          thought: payload.thought ?? payload.custom_status ?? prev[payload.id]?.thought ?? null,
+          custom_status: payload.custom_status ?? payload.thought ?? prev[payload.id]?.custom_status ?? null,
+          bio: payload.bio ?? prev[payload.id]?.bio ?? null,
+          tags: payload.tags ?? prev[payload.id]?.tags ?? null,
         },
       }));
       ensureMemberSyncedToServer(
@@ -5316,6 +6292,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           payload: { action: 'here', participant: myVoiceParticipantRef.current },
         });
       }
+      // Đồng bộ trạng thái các Bot Yêu Cầu đang phát trên Server hiện tại cho người mới vào phòng
+      Object.entries(serverRythmBotsRef.current).forEach(([botKey, bState]) => {
+        const { srvId, botId } = parseDemandBotKey(botKey);
+        if (srvId === selectedServer.id && bState?.currentTrack && bState.voiceChannelId) {
+          channel.send({
+            type: 'broadcast',
+            event: 'request_bot_sync',
+            payload: {
+              serverId: srvId,
+              botId,
+              currentTrack: bState.currentTrack,
+              queue: bState.queue || [],
+              isPlaying: Boolean(bState.isPlaying),
+              isLooping: Boolean(bState.isLooping),
+              voiceChannelId: bState.voiceChannelId,
+              voiceServerId: srvId,
+              startedAt: bState.startedAt,
+            },
+          });
+        }
+      });
     });
 
     channel.on('broadcast', { event: 'voice_presence' }, ({ payload }) => {
@@ -5959,16 +6956,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       created_at: createdAtStr,
     };
 
-    setMessages(prev => {
-      const next = [...prev.slice(-(MAX_CHAT_MESSAGES_LIMIT - 1)), newMsg];
-      try {
-        if (currentUser?.id) {
-          localStorage.setItem(`spytify_server_messages_${currentUser.id}`, JSON.stringify(next));
-        }
-        localStorage.removeItem('spytify_server_messages');
-      } catch {}
-      return next;
-    });
+    appendServerMessage(newMsg);
     setInputText('');
     setAttachCurrentTrack(false);
     setPendingChatImage(null);
@@ -6520,7 +7508,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           {/* NÚT "+" ĐỂ MỞ BẢNG TỰ TẠO SERVER */}
           <button
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={() => {
+              setCreateServerStep(1);
+              setIsCreateModalOpen(true);
+            }}
             className={`w-11 h-11 rounded-3xl hover:rounded-xl border flex items-center justify-center transition-all cursor-pointer mt-1 group ${
               isLight 
                 ? 'bg-[#ffffff] border-[#cbd5e1] text-[#64748b] hover:text-[#0f172a] hover:border-emerald-500'
@@ -6764,10 +7755,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 <p className={`text-[10px] font-mono truncate mt-0.5 ${isLight ? 'text-[#64748b]' : 'text-[#777]'}`}>{selectedServer.description}</p>
               </div>
 
-              {/* Server Settings Cog Button */}
+              {/* Server Settings Cog Button (Hiển thị cho tất cả thành viên) */}
               <button
                 onClick={() => handleOpenServerSettings(selectedServer)}
-                title="Cài đặt máy chủ & Quản lý thành viên (Discord Server Settings)"
+                title={canManageServer ? 'Cài đặt máy chủ & Quản lý thành viên' : 'Xem thông tin & Tùy chọn máy chủ'}
                 className={`p-1.5 rounded-lg border transition-all cursor-pointer flex-shrink-0 ${
                   isLight 
                     ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-600 hover:text-slate-900' 
@@ -7034,6 +8025,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             className="w-full px-2 py-1 rounded bg-[#10101a] border border-white/10 text-white text-[10px] outline-none focus:border-amber-400"
                           />
                         </div>
+                        <div>
+                          <label className="text-[9px] font-mono text-zinc-400 uppercase tracking-wider block mb-0.5">
+                            Luồng dự phòng 24/7 (Mỗi dòng 1 URL YouTube):
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={newChannelCustomBackupUrls}
+                            onChange={e => setNewChannelCustomBackupUrls(e.target.value)}
+                            placeholder="https://www.youtube.com/watch?v=...&#10;https://www.youtube.com/watch?v=..."
+                            className="w-full px-2 py-1 rounded bg-[#10101a] border border-white/10 text-white text-[10px] font-mono outline-none resize-none focus:border-amber-400"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -7048,6 +8051,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       setNewChannelIsRadio(false);
                       setNewChannelCustomUrl('');
                       setNewChannelCustomTitle('');
+                      setNewChannelCustomBackupUrls('');
                     }}
                     className="px-2 py-0.5 rounded text-[10px] font-mono text-[#888] hover:text-white cursor-pointer"
                   >
@@ -7097,63 +8101,59 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             : isLight ? 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#edf2f7]' : 'text-[#888899] hover:text-white hover:bg-[#0e0e14]'
                         }`}
                       >
-                        <div className="flex items-center gap-2 truncate">
+                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2 overflow-hidden">
                           {channel.is_radio ? (
                             <Radio className="w-3.5 h-3.5 flex-shrink-0 text-amber-400 animate-pulse" />
                           ) : (
                             <Volume2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isVoiceActive ? '#00FF66' : accentColor }} />
                           )}
-                          <span className="truncate">{getChannelName(channel)}</span>
-                          {channel.is_radio && (
-                            <span className="text-[7px] font-mono font-bold px-1 py-0.2 rounded bg-amber-400/15 text-amber-400 border border-amber-400/40 uppercase">
-                              24/7
-                            </span>
-                          )}
+                          <HoverMarquee text={getChannelName(channel)} className="flex-1 min-w-0 text-[11px]" />
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {isVoiceActive ? (
                             <span 
-                              className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.2 rounded border"
-                              style={{
-                                color: accentColor,
-                                backgroundColor: `${accentColor}18`,
-                                borderColor: `${accentColor}40`,
-                              }}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: accentColor }} />
-                              {getTranslation(language, 'community.connected')}
-                            </span>
-                          ) : totalVoiceCount > 0 ? (
+                              className="w-2 h-2 rounded-full animate-ping"
+                              style={{ backgroundColor: accentColor }}
+                              title="Đang kết nối"
+                            />
+                          ) : totalVoiceCount > 0 && !channel.is_radio ? (
                             <span className={`shrink-0 whitespace-nowrap text-[9px] font-mono px-1.5 py-0.2 rounded border ${isLight ? 'bg-[#ffffff] text-[#64748b] border-[#cbd5e1]' : 'bg-[#121218] text-[#666] border-[#202028]'}`}>
                               {totalVoiceCount} {getTranslation(language, 'community.members')}
                             </span>
                           ) : null}
-                          {canManageServer && channel.is_radio && (
+
+                          {/* Nút Thêm Người (Mời bạn bè vào phòng thoại) */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              handleCopyInvite(selectedServer.id);
+                            }}
+                            title={language === 'vi' ? 'Sao chép link mời vào phòng thoại' : 'Copy invite link to this voice channel'}
+                            className="opacity-0 group-hover/vch:opacity-100 p-1 rounded hover:bg-white/10 text-[#777] hover:text-white transition-all cursor-pointer"
+                          >
+                            <UserPlus className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Nút Bánh Răng Cài Đặt (Thay thế cho nút sửa/xóa riêng biệt) */}
+                          {canManageServer && (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 e.preventDefault();
-                                handleOpenEditStationModal(channel);
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setChannelContextMenu({
+                                  x: Math.min(rect.right + 4, window.innerWidth - 240),
+                                  y: Math.min(rect.top, window.innerHeight - 200),
+                                  channel,
+                                });
                               }}
-                              title="Sửa link YouTube hoặc chế độ phát sóng của trạm này"
-                              className="opacity-0 group-hover/vch:opacity-100 p-1 rounded hover:bg-amber-500/20 text-[#777] hover:text-amber-400 transition-all cursor-pointer"
+                              title={language === 'vi' ? 'Cài đặt phòng thoại (Chỉnh sửa / Xóa)' : 'Voice channel settings'}
+                              className="opacity-0 group-hover/vch:opacity-100 p-1 rounded hover:bg-white/10 text-[#777] hover:text-white transition-all cursor-pointer"
                             >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {canManageServer && voiceCount > 1 && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                handleDeleteChannel(channel.id, e);
-                              }}
-                              title="Xóa phòng thoại"
-                              className="opacity-0 group-hover/vch:opacity-100 p-1 rounded hover:bg-red-500/20 text-[#777] hover:text-red-400 transition-all cursor-pointer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Settings className="w-3.5 h-3.5" />
                             </button>
                           )}
                         </div>
@@ -7199,6 +8199,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                     listening: vp.listeningTrack ? `${vp.listeningTrack.title} - ${vp.listeningTrack.artist}` : (vp.listening || null),
                                     listeningTrack: vp.listeningTrack || null,
                                   },
+                                  fromVoice: true,
                                 });
                               }}
                               className={`flex items-center gap-1.5 text-[11px] p-0.5 rounded hover:bg-white/5 cursor-pointer ${isLight ? 'text-[#475569]' : 'text-[#aaa]'}`}
@@ -7331,7 +8332,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             }`}
             title="Bấm để đổi trạng thái (Trực tuyến / Bận / Vô hình) hoặc tên hiển thị trên Server"
           >
-            <div className="relative flex-shrink-0">
+            <div className="relative flex-shrink-0 group/avt">
               <div
                 className="w-7 h-7 rounded-lg border flex items-center justify-center font-bold text-xs overflow-hidden"
                 style={{
@@ -7347,6 +8348,33 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 )}
               </div>
               {renderStatusDot(myEffectivePublicStatus, 'sm')}
+
+              {/* Hộp thoại suy nghĩ / Note trên Avatar (Discord / Instagram style) */}
+              {myUserThought ? (
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenThoughtModal();
+                  }}
+                  title={`Suy nghĩ: "${myUserThought}" - Bấm để chỉnh sửa`}
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 max-w-[140px] px-2.5 py-0.5 rounded-xl bg-zinc-900/95 border border-cyan-400 text-[8.5px] font-mono font-medium text-cyan-200 shadow-xl shadow-cyan-950/70 flex items-center gap-1 z-30 cursor-pointer hover:scale-105 hover:border-cyan-300 transition-all truncate whitespace-nowrap"
+                >
+                  <span className="text-[9px] shrink-0">💭</span>
+                  <span className="truncate">{myUserThought}</span>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 w-1.5 h-1.5 -mt-0.5 bg-zinc-900 border-r border-b border-cyan-400 rotate-45 pointer-events-none" />
+                </div>
+              ) : (
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenThoughtModal();
+                  }}
+                  title="Đặt suy nghĩ / Note mới"
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 opacity-0 group-hover/avt:opacity-100 px-1.5 py-0.5 rounded-full bg-zinc-900/95 border border-cyan-500/60 text-[7.5px] font-mono text-cyan-300 hover:text-white z-30 transition-all cursor-pointer whitespace-nowrap shadow"
+                >
+                  + Note
+                </div>
+              )}
             </div>
 
             <div className="truncate flex-1 min-w-0">
@@ -7355,7 +8383,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </p>
               <p className="text-[9px] font-mono truncate flex items-center gap-1 text-[#888]">
                 {myStatus === 'online' && <span style={{ color: accentColor }}>● Trực tuyến</span>}
-                {myStatus === 'dnd' && <span className="text-red-400">⛔ Chế độ Bận</span>}
+                {myStatus === 'dnd' && <span className="text-red-400">⛔ Bận</span>}
                 {myStatus === 'invisible' && <span className="text-zinc-400">👻 Vô hình</span>}
               </p>
             </div>
@@ -7419,21 +8447,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
               <button
                 type="button"
-                onClick={handleOpenNicknameModal}
-                className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white/5 cursor-pointer transition-colors"
-                style={{ color: accentColor }}
+                onClick={handleOpenThoughtModal}
+                className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white/5 cursor-pointer transition-colors text-emerald-400"
               >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span className="font-semibold">Đổi tên hiển thị trên Server</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenBioModal}
-                className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white/5 cursor-pointer transition-colors text-cyan-400"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span className="font-semibold">Chỉnh sửa tiểu sử (Bio)</span>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span className="font-semibold">{myUserThought ? 'Đổi suy nghĩ người dùng...' : 'Đặt suy nghĩ người dùng...'}</span>
               </button>
             </div>
           )}
@@ -7962,7 +8980,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               {/* Friends Hub Body Content */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {/* ──────── THÔNG BÁO LỜI MỜI THAM GIA MÁY CHỦ (HIỆN ĐỂ ĐỒNG Ý MỚI VÀO SERVER) ──────── */}
                 {incomingServerInvites.length > 0 && (
                   <div
@@ -8397,6 +9416,126 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* ──────── 3.2 CỘT "ĐANG HOẠT ĐỘNG" BÊN PHẢI (ACTIVE NOW THEO THIẾT KẾ DISCORD) ──────── */}
+              <div className={`w-80 border-l p-4 flex flex-col gap-3 overflow-y-auto flex-shrink-0 ${
+                isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#09090f] border-[#181824]'
+              }`}>
+                <h3 className={`text-sm font-bold tracking-tight uppercase font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  Đang hoạt động
+                </h3>
+
+                {(() => {
+                  const activeFriends = registeredUsers.filter(u => {
+                    if (!isMutualFriend(u) && !followingUserIds.has(u.id)) return false;
+                    const eff = getEffectiveStatus(u);
+                    const inVoice = voiceParticipants.some(p => p.id === u.id);
+                    return eff === 'online' || eff === 'dnd' || Boolean(u.listening || (u as any).custom_status || inVoice);
+                  });
+
+                  if (activeFriends.length === 0) {
+                    return (
+                      <div className={`p-4 rounded-2xl border text-center space-y-2 ${
+                        isLight ? 'bg-white border-slate-200 text-slate-500' : 'bg-[#101018] border-[#1e1e2c] text-[#777]'
+                      }`}>
+                        <Radio className="w-8 h-8 mx-auto text-[#555]" />
+                        <p className="text-xs font-semibold">Chưa có ai đang hoạt động</p>
+                        <p className="text-[11px] leading-relaxed">
+                          Khi bạn bè của bạn nghe nhạc hoặc vào phòng thoại, hoạt động của họ sẽ hiển thị tại đây!
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {activeFriends.map(af => {
+                        const effStatus = getEffectiveStatus(af);
+                        const inVoice = voiceParticipants.find(p => p.id === af.id);
+                        return (
+                          <div
+                            key={af.id}
+                            className={`p-3.5 rounded-2xl border space-y-2.5 transition-all shadow-sm ${
+                              isLight
+                                ? 'bg-white border-slate-200 hover:border-slate-300'
+                                : 'bg-[#11111c] border-[#222232] hover:border-white/20'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="relative flex-shrink-0">
+                                <div className="w-9 h-9 rounded-xl bg-zinc-800 overflow-hidden flex items-center justify-center font-bold text-xs text-white">
+                                  {renderAvatarContent(af.display_name, resolveUserAvatar(af.id, af.avatar))}
+                                </div>
+                                {renderStatusDot(effStatus, 'sm')}
+                              </div>
+                              <div className="truncate flex-1 min-w-0">
+                                <p className={`text-xs font-bold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                  {af.display_name}
+                                </p>
+                                <p className="text-[10px] text-cyan-400 font-mono truncate">
+                                  @{getCleanMemberUsername(af, registeredUsers, currentUser)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Thought / Custom Status */}
+                            {(af as any).custom_status && (
+                              <p className="text-[11px] font-mono text-zinc-300 italic bg-white/5 p-1.5 rounded-lg border border-white/5 truncate">
+                                💬 "{(af as any).custom_status}"
+                              </p>
+                            )}
+
+                            {/* Activity 1: Listening on Spytify */}
+                            {af.listening && (
+                              <div className="p-2.5 rounded-xl bg-gradient-to-r from-cyan-950/40 to-black/60 border border-cyan-500/30 space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-cyan-400">
+                                  <Activity className="w-3 h-3 animate-pulse" />
+                                  <span>Đang nghe trên Spytify</span>
+                                </div>
+                                <p className="text-xs font-bold text-white truncate">{af.listening}</p>
+                                <button
+                                  onClick={() => handlePlayMemberTrack(af)}
+                                  className="w-full py-1.5 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-black font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-transform hover:scale-[1.02] active:scale-95"
+                                >
+                                  <Play className="w-3 h-3 fill-current" />
+                                  <span>Nghe cùng</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Activity 2: In Voice Channel */}
+                            {inVoice && (
+                              <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-950/40 to-black/60 border border-emerald-500/30 space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+                                  <Mic className="w-3 h-3 animate-bounce" />
+                                  <span>Đang trong phòng thoại</span>
+                                </div>
+                                <p className="text-xs font-bold text-white truncate">
+                                  {selectedServer.channels.find(c => c.id === inVoice.channelId)?.name || 'Phòng Thoại'}
+                                </p>
+                                <button
+                                  onClick={() => handleJoinVoiceCall(inVoice.channelId)}
+                                  className="w-full py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-transform hover:scale-[1.02] active:scale-95"
+                                >
+                                  <Volume2 className="w-3 h-3" />
+                                  <span>Tham gia phòng</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {!af.listening && !inVoice && !(af as any).custom_status && (
+                              <p className="text-[10px] text-zinc-500 font-mono">
+                                {effStatus === 'dnd' ? '⛔ Không làm phiền' : '● Trực tuyến trên Spytify'}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
             </>
           )
         ) : (
@@ -8600,6 +9739,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           listening: vp.listeningTrack ? `${vp.listeningTrack.title} - ${vp.listeningTrack.artist}` : (vp.listening || null),
                           listeningTrack: vp.listeningTrack || null,
                         },
+                        fromVoice: true,
                       });
                     }}
                     className={`rounded-2xl border-2 transition-all duration-300 flex flex-col items-center justify-center relative aspect-[4/3] shadow-xl overflow-hidden group cursor-pointer ${
@@ -8667,7 +9807,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               </>
                             )}
                           </button>
-                          <div className="flex items-center gap-1.5 bg-black/85 px-2 py-1 rounded-lg border border-white/10 backdrop-blur-sm">
+                          <div className="flex items-center gap-1 bg-black/85 px-1.5 py-1 rounded-lg border border-white/10 backdrop-blur-sm">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -8683,71 +9823,45 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             >
                               {isBotSilenced ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
                             </button>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={isBotSilenced ? 0 : (userVolumes[vp.id] ?? 80)}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                const val = Number(e.target.value);
-                                setUserVolumes(prev => {
-                                  const next = { ...prev, [vp.id]: val };
-                                  try { localStorage.setItem('spytify_user_volumes', JSON.stringify(next)); } catch {}
-                                  return next;
-                                });
-                                if (isBotSilenced && val > 0) {
-                                  setIsBotMuted(false);
-                                  setLocallyMutedUsers(prev => ({ ...prev, [vp.id]: false }));
-                                }
-                              }}
-                              onClick={e => e.stopPropagation()}
-                              className="w-16 h-1 bg-[#262638] rounded-lg appearance-none cursor-pointer"
-                              style={{ accentColor: '#10b981' }}
-                              title={`Âm lượng loa bot: ${userVolumes[vp.id] ?? 80}%`}
-                            />
-                            <span className="text-[9px] font-mono text-zinc-300 min-w-[28px] text-right">
-                              {isBotSilenced ? '0%' : `${userVolumes[vp.id] ?? 80}%`}
-                            </span>
-                            {vp.id === 'usr_music_bot' ? (
-                              <div className="flex items-center gap-0.5 ml-0.5">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    processBotMusicCommand('/sk', { id: currentUser?.id || 'guest', name: myServerDisplayName, username: currentUser?.username || 'operative' });
-                                  }}
-                                  className="p-1 rounded bg-white/5 hover:bg-white/15 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
-                                  title="Bỏ qua bài hát hiện tại (/skip)"
-                                >
-                                  <SkipForward className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    processBotMusicCommand('/st', { id: currentUser?.id || 'guest', name: myServerDisplayName, username: currentUser?.username || 'operative' });
-                                  }}
-                                  className="p-1 rounded bg-white/5 hover:bg-white/15 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
-                                  title="Dừng phát và bot rời phòng (/stop)"
-                                >
-                                  <Square className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleRotateBotStream(vp.id, 'Người dùng bấm đổi luồng trên thẻ');
-                                  }}
-                                  className="p-1 rounded bg-white/5 hover:bg-white/15 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer ml-0.5"
-                                  title="Tự động đổi sang luồng phát sóng 24/7 dự phòng khác cùng thể loại"
-                                >
-                                  <RotateCcw className="w-3 h-3" />
-                                </button>
-                                {canManageServer && (
+                            {canManageServer && (
+                              isDemandBotId(vp.id) ? (
+                                <div className="flex items-center gap-0.5 ml-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      processBotMusicCommand(`/sk @${vp.id}`, { id: currentUser?.id || 'guest', name: myServerDisplayName, username: currentUser?.username || 'operative' });
+                                    }}
+                                    className="p-1 rounded bg-white/5 hover:bg-white/15 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                                    title="Bỏ qua bài hát hiện tại (/skip)"
+                                  >
+                                    <SkipForward className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      processBotMusicCommand(`/st @${vp.id}`, { id: currentUser?.id || 'guest', name: myServerDisplayName, username: currentUser?.username || 'operative' });
+                                    }}
+                                    className="p-1 rounded bg-white/5 hover:bg-white/15 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                                    title="Dừng phát và bot rời phòng (/stop)"
+                                  >
+                                    <Square className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRotateBotStream(vp.id, 'Người dùng bấm đổi luồng trên thẻ');
+                                    }}
+                                    className="p-1 rounded bg-white/5 hover:bg-white/15 text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer ml-0.5"
+                                    title="Tự động đổi sang luồng phát sóng 24/7 dự phòng khác cùng thể loại"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -8759,8 +9873,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                   >
                                     <Edit3 className="w-3 h-3" />
                                   </button>
-                                )}
-                              </>
+                                </>
+                              )
                             )}
                           </div>
                         </div>
@@ -8772,7 +9886,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handlePlayMemberTrack({ listeningTrack: vp.listeningTrack });
+                              handlePlayMemberTrack({ id: vp.id, name: vp.name, listening: vp.listening, listeningTrack: vp.listeningTrack });
                             }}
                             title={`Bấm để nghe cùng ${vp.name}!`}
                             className="px-2.5 py-1 rounded-lg bg-black/85 border text-[10px] font-mono font-bold flex items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform shadow-lg"
@@ -8785,53 +9899,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           </button>
                         ) : <div />}
 
-                        <div className="flex items-center gap-1.5 ml-auto bg-black/85 px-2 py-1 rounded-lg border border-white/10 backdrop-blur-sm">
+                        <div className="flex items-center gap-1.5 ml-auto bg-black/85 px-1.5 py-1 rounded-lg border border-white/10 backdrop-blur-sm">
                           {vp.id !== myParticipantIdRef.current ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleLocalMute(vp.id);
-                                }}
-                                className={`p-1 rounded-md transition-all cursor-pointer ${
-                                  locallyMutedUsers[vp.id]
-                                    ? 'bg-red-600 text-white shadow-sm'
-                                    : 'text-zinc-400 hover:text-white'
-                                }`}
-                                title={locallyMutedUsers[vp.id] ? "Bật lại mic người này" : "Tắt tiếng người này (Chỉ mình bạn)"}
-                              >
-                                {locallyMutedUsers[vp.id] ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-                              </button>
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                value={locallyMutedUsers[vp.id] ? 0 : (userVolumes[vp.id] ?? 100)}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  const val = Number(e.target.value);
-                                  setUserVolumes(prev => {
-                                    const next = { ...prev, [vp.id]: val };
-                                    try { localStorage.setItem('spytify_user_volumes', JSON.stringify(next)); } catch {}
-                                    return next;
-                                  });
-                                  if (locallyMutedUsers[vp.id] && val > 0) {
-                                    setLocallyMutedUsers(prev => ({ ...prev, [vp.id]: false }));
-                                  }
-                                }}
-                                onClick={e => e.stopPropagation()}
-                                className="w-16 h-1 bg-[#262638] rounded-lg appearance-none cursor-pointer"
-                                style={{ accentColor }}
-                                title={`Âm lượng mic thành viên: ${userVolumes[vp.id] ?? 100}%`}
-                              />
-                              <span className="text-[9px] font-mono text-zinc-300 min-w-[28px] text-right">
-                                {locallyMutedUsers[vp.id] ? '0%' : `${userVolumes[vp.id] ?? 100}%`}
-                              </span>
-                            </>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleLocalMute(vp.id);
+                              }}
+                              className={`p-1 rounded-md transition-all cursor-pointer ${
+                                locallyMutedUsers[vp.id]
+                                  ? 'bg-red-600 text-white shadow-sm'
+                                  : 'text-zinc-400 hover:text-white'
+                              }`}
+                              title={locallyMutedUsers[vp.id] ? "Bật tiếng (Unmute)" : "Tắt tiếng (Mute)"}
+                            >
+                              {locallyMutedUsers[vp.id] ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                            </button>
                           ) : (
                             <span className="text-[9px] font-mono text-emerald-400 px-1 py-0.5">
-                              Mic: {isMuted ? 'Muted' : `${micVolume}%`}
+                              Mic: {isMuted ? 'Muted' : 'Live'}
                             </span>
                           )}
                         </div>
@@ -8872,7 +9959,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           style={{ color: accentColor, backgroundColor: `${accentColor}20`, borderColor: `${accentColor}50` }}
                         >
                           <Radio className="w-2.5 h-2.5 animate-pulse" />
-                          DJ 24/7
+                          DJ
                         </span>
                       ) : vp.isHost ? (
                         <span className="text-[8px] font-mono font-bold px-1.5 py-0.2 rounded border text-amber-300 bg-amber-400/20 border-amber-400/40">
@@ -9051,6 +10138,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     (!msg.server_id || msg.server_id === selectedServer.id) &&
                     (!msg.channel_id || msg.channel_id === selectedChannel.id)
                 )
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
                 .map(msg => {
                   const isWelcomeMsg = msg.id.startsWith('msg_welcome_');
                   const inviteMatch = msg.content?.match(/spytify:\/\/station\/join\/([a-zA-Z0-9_-]+)/i);
@@ -9196,8 +10284,93 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   !inputText.includes(' ') &&
                   filteredSlashCommands.length > 0;
 
-                if (!showSlashAutocomplete) return null;
+                if (showSlashAutocomplete) {
+                  return (
+                    <div className={`absolute bottom-full left-3 right-3 mb-2 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-xl z-50 transition-all ${
+                      isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#101018]/95 border-cyan-500/30 text-white'
+                    }`}>
+                      <div className={`px-3 py-2 border-b flex items-center justify-between text-[10px] font-mono uppercase tracking-wider font-bold ${
+                        isLight ? 'bg-slate-100/90 text-slate-600 border-slate-200' : 'bg-black/70 text-cyan-400 border-white/10'
+                      }`}>
+                        <span className="flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                          <span>LỆNH BOT ÂM NHẠC ({filteredSlashCommands.length})</span>
+                        </span>
+                        <span className="text-[9px] text-[#888] font-mono lowercase">dùng ↑ ↓ để chọn • Enter/Tab để chèn</span>
+                      </div>
 
+                      <div className="max-h-56 overflow-y-auto py-1 divide-y divide-white/5 no-scrollbar">
+                        {filteredSlashCommands.map((cmd, idx) => {
+                          const isSelected = idx === selectedSlashIndex;
+                          return (
+                            <button
+                              key={cmd.id}
+                              type="button"
+                              onClick={() => {
+                                setInputText(cmd.insertText);
+                                setSlashDismissed(false);
+                                chatTextInputRef.current?.focus();
+                              }}
+                              onMouseEnter={() => setSelectedSlashIndex(idx)}
+                              className={`w-full px-3 py-2 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer ${
+                                isSelected
+                                  ? isLight
+                                    ? 'bg-cyan-50 text-cyan-900 font-medium'
+                                    : 'bg-cyan-500/20 text-white'
+                                  : isLight
+                                  ? 'hover:bg-slate-100 text-slate-700'
+                                  : 'hover:bg-white/5 text-[#ccc]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${
+                                  isSelected
+                                    ? 'bg-cyan-500/30 text-cyan-300 border-cyan-400/50'
+                                    : 'bg-black/40 text-cyan-400 border-cyan-500/20'
+                                }`}>
+                                  {cmd.name}
+                                </span>
+                                <span className="text-[11px] font-mono text-zinc-400 truncate">
+                                  {cmd.syntax.replace(cmd.name, '').trim()}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-[11px] text-[#888] truncate max-w-[240px]">
+                                  {cmd.description}
+                                </span>
+                                <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded uppercase font-bold ${
+                                  cmd.category === 'Âm nhạc'
+                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                    : cmd.category === 'Điều khiển'
+                                    ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+                                    : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                                }`}>
+                                  {cmd.category}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Autocomplete @id_bot khi người dùng gõ `/play @...` hoặc `/sk @...`
+                const slashMentionMatch = inputText.match(/^(\/(?:p|play|sk|skip|st|stop|q|queue|pause|resume|l|loop)\s+)@([^\s]*)$/i);
+                const botFilter = slashMentionMatch ? (slashMentionMatch[2] || '').toLowerCase() : '';
+                const filteredMentionBots = slashMentionMatch
+                  ? demandMusicBots.filter(b =>
+                      b.id.toLowerCase().includes(botFilter) ||
+                      (b.username || '').toLowerCase().includes(botFilter) ||
+                      (b.display_name || '').toLowerCase().includes(botFilter)
+                    )
+                  : [];
+                const showBotMentionAutocomplete = Boolean(!mentionBotDismissed && slashMentionMatch && filteredMentionBots.length > 0);
+                if (!showBotMentionAutocomplete) return null;
+
+                const prefixCmd = slashMentionMatch![1];
                 return (
                   <div className={`absolute bottom-full left-3 right-3 mb-2 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-xl z-50 transition-all ${
                     isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#101018]/95 border-cyan-500/30 text-white'
@@ -9206,25 +10379,25 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       isLight ? 'bg-slate-100/90 text-slate-600 border-slate-200' : 'bg-black/70 text-cyan-400 border-white/10'
                     }`}>
                       <span className="flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                        <span>LỆNH BOT ÂM NHẠC ({filteredSlashCommands.length})</span>
+                        <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                        <span>CHỌN BOT YÊU CẦU (@id_bot)</span>
                       </span>
-                      <span className="text-[9px] text-[#888] font-mono lowercase">dùng ↑ ↓ để chọn • Enter/Tab để chèn</span>
+                      <span className="text-[9px] text-[#888] font-mono lowercase">↑ ↓ để chọn • Enter/Tab để chèn</span>
                     </div>
-
-                    <div className="max-h-56 overflow-y-auto py-1 divide-y divide-white/5 no-scrollbar">
-                      {filteredSlashCommands.map((cmd, idx) => {
-                        const isSelected = idx === selectedSlashIndex;
+                    <div className="max-h-52 overflow-y-auto py-1 divide-y divide-white/5 no-scrollbar">
+                      {filteredMentionBots.map((dbot, idx) => {
+                        const isSelected = idx === selectedMentionBotIndex;
+                        const orderIndex = demandMusicBots.findIndex(x => x.id === dbot.id);
                         return (
                           <button
-                            key={cmd.id}
+                            key={dbot.id}
                             type="button"
                             onClick={() => {
-                              setInputText(cmd.insertText);
-                              setSlashDismissed(false);
+                              setInputText(`${prefixCmd}@${dbot.id} `);
+                              setMentionBotDismissed(true);
                               chatTextInputRef.current?.focus();
                             }}
-                            onMouseEnter={() => setSelectedSlashIndex(idx)}
+                            onMouseEnter={() => setSelectedMentionBotIndex(idx)}
                             className={`w-full px-3 py-2 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer ${
                               isSelected
                                 ? isLight
@@ -9235,33 +10408,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                 : 'hover:bg-white/5 text-[#ccc]'
                             }`}
                           >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className={`font-mono text-xs font-bold px-1.5 py-0.5 rounded border ${
-                                isSelected
-                                  ? 'bg-cyan-500/30 text-cyan-300 border-cyan-400/50'
-                                  : 'bg-black/40 text-cyan-400 border-cyan-500/20'
-                              }`}>
-                                {cmd.name}
-                              </span>
-                              <span className="text-[11px] font-mono text-zinc-400 truncate">
-                                {cmd.syntax.replace(cmd.name, '').trim()}
-                              </span>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-6 h-6 rounded-md overflow-hidden bg-zinc-800 flex items-center justify-center flex-shrink-0 text-[10px] font-bold">
+                                {renderAvatarContent(dbot.display_name, dbot.avatar)}
+                              </div>
+                              <span className="text-xs font-bold truncate">{dbot.display_name}</span>
+                              <span className="text-[11px] font-mono text-cyan-400 truncate">@{dbot.id}</span>
                             </div>
-
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="text-[11px] text-[#888] truncate max-w-[240px]">
-                                {cmd.description}
-                              </span>
-                              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded uppercase font-bold ${
-                                cmd.category === 'Âm nhạc'
-                                  ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                  : cmd.category === 'Điều khiển'
-                                  ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
-                                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                              }`}>
-                                {cmd.category}
-                              </span>
-                            </div>
+                            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded uppercase font-bold ${
+                              orderIndex === 0
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                            }`}>
+                              {orderIndex === 0 ? '#1 Mặc định (/play)' : `#${orderIndex + 1}`}
+                            </span>
                           </button>
                         );
                       })}
@@ -9349,6 +10509,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     setInputText(e.target.value);
                     setSlashDismissed(false);
                     setSelectedSlashIndex(0);
+                    setMentionBotDismissed(false);
+                    setSelectedMentionBotIndex(0);
                   }}
                   onKeyDown={e => {
                     const slashFilter = inputText.startsWith('/') ? inputText.trim().toLowerCase() : '';
@@ -9359,23 +10521,53 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         )
                       : [];
                     const isAutocompleteActive = !slashDismissed && inputText.startsWith('/') && !inputText.includes(' ') && filtered.length > 0;
-                    if (!isAutocompleteActive) return;
+                    if (isAutocompleteActive) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setSelectedSlashIndex(prev => (prev + 1) % filtered.length);
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setSelectedSlashIndex(prev => (prev - 1 + filtered.length) % filtered.length);
+                      } else if (e.key === 'Enter' || e.key === 'Tab') {
+                        const selected = filtered[selectedSlashIndex];
+                        if (selected) {
+                          e.preventDefault();
+                          setInputText(selected.insertText);
+                          setSlashDismissed(true);
+                        }
+                      } else if (e.key === 'Escape') {
+                        setSlashDismissed(true);
+                      }
+                      return;
+                    }
+
+                    const slashMentionMatch = inputText.match(/^(\/(?:p|play|sk|skip|st|stop|q|queue|pause|resume|l|loop)\s+)@([^\s]*)$/i);
+                    const botFilter = slashMentionMatch ? (slashMentionMatch[2] || '').toLowerCase() : '';
+                    const filteredBots = slashMentionMatch
+                      ? demandMusicBots.filter(b =>
+                          b.id.toLowerCase().includes(botFilter) ||
+                          (b.username || '').toLowerCase().includes(botFilter) ||
+                          (b.display_name || '').toLowerCase().includes(botFilter)
+                        )
+                      : [];
+                    const isBotMentionActive = Boolean(!mentionBotDismissed && slashMentionMatch && filteredBots.length > 0);
+                    if (!isBotMentionActive) return;
 
                     if (e.key === 'ArrowDown') {
                       e.preventDefault();
-                      setSelectedSlashIndex(prev => (prev + 1) % filtered.length);
+                      setSelectedMentionBotIndex(prev => (prev + 1) % filteredBots.length);
                     } else if (e.key === 'ArrowUp') {
                       e.preventDefault();
-                      setSelectedSlashIndex(prev => (prev - 1 + filtered.length) % filtered.length);
+                      setSelectedMentionBotIndex(prev => (prev - 1 + filteredBots.length) % filteredBots.length);
                     } else if (e.key === 'Enter' || e.key === 'Tab') {
-                      const selected = filtered[selectedSlashIndex];
-                      if (selected) {
+                      const picked = filteredBots[selectedMentionBotIndex % filteredBots.length];
+                      if (picked && slashMentionMatch) {
                         e.preventDefault();
-                        setInputText(selected.insertText);
-                        setSlashDismissed(false);
+                        setInputText(`${slashMentionMatch[1]}@${picked.id} `);
+                        setMentionBotDismissed(true);
                       }
                     } else if (e.key === 'Escape') {
-                      setSlashDismissed(true);
+                      setMentionBotDismissed(true);
                     }
                   }}
                   placeholder={getTranslation(language, 'community.sendMessageTo', { channel: selectedChannel.name })}
@@ -9512,7 +10704,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         </div>
                         <div className="truncate flex-1 min-w-0">
                           <div className="flex items-center gap-1">
-                            <span className="text-xs font-bold text-emerald-400 truncate">{mem.name}</span>
+                            <HoverMarquee text={mem.name} className="text-xs font-bold text-emerald-400 flex-1 min-w-0" />
                             <span className="text-[8px] font-mono font-bold text-emerald-400 bg-emerald-400/15 border border-emerald-400/30 px-1 py-0.2 rounded flex-shrink-0">
                               DJ BOT
                             </span>
@@ -9567,8 +10759,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         const tags = resolveMemberTags(mem.id, selectedServer);
                         const userProfile = registeredUsers.find(u => u.id === mem.id) || INITIAL_USERS.find(u => u.id === mem.id);
                         const memberBio = isMe ? myBio : (realtimeUserPresences[mem.id]?.bio || userProfile?.bio || (mem as any).bio || 'Thành viên cộng đồng Spytify.');
+                        const memberThought = isMe ? myUserThought : (realtimeUserPresences[mem.id]?.thought || (mem as any).thought || null);
                         setHoveredProfile({
-                          member: mem,
+                          member: {
+                            ...mem,
+                            thought: memberThought,
+                          },
                           rect,
                           tags,
                           bio: memberBio,
@@ -9604,7 +10800,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         </div>
                         <div className="truncate flex-1 min-w-0">
                           <div className="flex items-center gap-1">
-                            <span className={`text-xs font-semibold truncate ${isLight ? 'text-[#0f172a]' : 'text-zinc-300'}`}>{mem.name}</span>
+                            <HoverMarquee text={mem.name} className={`text-xs font-semibold flex-1 min-w-0 ${isLight ? 'text-[#0f172a]' : 'text-zinc-300'}`} />
                             {isMemberServerOwner(mem.id) && (
                               <span
                                 title={language === 'vi' ? `Chủ Server ${selectedServer.name}` : `Server Owner of ${selectedServer.name}`}
@@ -9624,6 +10820,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               </span>
                             )}
                           </div>
+                          {(mem as any).custom_status && (
+                            <p className="text-[9px] text-zinc-400 font-mono italic truncate flex items-center gap-1 mt-0.5">
+                              <span>💬</span>
+                              <span className="truncate">{(mem as any).custom_status}</span>
+                            </p>
+                          )}
                           {mem.listening && (
                             <p className="text-[9px] text-cyan-400/80 font-mono truncate flex items-center gap-1 mt-0.5">
                               <Activity className="w-2.5 h-2.5 animate-pulse" />
@@ -9674,8 +10876,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         const tags = resolveMemberTags(mem.id, selectedServer);
                         const userProfile = registeredUsers.find(u => u.id === mem.id) || INITIAL_USERS.find(u => u.id === mem.id);
                         const memberBio = isMe ? myBio : (realtimeUserPresences[mem.id]?.bio || userProfile?.bio || (mem as any).bio || 'Thành viên cộng đồng Spytify.');
+                        const memberThought = isMe ? myUserThought : (realtimeUserPresences[mem.id]?.thought || (mem as any).thought || null);
                         setHoveredProfile({
-                          member: mem,
+                          member: {
+                            ...mem,
+                            thought: memberThought,
+                          },
                           rect,
                           tags,
                           bio: memberBio,
@@ -9711,7 +10917,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         </div>
                         <div className="truncate flex-1 min-w-0">
                           <div className="flex items-center gap-1">
-                            <span className={`text-xs font-semibold truncate ${isLight ? 'text-[#0f172a]' : 'text-zinc-400'}`}>{mem.name}</span>
+                            <HoverMarquee text={mem.name} className={`text-xs font-semibold flex-1 min-w-0 ${isLight ? 'text-[#0f172a]' : 'text-zinc-400'}`} />
                           </div>
                         </div>
                       </div>
@@ -9835,18 +11041,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {/* Profile */}
             <button
               onClick={() => {
-                const u = registeredUsers.find(x => x.id === memberMenu.member.id) || {
-                  id: memberMenu.member.id,
-                  username: memberMenu.member.name.toLowerCase().replace(/\s+/g, ''),
-                  display_name: memberMenu.member.name,
-                  avatar: null,
-                  role: memberMenu.member.role,
-                  status: 'online' as const,
-                  bio: `Thành viên tại ${selectedServer.name}`,
-                  listening: memberMenu.member.listening,
-                  isHost: memberMenu.member.isHost,
-                  followsCurrentUser: false,
-                };
+                const found = registeredUsers.find(x => x.id === memberMenu.member.id);
+                const u = found
+                  ? {
+                      ...found,
+                      listening: memberMenu.member.listening ?? found.listening ?? null,
+                      listeningTrack: memberMenu.member.listeningTrack ?? found.listeningTrack ?? null,
+                    }
+                  : {
+                      id: memberMenu.member.id,
+                      username: memberMenu.member.name.toLowerCase().replace(/\s+/g, ''),
+                      display_name: memberMenu.member.name,
+                      avatar: memberMenu.member.avatar || null,
+                      role: memberMenu.member.role,
+                      status: 'online' as const,
+                      bio: `Thành viên tại ${selectedServer.name}`,
+                      listening: memberMenu.member.listening || null,
+                      listeningTrack: memberMenu.member.listeningTrack || null,
+                      isHost: memberMenu.member.isHost,
+                      followsCurrentUser: false,
+                    };
                 setSelectedProfileUser(u);
                 setMemberMenu(null);
               }}
@@ -9870,7 +11084,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 voiceParticipants.some(p => p.id === memberMenu.member.id) ||
                 getEffectiveVoiceParticipants(selectedChannel).some(p => p.id === memberMenu.member.id);
 
-              if (!isInVoice || memberMenu.member.id === 'usr_me' || memberMenu.member.id === currentUser?.id) {
+              if (!memberMenu.fromVoice || !isInVoice || memberMenu.member.id === 'usr_me' || memberMenu.member.id === currentUser?.id) {
                 return null;
               }
 
@@ -9881,7 +11095,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   <div className="flex items-center justify-between text-[11px] font-mono text-[#aaa] mb-1.5">
                     <span className="flex items-center gap-1.5 font-semibold text-zinc-300">
                       <Volume2 className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                      {isTargetBot ? (language === 'vi' ? 'Âm lượng bot phát nhạc' : 'Bot playback volume') : (language === 'vi' ? 'Âm lượng mic người dùng' : 'User mic volume')}
+                      {isTargetBot ? (language === 'vi' ? 'Âm lượng bot' : 'Bot volume') : (language === 'vi' ? 'Âm lượng mic người dùng' : 'User mic volume')}
                     </span>
                     <span className="font-bold text-white font-mono">{currentVol}%</span>
                   </div>
@@ -9902,15 +11116,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     className="w-full h-1 bg-[#262638] rounded-lg appearance-none cursor-pointer"
                     style={{ accentColor }}
                   />
-                  {isTargetBot && (
-                    memberMenu.member.id === 'usr_music_bot' ? (
+                  {isTargetBot && canManageServer && (() => {
+                    const targetMenuDemandState = getServerRythmBot(selectedServer.id, memberMenu.member.id);
+                    return isDemandBotId(memberMenu.member.id) ? (
                       <div className="flex flex-col gap-1.5 mt-2">
-                        {requestBotCurrentTrack && (
+                        {targetMenuDemandState.currentTrack && (
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => {
-                                processBotMusicCommand('/sk', {
+                                processBotMusicCommand(`/sk @${memberMenu.member.id}`, {
                                   id: currentUser?.id || 'guest',
                                   name: myServerDisplayName,
                                   username: currentUser?.username || 'operative',
@@ -9926,7 +11141,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             <button
                               type="button"
                               onClick={() => {
-                                processBotMusicCommand('/st', {
+                                processBotMusicCommand(`/st @${memberMenu.member.id}`, {
                                   id: currentUser?.id || 'guest',
                                   name: myServerDisplayName,
                                   username: currentUser?.username || 'operative',
@@ -9944,7 +11159,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            processBotMusicCommand('/q', {
+                            processBotMusicCommand(`/q @${memberMenu.member.id}`, {
                               id: currentUser?.id || 'guest',
                               name: myServerDisplayName,
                               username: currentUser?.username || 'operative',
@@ -9955,7 +11170,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           title="Xem hàng đợi nhạc hiện tại"
                         >
                           <ListMusic className="w-3 h-3" />
-                          <span>{language === 'vi' ? `Hàng đợi (${requestBotQueue.length} bài)` : `Queue (${requestBotQueue.length} tracks)`}</span>
+                          <span>{language === 'vi' ? `Hàng đợi (${targetMenuDemandState.queue.length} bài)` : `Queue (${targetMenuDemandState.queue.length} tracks)`}</span>
                         </button>
                       </div>
                     ) : (
@@ -9971,8 +11186,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         <RotateCcw className="w-3 h-3 animate-spin-once" />
                         <span>{language === 'vi' ? 'Đổi luồng stream 24/7 dự phòng' : 'Switch 24/7 backup stream'}</span>
                       </button>
-                    )
-                  )}
+                    );
+                  })()}
                 </div>
               );
             })()}
@@ -9994,12 +11209,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 {locallyMutedUsers[memberMenu.member.id] ? (
                   <>
                     <Volume2 className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{language === 'vi' ? 'Bật lại tiếng (Chỉ mình tôi)' : 'Unmute for me'}</span>
+                    <span>{language === 'vi' ? 'Bật tiếng' : 'Unmute'}</span>
                   </>
                 ) : (
                   <>
                     <VolumeX className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>{language === 'vi' ? 'Tắt tiếng người này (Chỉ mình tôi)' : 'Mute for me'}</span>
+                    <span>{language === 'vi' ? 'Tắt tiếng' : 'Mute'}</span>
                   </>
                 )}
               </button>
@@ -10013,11 +11228,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 (connectedVoiceChannelObj && getEffectiveVoiceParticipants(connectedVoiceChannelObj).some(p => p.id === memberMenu.member.id)) ||
                 (selectedChannel && selectedChannel.type === 'voice' && getEffectiveVoiceParticipants(selectedChannel).some(p => p.id === memberMenu.member.id)) ||
                 (connectedVoiceChannelObj?.is_radio && (connectedVoiceChannelObj?.dj_bot_id === memberMenu.member.id || (!connectedVoiceChannelObj?.dj_bot_id && memberMenu.member.id === 'usr_host'))) ||
-                (memberMenu.member.id === 'usr_music_bot' && requestBotVoiceChannelId && requestBotVoiceChannelId === connectedVoiceChannel);
+                (isDemandBotId(memberMenu.member.id) && (() => { const dSt = getServerRythmBot(selectedServer.id, memberMenu.member.id); return Boolean(dSt.voiceChannelId && dSt.voiceChannelId === connectedVoiceChannel); })());
 
               if (isTargetBot) {
-                // "các bot live stream nếu đã được phân vào live station thì nếu mời thì sẽ không hợp lệ" (Rythm không phải station bot)
-                const isStationBot = memberMenu.member.id !== 'usr_music_bot';
+                // "các bot live stream nếu đã được phân vào live station thì nếu mời thì sẽ không hợp lệ" (Bot Yêu Cầu không phải station bot)
+                const isStationBot = !isDemandBotId(memberMenu.member.id);
                 const assignedLiveStation = isStationBot ? selectedServer.channels.find(
                   c => c.type === 'voice' && c.is_radio && (c.dj_bot_id === memberMenu.member.id || (!c.dj_bot_id && memberMenu.member.id === 'usr_host'))
                 ) : null;
@@ -10198,7 +11413,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </button>
                 )}
 
-                {channelContextMenu.channel.is_radio && (
+                {channelContextMenu.channel.is_radio && canManageServer && (
                   <button
                     onClick={() => {
                       handleOpenEditStationModal(channelContextMenu.channel);
@@ -10254,7 +11469,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         </div>
       )}
 
-      {/* ──────────────── 5. MODAL TỰ TẠO TRẠM SÓNG / SERVER MỚI ──────────────── */}
+      {/* ──────────────── 5. MODAL TỰ TẠO TRẠM SÓNG / SERVER MỚI (DISCORD-STYLE STEP WIZARD) ──────────────── */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-[#0c0c14] border border-[#222234] rounded-2xl p-6 shadow-2xl relative text-white">
@@ -10266,130 +11481,177 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               <X className="w-4 h-4" />
             </button>
 
-            {/* Header */}
+            {/* Header with Step Progress */}
             <div className="flex items-center gap-3 mb-4">
               <div 
-                className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base"
-                style={{ backgroundColor: `${newServerColor}25`, color: newServerColor, border: `1px solid ${newServerColor}40` }}
+                className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base bg-zinc-800/80"
+                style={{ color: newServerColor, border: `1px solid ${newServerColor}60` }}
               >
                 <Sparkles className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <h3 className="text-base font-black tracking-tight text-white">Tạo hoặc Tham Gia Server Spy Jam</h3>
-                <p className="text-[11px] text-[#777] font-mono">Dán link mời hoặc tự tạo trạm sóng âm nhạc mới</p>
+                <h3 className="text-base font-black tracking-tight text-white flex items-center gap-2">
+                  <span>Tạo Server Spy Jam</span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                    Bước {createServerStep}/3
+                  </span>
+                </h3>
+                <p className="text-[11px] text-[#777] font-mono">
+                  {createServerStep === 1 && 'Chọn phong cách mẫu hoặc dán link mời tham gia'}
+                  {createServerStep === 2 && 'Đặt tên máy chủ và chọn biểu tượng / logo'}
+                  {createServerStep === 3 && 'Tùy biến màu theme Neon & xem trước diện mạo'}
+                </p>
               </div>
             </div>
 
-            {/* Quick Join Server by Invite Link */}
-            <form onSubmit={handleJoinServerByLinkForm} className="mb-4 p-3 rounded-xl bg-[#11111c] border border-cyan-500/30 space-y-2">
-              <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400">
-                🔗 THAM GIA SERVER BẰNG LINK MỜI:
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={joinServerLinkInput}
-                  onChange={e => {
-                    setJoinServerLinkInput(e.target.value);
-                    setJoinServerErrorMsg(null);
+            {/* Step Progress Bar */}
+            <div className="flex items-center gap-1.5 mb-5">
+              {[1, 2, 3].map(step => (
+                <div
+                  key={step}
+                  onClick={() => setCreateServerStep(step as 1 | 2 | 3)}
+                  className={`h-1.5 flex-1 rounded-full cursor-pointer transition-all ${
+                    createServerStep >= step ? 'shadow-sm' : 'bg-white/10'
+                  }`}
+                  style={{
+                    backgroundColor: createServerStep >= step ? newServerColor : undefined,
                   }}
-                  placeholder="Dán link spytify://station/join/... vào đây"
-                  className="flex-1 px-3 py-2 rounded-xl bg-[#0b0b12] border border-[#252538] text-cyan-300 text-xs font-mono outline-none focus:border-cyan-400 transition-colors"
                 />
-                <button
-                  type="submit"
-                  className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs font-mono cursor-pointer transition-transform hover:scale-105 shrink-0"
-                >
-                  Tham gia
-                </button>
-              </div>
-              {joinServerErrorMsg && (
-                <p className="text-[11px] font-mono text-red-400">{joinServerErrorMsg}</p>
-              )}
-              {joinServerStatusMsg && (
-                <p className="text-[11px] font-mono text-emerald-400">{joinServerStatusMsg}</p>
-              )}
-            </form>
-
-            {/* Step 1: Chọn phong cách mẫu (Preset Templates) */}
-            <div className="mb-4">
-              <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-2">
-                1. Chọn phong cách trạm sóng mẫu:
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {SERVER_PRESETS.map(p => {
-                  const isSel = newServerPreset === p.key;
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => handleSelectPreset(p.key)}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                        isSel 
-                          ? 'bg-[#151524] shadow-md' 
-                          : 'bg-[#0e0e16] hover:bg-[#13131e] border-[#1e1e2c]'
-                      }`}
-                      style={{
-                        borderColor: isSel ? p.color : undefined,
-                        boxShadow: isSel ? `0 0 12px ${p.color}30` : undefined,
-                      }}
-                    >
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xl">{p.icon}</span>
-                        {isSel && (
-                          <span className="p-0.5 rounded-full bg-white text-black">
-                            <Check className="w-2.5 h-2.5" />
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs font-bold text-white">{p.label}</p>
-                      <p className="text-[10px] text-[#777] font-mono line-clamp-1 mt-0.5">{p.desc}</p>
-                    </button>
-                  );
-                })}
-              </div>
+              ))}
             </div>
 
-            {/* Step 2: Form tùy biến thông tin */}
-            <form onSubmit={handleCreateServer} className="space-y-3 font-sans">
-              <div>
-                <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1">
-                  2. Tên máy chủ / Trạm sóng:
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newServerName}
-                  onChange={e => setNewServerName(e.target.value)}
-                  placeholder="Ví dụ: Neon Club 2077, Lofi Study Corner..."
-                  className="w-full px-3 py-2 rounded-xl bg-[#12121c] border border-[#252538] text-white text-xs outline-none focus:border-white transition-colors"
-                />
-              </div>
+            {/* BƯỚC 1: Chọn mẫu hoặc tham gia link */}
+            {createServerStep === 1 && (
+              <div className="space-y-4">
+                {/* Quick Join Server by Invite Link */}
+                <form onSubmit={handleJoinServerByLinkForm} className="p-3 rounded-xl bg-[#11111c] border border-cyan-500/30 space-y-2">
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400">
+                    🔗 HOẶC THAM GIA BẰNG LINK MỜI:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={joinServerLinkInput}
+                      onChange={e => {
+                        setJoinServerLinkInput(e.target.value);
+                        setJoinServerErrorMsg(null);
+                      }}
+                      placeholder="Dán link spytify://station/join/... vào đây"
+                      className="flex-1 px-3 py-2 rounded-xl bg-[#0b0b12] border border-[#252538] text-cyan-300 text-xs font-mono outline-none focus:border-cyan-400 transition-colors"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs font-mono cursor-pointer transition-transform hover:scale-105 shrink-0"
+                    >
+                      Tham gia
+                    </button>
+                  </div>
+                  {joinServerErrorMsg && (
+                    <p className="text-[11px] font-mono text-red-400">{joinServerErrorMsg}</p>
+                  )}
+                  {joinServerStatusMsg && (
+                    <p className="text-[11px] font-mono text-emerald-400">{joinServerStatusMsg}</p>
+                  )}
+                </form>
 
-              <div>
-                <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1">
-                  Mô tả trạm sóng:
-                </label>
-                <input
-                  type="text"
-                  value={newServerDesc}
-                  onChange={e => setNewServerDesc(e.target.value)}
-                  placeholder="Mô tả ngắn về thể loại âm nhạc hoặc đối tượng tham gia..."
-                  className="w-full px-3 py-2 rounded-xl bg-[#12121c] border border-[#252538] text-white text-xs outline-none focus:border-white transition-colors"
-                />
-              </div>
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-2">
+                    Chọn phong cách trạm sóng mẫu (Discord Style):
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SERVER_PRESETS.map(p => {
+                      const isSel = newServerPreset === p.key;
+                      return (
+                        <button
+                          key={p.key}
+                          type="button"
+                          onClick={() => handleSelectPreset(p.key)}
+                          className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                            isSel 
+                              ? 'bg-[#151524] shadow-md' 
+                              : 'bg-[#0e0e16] hover:bg-[#13131e] border-[#1e1e2c]'
+                          }`}
+                          style={{
+                            borderColor: isSel ? p.color : undefined,
+                            boxShadow: isSel ? `0 0 12px ${p.color}30` : undefined,
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xl">{p.icon}</span>
+                            {isSel && (
+                              <span className="p-0.5 rounded-full bg-white text-black">
+                                <Check className="w-2.5 h-2.5" />
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs font-bold text-white">{p.label}</p>
+                          <p className="text-[10px] text-[#777] font-mono line-clamp-1 mt-0.5">{p.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-              {/* Icon / Custom Logo & Color Picker */}
-              <div className="space-y-3 pt-1">
+                <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#1e1e2c]">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateModalOpen(false)}
+                    className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateServerStep(2)}
+                    className="px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-1.5 cursor-pointer shadow-lg transition-transform hover:scale-105"
+                    style={{ backgroundColor: newServerColor }}
+                  >
+                    <span>Tiếp tục (Tên & Logo)</span>
+                    <span>➔</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* BƯỚC 2: Tên máy chủ, mô tả và logo */}
+            {createServerStep === 2 && (
+              <div className="space-y-4 font-sans">
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1">
+                    Tên máy chủ / Trạm sóng:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newServerName}
+                    onChange={e => setNewServerName(e.target.value)}
+                    placeholder="Ví dụ: Neon Club 2077, Lofi Study Corner..."
+                    className="w-full px-3 py-2.5 rounded-xl bg-[#12121c] border border-[#252538] text-white text-xs outline-none focus:border-cyan-400 transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1">
+                    Mô tả trạm sóng:
+                  </label>
+                  <input
+                    type="text"
+                    value={newServerDesc}
+                    onChange={e => setNewServerDesc(e.target.value)}
+                    placeholder="Mô tả ngắn về thể loại âm nhạc hoặc đối tượng tham gia..."
+                    className="w-full px-3 py-2.5 rounded-xl bg-[#12121c] border border-[#252538] text-white text-xs outline-none focus:border-cyan-400 transition-colors"
+                  />
+                </div>
+
+                {/* Logo / Biểu tượng Máy Chủ */}
                 <div>
                   <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
-                    Logo / Biểu tượng Máy Chủ (Tải ảnh riêng hoặc chọn Icon):
+                    Logo / Biểu tượng Máy Chủ (Tải ảnh hoặc chọn Icon):
                   </label>
                   <div className="flex items-center gap-3 flex-wrap">
                     <div
-                      className="w-11 h-11 rounded-xl overflow-hidden flex items-center justify-center font-bold text-lg shrink-0 border"
+                      className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center font-bold text-lg shrink-0 border bg-zinc-800/80 shadow-md"
                       style={{
-                        backgroundColor: `${newServerColor}20`,
                         borderColor: newServerColor,
                         color: newServerColor,
                       }}
@@ -10422,7 +11684,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </button>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {['⚡', '☕', '🍸', '🎧', '🪩', '🚀', '💎', '🐉'].map(ico => (
+                      {['⚡', '☕', '🍸', '🎧', '🪩', '🚀', '💎', '🐉', '🔥', '🌸'].map(ico => (
                         <button
                           key={ico}
                           type="button"
@@ -10438,48 +11700,411 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
                 </div>
 
+                <div className="pt-3 flex items-center justify-between border-t border-[#1e1e2c]">
+                  <button
+                    type="button"
+                    onClick={() => setCreateServerStep(1)}
+                    className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+                  >
+                    ⬅️ Quay lại
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!newServerName.trim()}
+                    onClick={() => setCreateServerStep(3)}
+                    className="px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-1.5 cursor-pointer shadow-lg transition-transform hover:scale-105 disabled:opacity-40"
+                    style={{ backgroundColor: newServerColor }}
+                  >
+                    <span>Tiếp tục (Màu & Xem trước)</span>
+                    <span>➔</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* BƯỚC 3: Tùy biến màu Neon chủ đạo & Xem trước */}
+            {createServerStep === 3 && (
+              <form onSubmit={handleCreateServer} className="space-y-4 font-sans">
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1">
-                    Màu Neon chủ đạo:
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
+                    Màu Theme Neon chủ đạo:
                   </label>
-                  <div className="flex items-center gap-1.5">
-                    {['#00E5FF', '#E040FB', '#00FF66', '#FF2A55', '#FFE600'].map(clr => (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {['#00E5FF', '#FF2A55', '#00FF66', '#E040FB', '#FFE600', '#9C27B0', '#FFFFFF'].map(clr => (
                       <button
                         key={clr}
                         type="button"
                         onClick={() => setNewServerColor(clr)}
-                        className={`w-6 h-6 rounded-full cursor-pointer transition-transform ${
-                          newServerColor === clr ? 'scale-125 border-2 border-white' : 'hover:scale-110 opacity-70 hover:opacity-100'
+                        className={`w-7 h-7 rounded-full cursor-pointer transition-transform flex items-center justify-center ${
+                          newServerColor.toLowerCase() === clr.toLowerCase() ? 'scale-125 border-2 border-white shadow-lg' : 'hover:scale-110 opacity-70 hover:opacity-100'
                         }`}
                         style={{ backgroundColor: clr, boxShadow: `0 0 8px ${clr}50` }}
-                      />
+                      >
+                        {newServerColor.toLowerCase() === clr.toLowerCase() && (
+                          <Check className="w-3.5 h-3.5 text-black font-black" />
+                        )}
+                      </button>
                     ))}
+
+                    {/* Color picker custom */}
+                    <label
+                      className="relative w-7 h-7 rounded-full border-2 border-white flex items-center justify-center cursor-pointer transition-transform hover:scale-110 shadow-sm"
+                      style={{ backgroundColor: newServerColor }}
+                      title="Chọn bảng màu tùy biến"
+                    >
+                      <input
+                        type="color"
+                        value={newServerColor.startsWith('#') && newServerColor.length === 7 ? newServerColor : '#00E5FF'}
+                        onChange={e => setNewServerColor(e.target.value)}
+                        className="opacity-0 w-0 h-0 absolute pointer-events-none"
+                      />
+                      <Palette className="w-3.5 h-3.5 text-black drop-shadow" />
+                    </label>
+
+                    <input
+                      type="text"
+                      value={newServerColor}
+                      onChange={e => setNewServerColor(e.target.value)}
+                      placeholder="#00E5FF"
+                      className="w-20 px-2 py-1 rounded-lg text-xs font-mono border border-white/20 bg-black/40 text-white outline-none focus:border-cyan-400 uppercase"
+                    />
                   </div>
+                </div>
+
+                {/* Thẻ xem trước máy chủ (Server Live Preview) */}
+                <div>
+                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
+                    Xem trước diện mạo máy chủ (Preview):
+                  </label>
+                  <div
+                    className="p-4 rounded-2xl border bg-[#101018] flex items-center gap-3.5 shadow-xl transition-all"
+                    style={{
+                      borderColor: `${newServerColor}50`,
+                      boxShadow: `0 0 20px ${newServerColor}20`,
+                    }}
+                  >
+                    <div
+                      className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center font-bold text-xl shrink-0 border bg-zinc-800/80 shadow-md"
+                      style={{ borderColor: newServerColor, color: newServerColor }}
+                    >
+                      {renderServerIconContent(newServerIcon, newServerName || 'Server', newServerColor, 'w-7 h-7')}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-sm text-white truncate">{newServerName || 'Tên Máy Chủ'}</h4>
+                        <span
+                          className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border uppercase"
+                          style={{
+                            color: newServerColor,
+                            backgroundColor: `${newServerColor}20`,
+                            borderColor: `${newServerColor}40`,
+                          }}
+                        >
+                          MỚI
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#888] line-clamp-1 mt-0.5 font-sans">
+                        {newServerDesc || 'Trạm phát sóng âm nhạc cộng đồng Spytify'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 flex items-center justify-between border-t border-[#1e1e2c]">
+                  <button
+                    type="button"
+                    onClick={() => setCreateServerStep(2)}
+                    className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+                  >
+                    ⬅️ Quay lại
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-xl transition-transform hover:scale-[1.03]"
+                    style={{
+                      backgroundColor: newServerColor,
+                      boxShadow: `0 0 16px ${newServerColor}40`,
+                    }}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Tạo Máy Chủ Ngay!</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── 5b. MODAL TẠO & TÙY BIẾN BOT (BOT CUSTOMIZER) ──────────────── */}
+      {isBotModalOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <form
+            onSubmit={handleSaveBotConfig}
+            className={`w-full max-w-md border rounded-2xl p-6 shadow-2xl relative ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0c0c14] border-[#222234] text-white'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setIsBotModalOpen(false);
+                setEditingBotTargetId(null);
+              }}
+              className="absolute top-4 right-4 p-1.5 rounded-full text-[#666] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg bg-cyan-500/20 border border-cyan-500/40 text-cyan-400"
+              >
+                <Sliders className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black tracking-tight">
+                  {editingBotTargetId ? 'Tùy Biến Cấu Hình Bot' : 'Tạo Bot Âm Nhạc Mới'}
+                </h3>
+                <p className="text-[11px] text-[#777] font-mono">
+                  Tùy chỉnh tên bot, logo, tag vai trò và trạng thái bài hát
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 font-sans">
+              {/* Phân loại Bot: Bot Trạm Live 24/7 vs Bot Theo Yêu Cầu (Rythm) */}
+              <div className="flex items-center gap-1.5 p-1 rounded-xl bg-black/40 border border-white/10 text-xs font-mono">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBotDraftType('station');
+                    if (!botDraftName || botDraftName === 'Rythm') setBotDraftName('Custom Station Bot');
+                    if (botDraftTag === 'ON-DEMAND') setBotDraftTag('RADIO');
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all cursor-pointer ${
+                    botDraftType === 'station'
+                      ? 'bg-amber-400/20 border border-amber-400/50 text-amber-300 shadow-sm'
+                      : 'text-[#888] hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <Radio className="w-3.5 h-3.5 text-amber-400" />
+                  <span>📻 Bot Trạm Live</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBotDraftType('demand');
+                    if (!botDraftName || botDraftName === 'Custom Station Bot') setBotDraftName(demandMusicBots.length > 0 ? `Music Bot ${demandMusicBots.length + 1}` : 'Rythm');
+                    if (botDraftTag === 'RADIO') setBotDraftTag('ON-DEMAND');
+                    if (!botDraftListening) setBotDraftListening('Sẵn sàng nhận lệnh /play');
+                  }}
+                  className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all cursor-pointer ${
+                    botDraftType === 'demand'
+                      ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 shadow-sm'
+                      : 'text-[#888] hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>🎵 Bot Yêu Cầu (/play)</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] block mb-1">
+                  TÊN BOT:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={botDraftName}
+                  onChange={e => setBotDraftName(e.target.value)}
+                  placeholder={botDraftType === 'demand' ? 'Ví dụ: Rythm, MusicDJ...' : 'Ví dụ: Custom Station Bot, CyberHawk...'}
+                  className={`w-full px-3 py-2 rounded-xl text-xs border outline-none font-sans ${
+                    isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#12121a] border-[#222232] text-white focus:border-cyan-400'
+                  }`}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] block mb-1">
+                  TAG / VAI TRÒ CỦA BOT:
+                </label>
+                <div className="flex items-center gap-2">
+                  {(botDraftType === 'demand' ? ['ON-DEMAND', 'DJ', 'MUSIC'] : ['RADIO', 'DJ', 'HOST', 'PRODUCER']).map(tag => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setBotDraftTag(tag)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border cursor-pointer transition-colors ${
+                        botDraftTag === tag
+                          ? 'bg-amber-400/20 border-amber-400 text-amber-300'
+                          : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {tag}
+                    </button>
+                  ))}
+                  <input
+                    type="text"
+                    value={botDraftTag}
+                    onChange={e => setBotDraftTag(e.target.value)}
+                    placeholder="Tag khác..."
+                    className="w-24 px-2 py-1 rounded-lg text-xs font-mono border border-white/20 bg-transparent text-white"
+                  />
                 </div>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#1e1e2c]">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-lg transition-transform hover:scale-[1.02]"
-                  style={{
-                    backgroundColor: newServerColor,
-                    boxShadow: `0 0 16px ${newServerColor}40`,
-                  }}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Tạo Server Ngay</span>
-                </button>
+              <div>
+                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] block mb-1">
+                  TRẠNG THÁI NHẠC ĐANG PHÁT (LISTENING STATUS):
+                </label>
+                <input
+                  type="text"
+                  value={botDraftListening}
+                  onChange={e => setBotDraftListening(e.target.value)}
+                  placeholder={botDraftType === 'demand' ? 'Ví dụ: Sẵn sàng nhận lệnh /play...' : 'Ví dụ: Lofi Chill 24/7, After Dark...'}
+                  className={`w-full px-3 py-2 rounded-xl text-xs border outline-none font-sans ${
+                    isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#12121a] border-[#222232] text-white focus:border-cyan-400'
+                  }`}
+                />
               </div>
-            </form>
-          </div>
+
+              {/* Các thiết lập riêng cho Bot Trạm Live */}
+              {botDraftType === 'station' && (
+                <div className="space-y-3 p-3 rounded-xl bg-black/30 border border-white/10">
+                  <div>
+                    <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] block mb-1">
+                      LINK YOUTUBE HOẶC VIDEO ID TRẠM PHÁT CHÍNH:
+                    </label>
+                    <input
+                      type="text"
+                      value={botDraftStreamUrl}
+                      onChange={e => setBotDraftStreamUrl(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=... hoặc Video ID"
+                      className={`w-full px-3 py-2 rounded-xl text-xs border outline-none font-mono ${
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#101018] border-[#222232] text-white focus:border-amber-400'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-[#888] block mb-1">
+                      Luồng phát sóng dự phòng (Mỗi dòng 1 URL YouTube):
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={botDraftBackupUrls}
+                      onChange={e => setBotDraftBackupUrls(e.target.value)}
+                      placeholder="https://www.youtube.com/watch?v=...&#10;https://www.youtube.com/watch?v=..."
+                      className={`w-full px-3 py-1.5 rounded-xl text-xs border outline-none font-mono resize-none ${
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#101018] border-[#222232] text-white focus:border-amber-400'
+                      }`}
+                    />
+                    <p className="text-[9px] text-[#777] font-mono mt-0.5">
+                      Khi bấm nút xoay vòng luồng dự phòng trong phòng thoại, bot sẽ tự chuyển sang các link này.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs font-mono pt-1">
+                    <span className="text-[#aaa]">Chế độ phát:</span>
+                    <button
+                      type="button"
+                      onClick={() => setBotDraftIsLoopSingle(!botDraftIsLoopSingle)}
+                      className={`px-3 py-1 rounded-lg border cursor-pointer font-bold transition-all ${
+                        botDraftIsLoopSingle
+                          ? 'bg-amber-400/20 border-amber-400 text-amber-300'
+                          : 'bg-white/5 border-white/10 text-zinc-300'
+                      }`}
+                    >
+                      {botDraftIsLoopSingle ? '🔁 Lặp lại bài đơn (Loop)' : '🔴 Luồng Live 24/7'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Thông tin lệnh cho Bot Yêu Cầu */}
+              {botDraftType === 'demand' && (
+                <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/30 text-xs font-mono space-y-1.5">
+                  <p className="text-cyan-300 font-bold flex items-center gap-1.5 text-[11px]">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Lệnh điều khiển Bot trong kênh chat:</span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-1 text-[10px] text-zinc-300">
+                    <div><span className="text-cyan-400 font-bold">/play [tên/link]</span>: Phát nhạc & vào voice</div>
+                    <div><span className="text-cyan-400 font-bold">/skip</span> (/sk): Bỏ qua bài</div>
+                    <div><span className="text-cyan-400 font-bold">/stop</span> (/st): Dừng & rời phòng</div>
+                    <div><span className="text-cyan-400 font-bold">/queue</span> (/q): Xem hàng đợi</div>
+                    <div><span className="text-cyan-400 font-bold">/pause</span> (/p): Tạm dừng / Tiếp tục</div>
+                    <div><span className="text-cyan-400 font-bold">/loop</span>: Bật/tắt lặp lại</div>
+                  </div>
+                  <p className="text-[9px] text-zinc-400">
+                    * Bot chạy độc lập hoàn toàn cho từng Server, tự động ghi nhớ hàng đợi bài hát riêng biệt.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] block mb-1">
+                  LOGO / AVATAR CHO BOT:
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-zinc-800 border border-white/20 flex items-center justify-center font-bold text-sm text-white shrink-0">
+                    {renderAvatarContent(botDraftName || 'Bot', botDraftAvatar)}
+                  </div>
+                  <label className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold cursor-pointer transition-colors flex items-center gap-1.5">
+                    <span>📷 Tải ảnh Avatar</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = ev => {
+                            if (typeof ev.target?.result === 'string') {
+                              setBotDraftAvatar(ev.target.result);
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {botDraftAvatar && (
+                    <button
+                      type="button"
+                      onClick={() => setBotDraftAvatar('')}
+                      className="text-xs text-red-400 hover:underline cursor-pointer font-mono"
+                    >
+                      Xóa ảnh
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBotModalOpen(false);
+                  setEditingBotTargetId(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-1.5 cursor-pointer shadow-lg bg-cyan-400 hover:bg-cyan-300"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Lưu Cấu Hình Bot</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -10532,265 +12157,374 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
             </div>
 
+            {/* Segmented Category Tabs (Điều chỉnh âm thanh theo từng mục) */}
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-black/40 border border-white/10 mb-4 text-xs font-mono">
+              <button
+                type="button"
+                onClick={() => setAudioSettingsTab('mic')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all cursor-pointer ${
+                  audioSettingsTab === 'mic'
+                    ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 shadow-sm'
+                    : 'text-[#888] hover:text-white hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Mic className="w-3.5 h-3.5" />
+                <span>Microphone</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAudioSettingsTab('speaker')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all cursor-pointer ${
+                  audioSettingsTab === 'speaker'
+                    ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 shadow-sm'
+                    : 'text-[#888] hover:text-white hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+                <span>Loa & Tai nghe</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAudioSettingsTab('bot')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all cursor-pointer ${
+                  audioSettingsTab === 'bot'
+                    ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 shadow-sm'
+                    : 'text-[#888] hover:text-white hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5 text-amber-400" />
+                <span>Âm lượng Bot</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAudioSettingsTab('processing')}
+                className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 font-bold transition-all cursor-pointer ${
+                  audioSettingsTab === 'processing'
+                    ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-300 shadow-sm'
+                    : 'text-[#888] hover:text-white hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Lọc tạp âm</span>
+              </button>
+            </div>
+
             <div className="space-y-4">
-              {/* ──────── SECTION 1: MICROPHONE (ĐẦU VÀO) ──────── */}
-              <div className={`p-4 rounded-xl border ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
-              }`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Mic className="w-4 h-4" style={{ color: accentColor }} />
-                    <span className={`text-xs font-bold uppercase tracking-wider font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      {getTranslation(language, 'community.micVolume')}
-                    </span>
+              {/* ──────── MỤC 1: MICROPHONE (ĐẦU VÀO) ──────── */}
+              {audioSettingsTab === 'mic' && (
+                <div className={`p-4 rounded-xl border ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Mic className="w-4 h-4" style={{ color: accentColor }} />
+                      <span className={`text-xs font-bold uppercase tracking-wider font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {getTranslation(language, 'community.micVolume')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span 
+                        className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+                        style={{
+                          backgroundColor: `${accentColor}18`,
+                          borderColor: `${accentColor}40`,
+                          color: accentColor,
+                        }}
+                      >
+                        {micVolume}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleMicVolumeChange(100)}
+                        title="100%"
+                        className={`p-1 rounded text-[10px] font-mono transition-colors cursor-pointer flex items-center gap-1 border ${
+                          isLight ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#1a1a26] hover:bg-[#242436] border-[#2a2a3e] text-[#aaa]'
+                        }`}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>100%</span>
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span 
-                      className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
-                      style={{
-                        backgroundColor: `${accentColor}18`,
-                        borderColor: `${accentColor}40`,
-                        color: accentColor,
-                      }}
-                    >
-                      {micVolume}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleMicVolumeChange(100)}
-                      title="100%"
-                      className={`p-1 rounded text-[10px] font-mono transition-colors cursor-pointer flex items-center gap-1 border ${
-                        isLight ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#1a1a26] hover:bg-[#242436] border-[#2a2a3e] text-[#aaa]'
-                      }`}
-                    >
-                      <RotateCcw className="w-3 h-3" />
+
+                  {/* Mic Volume Slider */}
+                  <div className="relative mb-3">
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={micVolume}
+                      onChange={(e) => handleMicVolumeChange(parseInt(e.target.value, 10))}
+                      style={{ accentColor }}
+                      className="w-full h-2.5 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-[#1f1f2e]"
+                    />
+                    <div className="flex justify-between text-[10px] font-mono text-[#777] mt-1.5 font-semibold">
+                      <span>0%</span>
+                      <span className="text-zinc-400">50%</span>
                       <span>100%</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Mic Volume Slider */}
-                <div className="relative mb-3">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={micVolume}
-                    onChange={(e) => handleMicVolumeChange(parseInt(e.target.value, 10))}
-                    style={{ accentColor }}
-                    className="w-full h-2.5 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-[#1f1f2e]"
-                  />
-                  <div className="flex justify-between text-[10px] font-mono text-[#777] mt-1.5 font-semibold">
-                    <span>0%</span>
-                    <span className="text-zinc-400">50%</span>
-                    <span>100%</span>
-                  </div>
-                </div>
-
-                {/* Live Mic Test Meter */}
-                <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c]">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-mono text-zinc-400 flex items-center gap-1.5 font-bold">
-                      <Activity className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                      {getTranslation(language, 'community.testMic')}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={isTestingMic ? stopMicTest : startMicTest}
-                      style={!isTestingMic ? {
-                        backgroundColor: `${accentColor}18`,
-                        borderColor: `${accentColor}45`,
-                        color: accentColor,
-                      } : undefined}
-                      className={`px-3 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer ${
-                        isTestingMic
-                          ? 'bg-red-950/60 border-red-500/50 text-red-300 hover:bg-red-900 animate-pulse'
-                          : 'hover:opacity-90 shadow-sm'
-                      }`}
-                    >
-                      {isTestingMic ? getTranslation(language, 'community.stopTestMic') : getTranslation(language, 'community.startTestMic')}
-                    </button>
+                    </div>
                   </div>
 
-                  {/* VU Level Bar */}
-                  <div className="h-3.5 bg-black/60 border border-slate-300 dark:border-[#2a2a3e] rounded-full overflow-hidden p-0.5 relative">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-75 ${
-                        testMicLevel > 80 ? 'bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500' : 'bg-gradient-to-r from-emerald-500 to-cyan-400'
-                      }`}
-                      style={{ width: `${testMicLevel}%` }}
-                    />
-                    {/* Sensitivity Marker needle */}
-                    <div 
-                      className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_4px_white]"
-                      style={{ left: `${(micSensitivity / 50) * 100}%` }}
-                      title={`Sensitivity: ${micSensitivity}`}
-                    />
-                  </div>
+                  {/* Live Mic Test Meter */}
+                  <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c]">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-mono text-zinc-400 flex items-center gap-1.5 font-bold">
+                        <Activity className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                        {getTranslation(language, 'community.testMic')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={isTestingMic ? stopMicTest : startMicTest}
+                        style={!isTestingMic ? {
+                          backgroundColor: `${accentColor}18`,
+                          borderColor: `${accentColor}45`,
+                          color: accentColor,
+                        } : undefined}
+                        className={`px-3 py-1 rounded-lg text-[10px] font-mono font-bold border transition-all cursor-pointer ${
+                          isTestingMic
+                            ? 'bg-red-950/60 border-red-500/50 text-red-300 hover:bg-red-900 animate-pulse'
+                            : 'hover:opacity-90 shadow-sm'
+                        }`}
+                      >
+                        {isTestingMic ? getTranslation(language, 'community.stopTestMic') : getTranslation(language, 'community.startTestMic')}
+                      </button>
+                    </div>
 
-                  <div className="flex items-center justify-between text-[10px] font-mono mt-1.5 text-[#777]">
-                    <span>
-                      {isTestingMic ? (
-                        testMicLevel > micSensitivity ? (
-                          <span className="text-emerald-400 font-bold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                            {getTranslation(language, 'community.voiceActive', { level: testMicLevel })}
-                          </span>
+                    {/* VU Level Bar */}
+                    <div className="h-3.5 bg-black/60 border border-slate-300 dark:border-[#2a2a3e] rounded-full overflow-hidden p-0.5 relative">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-75 ${
+                          testMicLevel > 80 ? 'bg-gradient-to-r from-emerald-400 via-amber-400 to-red-500' : 'bg-gradient-to-r from-emerald-500 to-cyan-400'
+                        }`}
+                        style={{ width: `${testMicLevel}%` }}
+                      />
+                      {/* Sensitivity Marker needle */}
+                      <div 
+                        className="absolute top-0 bottom-0 w-0.5 bg-white shadow-[0_0_4px_white]"
+                        style={{ left: `${(micSensitivity / 50) * 100}%` }}
+                        title={`Sensitivity: ${micSensitivity}`}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] font-mono mt-1.5 text-[#777]">
+                      <span>
+                        {isTestingMic ? (
+                          testMicLevel > micSensitivity ? (
+                            <span className="text-emerald-400 font-bold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                              {getTranslation(language, 'community.voiceActive', { level: testMicLevel })}
+                            </span>
+                          ) : (
+                            <span className="text-zinc-400">{getTranslation(language, 'community.voiceBelowGate', { level: testMicLevel })}</span>
+                          )
                         ) : (
-                          <span className="text-zinc-400">{getTranslation(language, 'community.voiceBelowGate', { level: testMicLevel })}</span>
-                        )
-                      ) : (
-                        getTranslation(language, 'community.voiceTestPrompt')
-                      )}
-                    </span>
-                    <span className="font-bold text-zinc-400">{getTranslation(language, 'community.activationThreshold', { level: micSensitivity })}</span>
+                          getTranslation(language, 'community.voiceTestPrompt')
+                        )}
+                      </span>
+                      <span className="font-bold text-zinc-400">{getTranslation(language, 'community.activationThreshold', { level: micSensitivity })}</span>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                {/* Voice Sensitivity Slider */}
-                <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c] mt-3">
-                  <div className="flex items-center justify-between mb-1.5 text-xs">
-                    <span className="text-[11px] font-mono text-zinc-400">{getTranslation(language, 'community.noiseGate')}</span>
-                    <span className="text-xs font-mono font-bold" style={{ color: accentColor }}>{micSensitivity}</span>
+              {/* ──────── MỤC 2: SPEAKER & OUTPUT (ĐẦU RA) ──────── */}
+              {audioSettingsTab === 'speaker' && (
+                <div className={`p-4 rounded-xl border ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
+                }`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Volume2 className="w-4 h-4" style={{ color: accentColor }} />
+                      <span className={`text-xs font-bold uppercase tracking-wider font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        {getTranslation(language, 'community.speakerVolume')}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span 
+                        className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+                        style={{
+                          backgroundColor: `${accentColor}18`,
+                          borderColor: `${accentColor}40`,
+                          color: accentColor,
+                        }}
+                      >
+                        {speakerVolume}%
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSpeakerVolumeChange(100)}
+                        title="100%"
+                        className={`p-1 rounded text-[10px] font-mono transition-colors cursor-pointer flex items-center gap-1 border ${
+                          isLight ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#1a1a26] hover:bg-[#242436] border-[#2a2a3e] text-[#aaa]'
+                        }`}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>100%</span>
+                      </button>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="50"
-                    step="1"
-                    value={micSensitivity}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setMicSensitivity(val);
-                      localStorage.setItem('spytify_mic_sensitivity', String(val));
-                    }}
-                    style={{ accentColor }}
-                    className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-[#1f1f2e]"
-                  />
-                  <p className="text-[10px] text-[#666] font-mono mt-1">
-                    {getTranslation(language, 'community.noiseGateHint')}
-                  </p>
-                </div>
 
-                {/* Audio Filters (Noise Suppression & Echo Cancellation) */}
-                <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c] mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <label 
-                    style={noiseSuppression ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}10` } : undefined}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[#252538]'
-                    }`}
-                  >
+                  {/* Speaker Volume Slider */}
+                  <div className="relative mb-3">
                     <input
-                      type="checkbox"
-                      checked={noiseSuppression}
-                      onChange={(e) => {
-                        setNoiseSuppression(e.target.checked);
-                        localStorage.setItem('spytify_noise_suppression', String(e.target.checked));
-                      }}
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={speakerVolume}
+                      onChange={(e) => handleSpeakerVolumeChange(parseInt(e.target.value, 10))}
                       style={{ accentColor }}
-                      className="rounded"
+                      className="w-full h-2.5 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-[#1f1f2e]"
                     />
-                    <span className={`text-[11px] font-mono font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
-                      {getTranslation(language, 'community.noiseSuppression')}
-                    </span>
-                  </label>
-                  <label 
-                    style={echoCancellation ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}10` } : undefined}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                      isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[#252538]'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={echoCancellation}
-                      onChange={(e) => {
-                        setEchoCancellation(e.target.checked);
-                        localStorage.setItem('spytify_echo_cancellation', String(e.target.checked));
-                      }}
-                      style={{ accentColor }}
-                      className="rounded"
-                    />
-                    <span className={`text-[11px] font-mono font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
-                      {getTranslation(language, 'community.echoCancellation')}
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* ──────── SECTION 2: SPEAKER & OUTPUT (ĐẦU RA) ──────── */}
-              <div className={`p-4 rounded-xl border ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
-              }`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4" style={{ color: accentColor }} />
-                    <span className={`text-xs font-bold uppercase tracking-wider font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      {getTranslation(language, 'community.speakerVolume')}
-                    </span>
+                    <div className="flex justify-between text-[10px] font-mono text-[#777] mt-1.5 font-semibold">
+                      <span>0%</span>
+                      <span className="text-zinc-400">50%</span>
+                      <span>100%</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <span 
-                      className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+
+                  {/* Speaker Test Sound Button */}
+                  <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c] flex items-center justify-between">
+                    <span className="text-[11px] font-mono text-[#777]">Âm lượng tai nghe / loa</span>
+                    <button
+                      type="button"
+                      onClick={() => playSpeakerTestSound()}
                       style={{
                         backgroundColor: `${accentColor}18`,
                         borderColor: `${accentColor}40`,
                         color: accentColor,
                       }}
+                      className="px-3.5 py-1.5 rounded-xl border font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
                     >
-                      {speakerVolume}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleSpeakerVolumeChange(100)}
-                      title="100%"
-                      className={`p-1 rounded text-[10px] font-mono transition-colors cursor-pointer flex items-center gap-1 border ${
-                        isLight ? 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#1a1a26] hover:bg-[#242436] border-[#2a2a3e] text-[#aaa]'
-                      }`}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      <span>100%</span>
+                      <Volume1 className="w-4 h-4" />
+                      <span>{getTranslation(language, 'community.testSpeaker')}</span>
                     </button>
                   </div>
                 </div>
+              )}
 
-                {/* Speaker Volume Slider */}
-                <div className="relative mb-3">
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={speakerVolume}
-                    onChange={(e) => handleSpeakerVolumeChange(parseInt(e.target.value, 10))}
-                    style={{ accentColor }}
-                    className="w-full h-2.5 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-[#1f1f2e]"
-                  />
-                  <div className="flex justify-between text-[10px] font-mono text-[#777] mt-1.5 font-semibold">
-                    <span>0%</span>
-                    <span className="text-zinc-400">50%</span>
-                    <span>100%</span>
+              {/* ──────── MỤC 3: ÂM LƯỢNG BOT & NHẠC NỀN ──────── */}
+              {audioSettingsTab === 'bot' && (
+                <div className={`p-4 rounded-xl border space-y-4 ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
+                }`}>
+                  {/* Danh sách Bot Theo Yêu Cầu (Ưu tiên theo thứ tự tạo) */}
+                  {demandMusicBots.map((dbot: CommunityUserProfile, idx: number) => {
+                    const botVol = userVolumes[dbot.id] ?? userVolumes['usr_music_bot'] ?? 80;
+                    return (
+                      <div key={dbot.id} className={idx > 0 ? "pt-3 border-t border-white/10" : ""}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-cyan-400" />
+                            <span className="text-xs font-bold font-mono text-white">
+                              {dbot.display_name || dbot.username} {idx === 0 ? '(Ưu tiên mặc định /play)' : '(/play)'}
+                            </span>
+                          </div>
+                          <span className="text-xs font-mono font-bold text-cyan-400">
+                            {botVol}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={botVol}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10);
+                            setUserVolumes(prev => {
+                              const next = { ...prev, [dbot.id]: val };
+                              try { localStorage.setItem('spytify_user_volumes', JSON.stringify(next)); } catch {}
+                              return next;
+                            });
+                          }}
+                          style={{ accentColor: '#00E5FF' }}
+                          className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-[#1f1f2e]"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ──────── MỤC 4: BỘ LỌC TẠP ÂM & KHỬ VANG ──────── */}
+              {audioSettingsTab === 'processing' && (
+                <div className={`p-4 rounded-xl border space-y-4 ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
+                }`}>
+                  {/* Voice Sensitivity Slider */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5 text-xs">
+                      <span className="text-[11px] font-mono text-zinc-400">{getTranslation(language, 'community.noiseGate')}</span>
+                      <span className="text-xs font-mono font-bold" style={{ color: accentColor }}>{micSensitivity}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="50"
+                      step="1"
+                      value={micSensitivity}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        setMicSensitivity(val);
+                        localStorage.setItem('spytify_mic_sensitivity', String(val));
+                      }}
+                      style={{ accentColor }}
+                      className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-[#1f1f2e]"
+                    />
+                    <p className="text-[10px] text-[#666] font-mono mt-1">
+                      {getTranslation(language, 'community.noiseGateHint')}
+                    </p>
+                  </div>
+
+                  {/* Audio Filters (Noise Suppression & Echo Cancellation) */}
+                  <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c] grid grid-cols-2 gap-2 text-xs">
+                    <label 
+                      style={noiseSuppression ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}10` } : undefined}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[#252538]'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={noiseSuppression}
+                        onChange={(e) => {
+                          setNoiseSuppression(e.target.checked);
+                          localStorage.setItem('spytify_noise_suppression', String(e.target.checked));
+                        }}
+                        style={{ accentColor }}
+                        className="rounded"
+                      />
+                      <span className={`text-[11px] font-mono font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                        {getTranslation(language, 'community.noiseSuppression')}
+                      </span>
+                    </label>
+                    <label 
+                      style={echoCancellation ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}10` } : undefined}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                        isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[#252538]'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={echoCancellation}
+                        onChange={(e) => {
+                          setEchoCancellation(e.target.checked);
+                          localStorage.setItem('spytify_echo_cancellation', String(e.target.checked));
+                        }}
+                        style={{ accentColor }}
+                        className="rounded"
+                      />
+                      <span className={`text-[11px] font-mono font-semibold ${isLight ? 'text-slate-800' : 'text-zinc-200'}`}>
+                        {getTranslation(language, 'community.echoCancellation')}
+                      </span>
+                    </label>
                   </div>
                 </div>
-
-                {/* Speaker Test Sound Button */}
-                <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c] flex items-center justify-between">
-                  <span className="text-[11px] font-mono text-[#777]">Âm lượng tai nghe / loa</span>
-                  <button
-                    type="button"
-                    onClick={() => playSpeakerTestSound()}
-                    style={{
-                      backgroundColor: `${accentColor}18`,
-                      borderColor: `${accentColor}40`,
-                      color: accentColor,
-                    }}
-                    className="px-3.5 py-1.5 rounded-xl border font-mono text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:scale-[1.02]"
-                  >
-                    <Volume1 className="w-4 h-4" />
-                    <span>{getTranslation(language, 'community.testSpeaker')}</span>
-                  </button>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -10831,7 +12565,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       {/* ──────────────── 7. MODAL CÀI ĐẶT SERVER (SERVER SETTINGS & MANAGEMENT) ──────────────── */}
       {isServerSettingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className={`w-full max-w-2xl border rounded-2xl shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden ${
+          <div className={`w-full max-w-4xl border rounded-2xl shadow-2xl relative h-[680px] max-h-[92vh] flex flex-col overflow-hidden ${
             isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0c0c14] border-[#222234] text-white'
           }`}>
             {/* Header */}
@@ -10865,30 +12599,173 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </button>
             </div>
 
-            {/* Sub-Tabs: Overview, Members, Tags, Invites, Danger */}
-            <div className={`flex items-center gap-2 px-5 py-2.5 border-b text-xs font-mono font-bold uppercase tracking-wider ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#09090f] border-[#181824]'}`}>
-              {(['overview', 'members', 'tags', 'invites', 'danger'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setServerSettingsTab(tab)}
-                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    serverSettingsTab === tab
-                      ? isLight ? 'bg-white text-slate-900 shadow-sm' : 'bg-[#181826] text-white border border-white/20'
-                      : 'text-[#777] hover:text-white'
-                  }`}
-                >
-                  {tab === 'overview' && 'Tổng quan'}
-                  {tab === 'members' && 'Thành viên'}
-                  {tab === 'tags' && '🏷️ Quản lý Tag'}
-                  {tab === 'invites' && 'Mời bạn bè'}
-                  {tab === 'danger' && 'Vùng nguy hiểm'}
-                </button>
-              ))}
-            </div>
+            {/* Vertical Sub-Tabs (Discord Style) */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              <div className={`w-52 shrink-0 border-r p-3.5 flex flex-col gap-1 overflow-y-auto ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#09090f] border-[#181824]'
+              }`}>
+                <div className="px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] mb-1">
+                  {canManageServer ? 'CÀI ĐẶT MÁY CHỦ' : 'TÙY CHỌN CỦA BẠN'}
+                </div>
+                {(() => {
+                  const memberTabs = [
+                    { id: 'overview' as const, name: 'Biệt danh máy chủ', icon: <Edit3 className="w-4 h-4 shrink-0" /> },
+                    { id: 'tags' as const, name: 'Tags sở thích', icon: <Tag className="w-4 h-4 shrink-0" /> },
+                    ...(selectedServer.allow_member_invites !== false ? [
+                      { id: 'invites' as const, name: 'Mời bạn bè', icon: <UserPlus className="w-4 h-4 shrink-0" /> }
+                    ] : []),
+                    { id: 'danger' as const, name: 'Rời máy chủ', icon: <LogOut className="w-4 h-4 shrink-0 text-red-400" /> },
+                  ];
+                  const adminTabs = [
+                    { id: 'overview' as const, name: 'Tổng quan', icon: <Sliders className="w-4 h-4 shrink-0" /> },
+                    { id: 'members' as const, name: 'Thành viên & Bot', icon: <Users className="w-4 h-4 shrink-0" />, count: onlineMembers.length },
+                    { id: 'tags' as const, name: 'Quản lý Tag', icon: <Tag className="w-4 h-4 shrink-0" /> },
+                    { id: 'invites' as const, name: 'Mời bạn bè', icon: <UserPlus className="w-4 h-4 shrink-0" /> },
+                    { id: 'danger' as const, name: 'Vùng nguy hiểm', icon: <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" /> },
+                  ];
+                  const tabs = canManageServer ? adminTabs : memberTabs;
+                  return tabs.map(tab => {
+                    const isActive = serverSettingsTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setServerSettingsTab(tab.id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-mono font-bold tracking-wider transition-all text-left cursor-pointer ${
+                          isActive
+                            ? isLight
+                              ? 'bg-white text-slate-900 shadow-sm border border-slate-300 font-black'
+                              : 'bg-[#181826] text-white border border-white/20 shadow-md font-black'
+                            : tab.id === 'danger'
+                            ? 'text-red-400 hover:bg-red-950/20'
+                            : isLight
+                            ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            : 'text-[#888] hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        <span style={{ color: isActive ? editServerColor : undefined }}>
+                          {tab.icon}
+                        </span>
+                        <span>{tab.name}</span>
+                        {'count' in tab && tab.count !== undefined && (
+                          <span className="ml-auto text-[10px] font-mono opacity-60">({tab.count})</span>
+                        )}
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
 
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {serverSettingsTab === 'overview' && (
+              {/* Right Tab Content Panel */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {serverSettingsTab === 'overview' && !canManageServer && (
+                <div className="space-y-5 max-w-xl">
+                  {/* Hồ sơ thành viên trong máy chủ */}
+                  <div className={`p-4 rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                    <div className="flex items-center gap-3.5 mb-3">
+                      <div className="w-12 h-12 rounded-xl bg-zinc-800 overflow-hidden flex items-center justify-center font-bold text-sm text-white shrink-0 border border-white/10">
+                        {renderAvatarContent(myServerDisplayName, currentUser?.avatar)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className={`text-sm font-bold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                            {nicknameDraft.trim() || myServerDisplayName}
+                          </h4>
+                          <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-800/80 text-zinc-300 border border-white/10">
+                            THÀNH VIÊN
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-mono text-[#888] truncate mt-0.5">
+                          @{currentUser?.username || 'user'} • Máy chủ: {selectedServer.name}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Tags sở thích hiện tại */}
+                    {(() => {
+                      const currentTags = resolveMemberTags('usr_me', selectedServer);
+                      if (currentTags.length === 0) return null;
+                      return (
+                        <div className="flex flex-wrap gap-1.5 pt-2 border-t border-white/5">
+                          {currentTags.map(tag => (
+                            <span
+                              key={tag.id}
+                              className="text-[10px] font-mono px-2 py-0.5 rounded-md border flex items-center gap-1"
+                              style={{
+                                backgroundColor: `${tag.color || accentColor}18`,
+                                color: tag.color || accentColor,
+                                borderColor: `${tag.color || accentColor}35`,
+                              }}
+                            >
+                              {tag.icon || '🏷️'} {tag.name}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Form đổi biệt danh máy chủ */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSaveNicknameOnly();
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5 flex items-center gap-1.5">
+                        <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Biệt danh của bạn trong máy chủ này (Server Nickname):</span>
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={32}
+                        value={nicknameDraft}
+                        onChange={e => setNicknameDraft(e.target.value)}
+                        placeholder={currentUser?.display_name || 'Nhập biệt danh của bạn...'}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-xs border outline-none font-sans ${
+                          isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#12121a] border-[#222232] text-white focus:border-cyan-400'
+                        }`}
+                      />
+                      <p className="text-[10px] text-[#666] font-mono mt-1">
+                        Biệt danh này chỉ hiển thị khi bạn nhắn tin, trò chuyện hoặc tham gia phòng thoại trong máy chủ này.
+                      </p>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-lg hover:scale-105 active:scale-95 transition-all"
+                        style={{ backgroundColor: accentColor }}
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Lưu Biệt Danh</span>
+                      </button>
+                    </div>
+                  </form>
+
+                  {/* Thông tin máy chủ (Read-only) */}
+                  <div className={`p-4 rounded-xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-[#888]">MÁY CHỦ:</span>
+                      <span className="font-bold text-white">{selectedServer.name}</span>
+                    </div>
+                    {selectedServer.description && (
+                      <div className="flex items-center justify-between text-xs font-mono">
+                        <span className="text-[#888]">MÔ TẢ:</span>
+                        <span className="text-zinc-300 truncate max-w-[280px]">{selectedServer.description}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-[#888]">QUYỀN HẠN:</span>
+                      <span className="text-emerald-400 font-bold">Thành viên thường (Member)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {serverSettingsTab === 'overview' && canManageServer && (
                 <form onSubmit={handleSaveServerSettings} className="space-y-4">
                   <div>
                     <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
@@ -10896,9 +12773,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </label>
                     <input
                       type="text"
+                      disabled={!canManageServer}
                       value={editServerName}
                       onChange={e => setEditServerName(e.target.value)}
-                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs border outline-none font-sans ${
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs border outline-none font-sans disabled:opacity-60 disabled:cursor-not-allowed ${
                         isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#12121a] border-[#222232] text-white focus:border-white/50'
                       }`}
                     />
@@ -10910,9 +12788,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </label>
                     <input
                       type="text"
+                      disabled={!canManageServer}
                       value={editServerDesc}
                       onChange={e => setEditServerDesc(e.target.value)}
-                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs border outline-none font-sans ${
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs border outline-none font-sans disabled:opacity-60 disabled:cursor-not-allowed ${
                         isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#12121a] border-[#222232] text-white focus:border-white/50'
                       }`}
                     />
@@ -10925,9 +12804,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       </label>
                       <div className="flex items-center gap-2.5 mb-2.5 flex-wrap">
                         <div
-                          className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center font-bold text-lg shrink-0 border"
+                          className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center font-bold text-lg shrink-0 border bg-zinc-800/80"
                           style={{
-                            backgroundColor: `${editServerColor}20`,
                             borderColor: editServerColor,
                             color: editServerColor,
                           }}
@@ -11009,14 +12887,86 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           type="button"
                           onClick={() => setEditServerColor(c)}
                           className={`w-8 h-8 rounded-xl border-2 transition-transform cursor-pointer flex items-center justify-center ${
-                            editServerColor === c ? 'scale-110 shadow-lg' : 'hover:scale-105 border-transparent'
+                            editServerColor.toLowerCase() === c.toLowerCase() ? 'scale-110 shadow-lg' : 'hover:scale-105 border-transparent'
                           }`}
-                          style={{ backgroundColor: c, borderColor: editServerColor === c ? '#ffffff' : 'transparent' }}
+                          style={{ backgroundColor: c, borderColor: editServerColor.toLowerCase() === c.toLowerCase() ? (c === '#FFFFFF' ? '#000000' : '#ffffff') : 'transparent' }}
                         >
-                          {editServerColor === c && <Check className="w-4 h-4 text-black font-black" />}
+                          {editServerColor.toLowerCase() === c.toLowerCase() && <Check className={`w-4 h-4 font-black ${c === '#FFFFFF' ? 'text-black' : 'text-black'}`} />}
                         </button>
                       ))}
+
+                      {/* Bảng màu tùy biến (Color Picker) */}
+                      <label
+                        className="relative w-8 h-8 rounded-xl border-2 flex items-center justify-center cursor-pointer transition-transform hover:scale-110 shadow-sm"
+                        style={{
+                          backgroundColor: editServerColor,
+                          borderColor: '#ffffff',
+                        }}
+                        title="Mở bảng màu tùy biến"
+                      >
+                        <input
+                          type="color"
+                          value={editServerColor.startsWith('#') && editServerColor.length === 7 ? editServerColor : '#00E5FF'}
+                          onChange={e => setEditServerColor(e.target.value)}
+                          className="opacity-0 w-0 h-0 absolute pointer-events-none"
+                        />
+                        <Palette className="w-4 h-4 text-black drop-shadow" />
+                      </label>
+                      <input
+                        type="text"
+                        value={editServerColor}
+                        onChange={e => setEditServerColor(e.target.value)}
+                        placeholder="#00E5FF"
+                        className="w-20 px-2 py-1 rounded-lg text-xs font-mono border border-white/20 bg-black/40 text-white outline-none focus:border-cyan-400 uppercase"
+                      />
                     </div>
+                  </div>
+
+                  {/* Server Nickname: Tên hiển thị trên server này */}
+                  <div>
+                    <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5 flex items-center gap-1.5">
+                      <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Biệt danh của bạn trong Server này (Server Nickname):</span>
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={32}
+                      value={nicknameDraft}
+                      onChange={e => setNicknameDraft(e.target.value)}
+                      placeholder={currentUser?.display_name || 'Nhập biệt danh hiển thị...'}
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs border outline-none font-sans ${
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#12121a] border-[#222232] text-white focus:border-cyan-400'
+                      }`}
+                    />
+                    <p className="text-[10px] text-[#666] font-mono mt-1">Biệt danh này chỉ hiển thị khi bạn nhắn tin hoặc tham gia phòng thoại trong server này.</p>
+                  </div>
+
+                  {/* Quyền Mời Thành Viên Của Member Thường (Chỉ Chủ Server thiết lập) */}
+                  <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                          Cho phép thành viên tự do mời người khác
+                        </p>
+                        <p className="text-[10px] text-[#777] font-mono mt-0.5">
+                          {editServerAllowInvites
+                            ? 'Bất kỳ ai trong server đều có thể tạo và gửi link mời tham gia.'
+                            : 'Chỉ có Chủ server và Mod mới có quyền mời trực tiếp; thành viên thường phải đợi duyệt.'}
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={editServerAllowInvites}
+                        disabled={!isServerOwner}
+                        onChange={e => setEditServerAllowInvites(e.target.checked)}
+                        className="w-4 h-4 rounded text-cyan-500 focus:ring-0 cursor-pointer disabled:opacity-50"
+                      />
+                    </div>
+                    {!isServerOwner && (
+                      <p className="text-[9px] text-amber-400 font-mono mt-1.5">
+                        * Chỉ Chủ Server (Owner) mới có quyền thay đổi thiết lập này.
+                      </p>
+                    )}
                   </div>
 
                   <div className="pt-4 border-t border-[#1e1e2c] flex justify-end">
@@ -11032,13 +12982,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 </form>
               )}
 
-              {serverSettingsTab === 'members' && (
+              {serverSettingsTab === 'members' && canManageServer && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between text-xs text-[#888] font-mono">
                     <span>DANH SÁCH THÀNH VIÊN ({onlineMembers.length} / {editServerMaxMembers})</span>
-                    <span>
-                      Quyền hạn: {isServerOwner ? 'Chủ Server (Owner)' : isServerMod ? 'Điều hành viên (Mod)' : 'Thành viên'}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingBotTargetId(null);
+                        setBotDraftType('station');
+                        setBotDraftName('');
+                        setBotDraftAvatar('');
+                        setBotDraftTag('RADIO');
+                        setBotDraftListening('');
+                        setBotDraftStreamUrl('');
+                        setBotDraftBackupUrls('');
+                        setBotDraftIsLoopSingle(false);
+                        setIsBotModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Tạo / Tùy Biến Bot</span>
+                    </button>
                   </div>
 
                   <div className="space-y-2">
@@ -11072,56 +13038,149 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                   {!isMemOwner && isMemMod && <Shield className="w-2.5 h-2.5" />}
                                   <span>{mem.role}</span>
                                 </span>
+                                {isDemandBotId(mem.id) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      try { navigator.clipboard.writeText(`@${mem.id}`); } catch {}
+                                      showVoiceToast(language === 'vi' ? `Đã chép ID lệnh: @${mem.id}` : `Copied bot mention: @${mem.id}`);
+                                    }}
+                                    className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/20 cursor-pointer"
+                                    title={`Nhấn để copy @${mem.id} dùng cho lệnh /play @${mem.id}`}
+                                  >
+                                    @{mem.id}
+                                  </button>
+                                )}
                               </div>
                               <p className="text-[10px] text-[#777] font-mono">{mem.listening ? `🎵 ${mem.listening}` : 'Sẵn sàng'}</p>
                             </div>
                           </div>
 
                           {mem.id !== 'usr_me' && (
-                            <div className="flex items-center gap-2 flex-wrap justify-end">
+                            <div className="relative flex items-center justify-end">
                               {ACTIVE_BOT_IDS.has(mem.id) ? (
-                                <span className="text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/60 text-zinc-400 flex items-center gap-1.5 shadow-sm">
-                                  <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
-                                  <span>Bot Hệ Thống (Vai trò cố định)</span>
-                                </span>
-                              ) : (
-                                <>
-                                  {isServerOwner && (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleToggleModerator(mem.id)}
-                                        className={`px-3 py-1 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer ${
-                                          isMemMod
-                                            ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                                            : 'border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20'
-                                        }`}
-                                        title={isMemMod ? 'Gỡ quyền Điều hành viên (Mod)' : 'Cấp quyền Điều hành viên (Mod)'}
-                                      >
-                                        <Shield className="w-3.5 h-3.5" />
-                                        <span>{isMemMod ? 'Hủy quyền Mod' : 'Cấp quyền Mod'}</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => requestTransferOwnership(mem.id, mem.name)}
-                                        className="px-3 py-1 rounded-lg border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
-                                        title="Trao quyền Chủ Server cho thành viên này và hạ bạn xuống làm Mod"
-                                      >
-                                        <Crown className="w-3.5 h-3.5" />
-                                        <span>Nhượng quyền Chủ</span>
-                                      </button>
-                                    </>
-                                  )}
-
-                                  {canManageServer && (isServerOwner || !isMemMod) && (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingBotTargetId(mem.id);
+                                      const isDemand = mem.id === 'usr_music_bot' || mem.id.startsWith('usr_music_bot') || (mem.role || '').toUpperCase().includes('DEMAND');
+                                      setBotDraftType(isDemand ? 'demand' : 'station');
+                                      setBotDraftName(mem.name);
+                                      setBotDraftAvatar(mem.avatar || '');
+                                      setBotDraftTag(mem.role || (isDemand ? 'ON-DEMAND' : 'RADIO'));
+                                      setBotDraftListening(mem.listening || (isDemand ? 'Sẵn sàng nhận lệnh /play' : ''));
+                                      const ch = selectedServer.channels.find(
+                                        c => c.is_radio && (c.dj_bot_id === mem.id || (!c.dj_bot_id && mem.id === 'usr_host') || c.id === 'custom')
+                                      );
+                                      setBotDraftStreamUrl(ch?.custom_stream_url || '');
+                                      setBotDraftBackupUrls((ch?.custom_backup_streams || []).join('\n'));
+                                      setBotDraftIsLoopSingle(Boolean(ch?.is_loop_single));
+                                      setIsBotModalOpen(true);
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700/80 text-cyan-400 hover:text-cyan-300 text-[11px] font-mono flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+                                    title="Tùy biến tên, logo, tag và trạng thái bot"
+                                  >
+                                    <Sliders className="w-3 h-3" />
+                                    <span>Tùy biến</span>
+                                  </button>
+                                  {!BASE_BOT_IDS.has(mem.id) && (
                                     <button
                                       type="button"
-                                      onClick={() => requestKickMember(mem.id, mem.name)}
-                                      className="px-3 py-1 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-mono flex items-center gap-1.5 transition-colors cursor-pointer"
+                                      onClick={() => {
+                                        if (Array.isArray(selectedServer.member_ids)) {
+                                          const updatedSrv: CommunityServer = {
+                                            ...selectedServer,
+                                            member_ids: selectedServer.member_ids.filter(id => id !== mem.id),
+                                            channels: selectedServer.channels.filter(c => c.dj_bot_id !== mem.id),
+                                          };
+                                          broadcastAndPersistServerUpdate(updatedSrv);
+                                        }
+                                        setRegisteredUsers(prev => {
+                                          const next = prev.filter(u => u.id !== mem.id);
+                                          try {
+                                            localStorage.setItem('spytify_registered_users', JSON.stringify(next));
+                                          } catch {}
+                                          return next;
+                                        });
+                                        showVoiceToast(language === 'vi' ? `Đã xóa bot ${mem.name}` : `Removed bot ${mem.name}`);
+                                      }}
+                                      className="px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 text-[11px] font-mono flex items-center gap-1 transition-colors cursor-pointer"
+                                      title="Xóa bot tùy biến khỏi server"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                      <span>Kick khỏi server</span>
+                                      <Trash2 className="w-3 h-3" />
                                     </button>
+                                  )}
+                                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-zinc-800/80 border border-zinc-700/60 text-zinc-400 flex items-center gap-1 shadow-sm">
+                                    <Radio className="w-2.5 h-2.5 text-cyan-400 animate-pulse" />
+                                    <span>{BASE_BOT_IDS.has(mem.id) ? 'Bot Hệ Thống' : 'Bot Tùy Biến'}</span>
+                                  </span>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => setOpenMemberActionsMenuId(openMemberActionsMenuId === mem.id ? null : mem.id)}
+                                    className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                      openMemberActionsMenuId === mem.id
+                                        ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
+                                        : isLight
+                                        ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
+                                        : 'bg-zinc-800/60 hover:bg-zinc-800 border-zinc-700/50 text-zinc-300 hover:text-white'
+                                    }`}
+                                    title="Tùy chọn quản lý thành viên"
+                                  >
+                                    <MoreVertical className="w-4 h-4" />
+                                  </button>
+
+                                  {openMemberActionsMenuId === mem.id && (
+                                    <div
+                                      className={`absolute right-0 top-full mt-1.5 w-48 rounded-xl border shadow-2xl py-1 z-50 text-xs font-mono animate-in fade-in zoom-in-95 duration-100 ${
+                                        isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#12121e] border-[#2c2c40] text-zinc-200'
+                                      }`}
+                                    >
+                                      {isServerOwner && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleToggleModerator(mem.id);
+                                              setOpenMemberActionsMenuId(null);
+                                            }}
+                                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-white/10 transition-colors cursor-pointer text-left text-cyan-400 hover:text-cyan-300"
+                                          >
+                                            <Shield className="w-3.5 h-3.5" />
+                                            <span>{isMemMod ? 'Gỡ quyền Mod' : 'Cấp quyền Mod'}</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              requestTransferOwnership(mem.id, mem.name);
+                                              setOpenMemberActionsMenuId(null);
+                                            }}
+                                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-white/10 transition-colors cursor-pointer text-left text-amber-400 hover:text-amber-300"
+                                          >
+                                            <Crown className="w-3.5 h-3.5" />
+                                            <span>Nhượng quyền Chủ</span>
+                                          </button>
+                                          <div className="my-1 border-t border-white/10" />
+                                        </>
+                                      )}
+
+                                      {canManageServer && (isServerOwner || !isMemMod) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            requestKickMember(mem.id, mem.name);
+                                            setOpenMemberActionsMenuId(null);
+                                          }}
+                                          className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-colors cursor-pointer text-left"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                          <span>Kick khỏi server</span>
+                                        </button>
+                                      )}
+                                    </div>
                                   )}
                                 </>
                               )}
@@ -11134,7 +13193,82 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 </div>
               )}
 
-              {serverSettingsTab === 'tags' && (
+              {serverSettingsTab === 'tags' && !canManageServer && (
+                <div className="space-y-5 max-w-xl">
+                  <div>
+                    <h4 className={`text-sm font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                      CHỌN TAG SỞ THÍCH CỦA BẠN
+                    </h4>
+                    <p className="text-xs text-[#888] font-mono">
+                      Chọn các tag bạn muốn hiển thị trên hồ sơ của mình trong máy chủ này. Bấm vào tag để chọn hoặc bỏ chọn.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {getServerTags(selectedServer).map(tag => {
+                      const isSelected = selectedTagIdsDraft.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedTagIdsDraft(prev =>
+                              prev.includes(tag.id) ? prev.filter(id => id !== tag.id) : [...prev, tag.id]
+                            );
+                          }}
+                          className={`flex items-center justify-between p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-cyan-400 bg-cyan-950/40 shadow-md scale-[1.02]'
+                              : isLight
+                              ? 'bg-white border-slate-200 hover:border-slate-300'
+                              : 'bg-[#101018] border-[#222232] hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {tag.icon ? (
+                              <span className="text-base shrink-0">{tag.icon}</span>
+                            ) : (
+                              <span
+                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: tag.color }}
+                              />
+                            )}
+                            <span
+                              className="text-xs font-bold font-sans truncate px-2 py-0.5 rounded-md border"
+                              style={{
+                                backgroundColor: `${tag.color}15`,
+                                borderColor: `${tag.color}40`,
+                                color: tag.color,
+                              }}
+                            >
+                              {tag.name}
+                            </span>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0 ml-2" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleSaveUserTags();
+                        showVoiceToast(language === 'vi' ? 'Đã lưu tags sở thích!' : 'Saved interest tags!');
+                        setIsServerSettingsOpen(false);
+                      }}
+                      className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-lg hover:scale-105 active:scale-95 transition-all"
+                      style={{ backgroundColor: accentColor }}
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Lưu Tag Sở Thích</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {serverSettingsTab === 'tags' && canManageServer && (
                 <div className="space-y-6 max-w-xl">
                   <div>
                     <h4 className={`text-sm font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>
@@ -11185,6 +13319,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           </button>
                         </div>
                       </div>
+
+                      {/* Chọn biểu tượng / Icon cho Tag */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] text-[#888] font-mono">Icon:</span>
+                        {['🎵', '☕', '🎮', '⚡', '🎧', '🔥', '💎', '🌸', '🚀', '💬', '🤖', '👑', '⭐'].map(ico => (
+                          <button
+                            key={ico}
+                            type="button"
+                            onClick={() => setNewTagDraftIcon(ico)}
+                            className={`w-7 h-7 rounded-lg text-xs border flex items-center justify-center cursor-pointer transition-transform ${
+                              newTagDraftIcon === ico ? 'bg-cyan-500/20 border-cyan-400 scale-110 shadow-sm' : 'bg-white/5 border-white/10 hover:bg-white/10'
+                            }`}
+                          >
+                            {ico}
+                          </button>
+                        ))}
+                      </div>
+
                       {/* Màu gợi ý nhanh */}
                       <div className="flex items-center gap-2 pt-1 flex-wrap">
                         <span className="text-[10px] text-[#888] font-mono">Màu nhanh:</span>
@@ -11215,10 +13367,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                              style={{ backgroundColor: tag.color }}
-                            />
+                            {tag.icon ? (
+                              <span className="text-sm shrink-0">{tag.icon}</span>
+                            ) : (
+                              <span
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: tag.color }}
+                              />
+                            )}
                             <span
                               className="text-xs font-bold font-sans truncate px-2 py-0.5 rounded-md border"
                               style={{
@@ -11248,6 +13404,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               )}
 
               {serverSettingsTab === 'invites' && (
+                !canManageServer && selectedServer.allow_member_invites === false ? (
+                  <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-950/20 text-xs text-amber-200">
+                    Chủ máy chủ đã tắt quyền mời thành viên đối với thành viên thường. Chỉ Chủ server hoặc Điều hành viên (Mod) mới có thể gửi link mời tham gia.
+                  </div>
+                ) : (
                 <div className="space-y-5 max-w-xl">
                   <div>
                     <h4 className={`text-sm font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>MỜI BẠN BÈ VÀO MÁY CHỦ</h4>
@@ -11374,32 +13535,53 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </div>
                   </div>
                 </div>
+                )
               )}
 
               {serverSettingsTab === 'danger' && (
-                <div className="p-4 rounded-xl border border-red-500/30 bg-red-950/20 space-y-3">
-                  <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
-                    <ShieldAlert className="w-4 h-4" />
-                    <span>XÓA MÁY CHỦ VĨNH VIỄN</span>
+                isServerOwner ? (
+                  <div className="p-4 rounded-xl border border-red-500/30 bg-red-950/20 space-y-3">
+                    <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
+                      <ShieldAlert className="w-4 h-4" />
+                      <span>XÓA MÁY CHỦ VĨNH VIỄN</span>
+                    </div>
+                    <p className="text-xs text-[#aaa]">
+                      Nhấn nút bên dưới sẽ xóa ngay lập tức trạm sóng âm nhạc này và toàn bộ lịch sử tin nhắn.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => requestDeleteServer(selectedServer)}
+                      className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-md"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Xóa Máy Chủ Ngay</span>
+                    </button>
                   </div>
-                  <p className="text-xs text-[#aaa]">
-                    Nhấn nút bên dưới sẽ xóa ngay lập tức trạm sóng âm nhạc này và toàn bộ lịch sử tin nhắn.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => requestDeleteServer(selectedServer)}
-                    disabled={!isServerOwner}
-                    className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-md"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>{isServerOwner ? 'Xóa Máy Chủ Ngay' : 'Chỉ Chủ Server mới có quyền xóa'}</span>
-                  </button>
-                </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-red-500/30 bg-red-950/20 space-y-3">
+                    <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
+                      <LogOut className="w-4 h-4" />
+                      <span>RỜI KHỎI MÁY CHỦ</span>
+                    </div>
+                    <p className="text-xs text-[#aaa]">
+                      Bạn sẽ rời khỏi máy chủ này và không còn nhìn thấy danh sách kênh thoại hoặc tin nhắn cho đến khi được mời lại.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleLeaveServer(selectedServer.id)}
+                      className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-md"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Rời Máy Chủ Ngay</span>
+                    </button>
+                  </div>
+                )
               )}
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* ──────────────── 8. MODAL XEM HỒ SƠ MẬT VỤ (PROFILE MODAL) ──────────────── */}
       {selectedProfileUser && (
@@ -11426,7 +13608,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {/* Avatar & Floating Actions */}
             <div className="px-6 relative pb-6">
               <div className="flex items-end justify-between -mt-12 mb-4">
-                <div className="relative">
+                <div className="relative group/profAvt">
                   <div 
                     className="w-20 h-20 rounded-2xl overflow-hidden bg-[#14141e] border-4 flex items-center justify-center font-black text-2xl text-white shadow-2xl"
                     style={{ borderColor: isLight ? '#ffffff' : '#0e0e16' }}
@@ -11440,34 +13622,88 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     selectedProfileUser.id === 'usr_me' ? myEffectivePublicStatus : getEffectiveStatus(selectedProfileUser),
                     'lg'
                   )}
+
+                  {/* Thought note bubble on avatar */}
+                  {((selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id)
+                    ? myUserThought
+                    : ((selectedProfileUser as any).thought || (selectedProfileUser as any).custom_status)) ? (
+                    <div
+                      onClick={() => {
+                        if (selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id) {
+                          handleOpenThoughtModal();
+                        }
+                      }}
+                      title={selectedProfileUser.id === 'usr_me' ? 'Bấm để đổi suy nghĩ người dùng' : undefined}
+                      className={`absolute -top-5 left-1/2 -translate-x-1/2 max-w-[140px] px-2.5 py-0.5 rounded-full bg-zinc-950/95 border border-cyan-400 text-[10px] font-mono text-cyan-200 shadow-xl flex items-center gap-1 z-30 truncate ${
+                        (selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id) ? 'cursor-pointer hover:scale-105 hover:border-cyan-300' : ''
+                      }`}
+                    >
+                      <span className="text-xs">💭</span>
+                      <span className="truncate">
+                        {(selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id)
+                          ? myUserThought
+                          : ((selectedProfileUser as any).thought || (selectedProfileUser as any).custom_status)}
+                      </span>
+                    </div>
+                  ) : (selectedProfileUser.id === 'usr_me' || selectedProfileUser.id === currentUser?.id) ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenThoughtModal}
+                      title="Đặt suy nghĩ / Note mới"
+                      className="absolute -top-4 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-500/60 text-[9px] font-mono text-cyan-300 hover:text-white hover:border-cyan-400 shadow-md flex items-center gap-1 cursor-pointer whitespace-nowrap z-30"
+                    >
+                      <span>💭</span>
+                      <span>+ Đặt suy nghĩ</span>
+                    </button>
+                  ) : null}
                 </div>
 
                 {selectedProfileUser.id !== 'usr_me' && (
-                  <button
-                    onClick={() => handleToggleFollow(selectedProfileUser.id)}
-                    className={`px-4 py-2 rounded-xl font-bold text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-md ${
-                      followingUserIds.has(selectedProfileUser.id)
-                        ? 'bg-zinc-800 hover:bg-red-950/40 text-zinc-300 hover:text-red-400 border border-zinc-700'
-                        : 'bg-emerald-500 hover:bg-emerald-400 text-black'
-                    }`}
-                  >
-                    {followingUserIds.has(selectedProfileUser.id) ? (
-                      <>
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>{isMutualFriend(selectedProfileUser) ? 'Bạn bè' : 'Đang theo dõi'}</span>
-                      </>
-                    ) : isUserFollowingMe(selectedProfileUser.id) ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>Đồng ý kết bạn</span>
-                      </>
-                    ) : (
-                      <>
-                        <UserPlus className="w-3.5 h-3.5" />
-                        <span>Follow kết bạn</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {/* Nút Nhắn tin riêng */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenDirectMessage(selectedProfileUser);
+                        setSelectedProfileUser(null);
+                      }}
+                      className="px-3.5 py-2 rounded-xl font-bold text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-md bg-cyan-500 hover:bg-cyan-400 text-black"
+                      title={language === 'vi' ? 'Nhắn tin riêng với người này' : 'Direct Message'}
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>{language === 'vi' ? 'Nhắn tin riêng' : 'Tin nhắn'}</span>
+                    </button>
+
+                    {/* Nút Follow / Bạn bè (Chỉ áp dụng cho người dùng thật hoặc 4 bot gốc) */}
+                    {(!ACTIVE_BOT_IDS.has(selectedProfileUser.id) && selectedProfileUser.id !== 'custom' && !selectedProfileUser.id.startsWith('bot_')) || CAN_FOLLOW_BOT_IDS.has(selectedProfileUser.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFollow(selectedProfileUser.id)}
+                        className={`px-3.5 py-2 rounded-xl font-bold text-xs font-mono transition-all cursor-pointer flex items-center gap-1.5 shadow-md ${
+                          followingUserIds.has(selectedProfileUser.id)
+                            ? 'bg-zinc-800 hover:bg-red-950/40 text-zinc-300 hover:text-red-400 border border-zinc-700'
+                            : 'bg-emerald-500 hover:bg-emerald-400 text-black'
+                        }`}
+                      >
+                        {followingUserIds.has(selectedProfileUser.id) ? (
+                          <>
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>{isMutualFriend(selectedProfileUser) ? 'Bạn bè' : 'Đang theo dõi'}</span>
+                          </>
+                        ) : isUserFollowingMe(selectedProfileUser.id) ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Đồng ý kết bạn</span>
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="w-3.5 h-3.5" />
+                            <span>Follow kết bạn</span>
+                          </>
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
                 )}
               </div>
 
@@ -11479,7 +13715,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     {selectedProfileUser.role}
                   </span>
                 </h3>
-                <p className="text-xs text-cyan-400 font-mono mt-0.5">@{selectedProfileUser.username}</p>
+                <p className="text-xs text-cyan-400 font-mono mt-0.5">
+                  @{getCleanMemberUsername(selectedProfileUser, registeredUsers, currentUser)}
+                </p>
               </div>
 
               {/* Mutual Relationship Badge */}
@@ -11717,11 +13955,117 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         </div>
       )}
 
+      {/* ──────────────── 9.2 MODAL THIẾT LẬP SUY NGHĨ NGƯỜI DÙNG (USER THOUGHT / STATUS) ──────────────── */}
+      {isEditingThoughtModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <form
+            onSubmit={handleSaveThought}
+            className={`w-full max-w-md border rounded-2xl p-6 shadow-2xl relative ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0c0c14] border-[#222234] text-white'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setIsEditingThoughtModal(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full text-[#666] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+              >
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold">Đặt suy nghĩ người dùng</h3>
+                <p className="text-[11px] text-[#777] font-mono">
+                  Chia sẻ tâm trạng, suy nghĩ hoặc trạng thái ngắn của bạn
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
+                  Suy nghĩ / Trạng thái ngắn
+                </label>
+                <input
+                  type="text"
+                  maxLength={80}
+                  value={thoughtDraft}
+                  onChange={e => setThoughtDraft(e.target.value)}
+                  placeholder="Ví dụ: Đang chill cùng Synthwave... 🎧"
+                  autoFocus
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-sans border outline-none transition-colors ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-500'
+                      : 'bg-[#12121c] border-[#242436] text-white focus:border-white/50'
+                  }`}
+                />
+                <div className="flex items-center justify-between text-[10px] text-[#777] font-mono mt-1.5">
+                  <span>Hiển thị trên danh sách thành viên và mục Đang hoạt động.</span>
+                  <span>{thoughtDraft.length}/80</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setThoughtDraft('');
+                    setMyUserThought('');
+                    try {
+                      if (currentUser?.id) {
+                        localStorage.removeItem(`spytify_user_thought_${currentUser.id}`);
+                      }
+                      localStorage.removeItem('spytify_user_thought');
+                    } catch {}
+                    if (activeChannelRef.current) {
+                      activeChannelRef.current.send({
+                        type: 'broadcast',
+                        event: 'user_presence',
+                        payload: {
+                          ...myPresencePayloadRef.current,
+                          custom_status: '',
+                        },
+                      });
+                    }
+                    setIsEditingThoughtModal(false);
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-mono font-bold text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer mr-auto"
+                >
+                  Xóa trạng thái
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingThoughtModal(false)}
+                  className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer ${
+                    isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-[#181824] hover:bg-[#202030] text-[#aaa] hover:text-white'
+                  }`}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl text-xs font-mono font-bold text-black shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  Lưu trạng thái
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* ──────────────── 10. MODAL XÁC NHẬN CẢNH BÁO (XÓA SERVER / KICK THÀNH VIÊN) ──────────────── */}
       {confirmActionModal && (
         <div
           onClick={() => setConfirmActionModal(null)}
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150"
         >
           <div
             onClick={e => e.stopPropagation()}
@@ -11911,80 +14255,121 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <iframe
             ref={botRadioIframeRef}
             key={`dj_speaker_${currentVoiceDjBot.id}_${streamInfo.id}_${streamInfo.isLoopSingle ? 'loop' : 'live'}`}
-            src={`https://www.youtube.com/embed/${streamInfo.id}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0${loopParam}&origin=${encodeURIComponent(window.location.origin || 'http://localhost')}`}
+            src={`https://www.youtube.com/embed/${streamInfo.id}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0${loopParam}`}
             title={`Loa phát thanh phòng - ${currentVoiceDjBot.name} (${streamInfo.title})`}
-            allow="autoplay; encrypted-media"
+            allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
             className="fixed -top-96 -left-96 w-1 h-1 opacity-0 pointer-events-none"
             onLoad={() => {
               try {
-                botRadioIframeRef.current?.contentWindow?.postMessage(
-                  JSON.stringify({ event: 'listening', id: 1 }), '*'
-                );
-                const botUserVol = userVolumes[currentVoiceDjBot.id] ?? 80;
-                const isBotLocallyMuted = Boolean(
-                  locallyMutedUsers[currentVoiceDjBot.id] ||
-                  (connectedVoiceChannelObj?.dj_bot_id && locallyMutedUsers[connectedVoiceChannelObj.dj_bot_id])
-                );
-                const effectiveVol = (isBotMuted || isDeafened || isBotLocallyMuted) ? 0 : Math.round(botUserVol * (speakerVolume / 100));
-                if (effectiveVol === 0) {
-                  sendBotCmd('mute');
-                  sendBotCmd('setVolume', [0]);
-                  setIsBotSpeaking(false);
-                } else {
-                  sendBotCmd('unMute');
-                  sendBotCmd('setVolume', [effectiveVol]);
-                  setIsBotSpeaking(true);
-                }
-                if (!streamInfo.isLoopSingle) {
-                  sendBotCmd('seekTo', [99999999, true]); // Đồng bộ tới điểm phát sóng trực tiếp (live edge)
-                }
-                sendBotCmd('playVideo');
+                const initSpeaker = () => {
+                  try {
+                    botRadioIframeRef.current?.contentWindow?.postMessage(
+                      JSON.stringify({ event: 'listening', id: 1 }), '*'
+                    );
+                    const botUserVol =
+                      (connectedVoiceChannelObj?.dj_bot_id ? userVolumes[connectedVoiceChannelObj.dj_bot_id] : undefined) ??
+                      userVolumes[currentVoiceDjBot.id] ??
+                      80;
+                    const isBotLocallyMuted = Boolean(
+                      locallyMutedUsers[currentVoiceDjBot.id] ||
+                      (connectedVoiceChannelObj?.dj_bot_id && locallyMutedUsers[connectedVoiceChannelObj.dj_bot_id])
+                    );
+                    const effectiveVol = (isBotMuted || isDeafened || isBotLocallyMuted) ? 0 : Math.round(botUserVol * (speakerVolume / 100));
+                    if (effectiveVol === 0) {
+                      sendBotCmd('mute');
+                      sendBotCmd('setVolume', [0]);
+                      setIsBotSpeaking(false);
+                    } else {
+                      sendBotCmd('unMute');
+                      sendBotCmd('setVolume', [effectiveVol]);
+                      setIsBotSpeaking(true);
+                    }
+                    if (!streamInfo.isLoopSingle) {
+                      sendBotCmd('seekTo', [99999999, true]); // Đồng bộ tới điểm phát sóng trực tiếp (live edge)
+                    }
+                    sendBotCmd('playVideo');
+                  } catch {}
+                };
+                initSpeaker();
+                setTimeout(initSpeaker, 400);
+                setTimeout(initSpeaker, 1200);
               } catch {}
             }}
           />
         );
       })()}
 
-      {/* ──────────────── 12b. ON-DEMAND MUSIC BOT (RYTHM) IN-ROOM / BACKGROUND SPEAKER ──────────────── */}
-      {requestBotCurrentTrack && isRequestBotPlaying && (
-        <iframe
-          ref={requestBotIframeRef}
-          key={`request_bot_${requestBotCurrentTrack.id}_${requestBotCurrentTrack.url_or_id}`}
-          src={`https://www.youtube.com/embed/${requestBotCurrentTrack.url_or_id}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0&origin=${encodeURIComponent(window.location.origin || 'http://localhost')}`}
-          title={`Rythm Bot - ${requestBotCurrentTrack.title}`}
-          allow="autoplay; encrypted-media"
-          className="fixed -top-96 -left-96 w-1 h-1 opacity-0 pointer-events-none"
-          onLoad={() => {
-            try {
-              requestBotIframeRef.current?.contentWindow?.postMessage(
-                JSON.stringify({ event: 'listening', id: 1 }), '*'
-              );
-              const botUserVol = userVolumes['usr_music_bot'] ?? 80;
-              const isUserInBotRoom = !requestBotVoiceChannelId || connectedVoiceChannel === requestBotVoiceChannelId;
-              const isMuted = Boolean(locallyMutedUsers['usr_music_bot'] || isDeafened || !isUserInBotRoom);
-              const effectiveVol = isMuted ? 0 : Math.round(botUserVol * (speakerVolume / 100));
-              if (effectiveVol === 0) {
-                requestBotIframeRef.current?.contentWindow?.postMessage(
-                  JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*'
-                );
-                requestBotIframeRef.current?.contentWindow?.postMessage(
-                  JSON.stringify({ event: 'command', func: 'setVolume', args: [0] }), '*'
-                );
-              } else {
-                requestBotIframeRef.current?.contentWindow?.postMessage(
-                  JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'
-                );
-                requestBotIframeRef.current?.contentWindow?.postMessage(
-                  JSON.stringify({ event: 'command', func: 'setVolume', args: [effectiveVol] }), '*'
-                );
-              }
-              requestBotIframeRef.current?.contentWindow?.postMessage(
-                JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'
-              );
-            } catch {}
-          }}
-        />
-      )}
+      {/* ──────────────── 12b. ON-DEMAND MUSIC BOTS STREAMING XUYÊN SUỐT (HỖ TRỢ ĐA BOT & KHÔNG NGỪNG KHI OUT PHÒNG) ──────────────── */}
+      {(() => {
+        const activeSpeakers = new Map<string, { srvId: string; botId: string; botState: ServerDemandBotState }>();
+        Object.entries(serverRythmBots).forEach(([rawKey, st]) => {
+          if (!st?.currentTrack || !st.isPlaying) return;
+          const { srvId, botId } = parseDemandBotKey(rawKey);
+          const canonicalKey = getDemandBotKey(srvId, botId);
+          activeSpeakers.set(canonicalKey, { srvId, botId, botState: st });
+        });
+
+        return Array.from(activeSpeakers.entries()).map(([botKey, { srvId, botId, botState }]) => {
+          const track = botState.currentTrack!;
+          // Chỉ mở âm thanh ra loa khi người dùng thực sự đang ở đúng Server & Phòng thoại có Bot;
+          // khi out phòng vẫn giữ stream chạy ngầm xuyên suốt tới khi hết hàng đợi
+          const isUserInConnectedVoice = Boolean(connectedVoiceChannel);
+          const isUserInSameServer = connectedVoiceServerId === srvId;
+          const isUserInSameRoom = !botState.voiceChannelId || connectedVoiceChannel === botState.voiceChannelId;
+          const canUserHearBot = isUserInConnectedVoice && isUserInSameServer && isUserInSameRoom;
+          const botProfile = resolveBotProfileById(botId);
+
+          return (
+            <iframe
+              ref={el => {
+                if (el) {
+                  requestBotIframesRef.current[botKey] = el;
+                } else {
+                  delete requestBotIframesRef.current[botKey];
+                }
+              }}
+              key={`request_bot_${botKey}_${track.id}_${track.url_or_id}`}
+              src={`https://www.youtube.com/embed/${track.url_or_id}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
+              title={`${botProfile.display_name} Bot - ${track.title}`}
+              allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
+              className="fixed -top-96 -left-96 w-1 h-1 opacity-0 pointer-events-none"
+              onLoad={() => {
+                try {
+                  const initBotSpeaker = () => {
+                    try {
+                      const targetWin = requestBotIframesRef.current[botKey]?.contentWindow;
+                      if (!targetWin) return;
+                      targetWin.postMessage(JSON.stringify({ event: 'listening', id: 1 }), '*');
+                      const botUserVol = userVolumes[botId] ?? userVolumes['usr_music_bot'] ?? 80;
+                      const isMuted = Boolean(locallyMutedUsers[botId] || isDeafened || !canUserHearBot);
+                      const effectiveVol = isMuted ? 0 : Math.round(botUserVol * (speakerVolume / 100));
+                      if (effectiveVol === 0) {
+                        targetWin.postMessage(JSON.stringify({ event: 'command', func: 'mute', args: [] }), '*');
+                        targetWin.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [0] }), '*');
+                      } else {
+                        targetWin.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*');
+                        targetWin.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [effectiveVol] }), '*');
+                      }
+                      if (botState.startedAt) {
+                        const elapsedSecs = Math.floor((Date.now() - botState.startedAt) / 1000);
+                        if (elapsedSecs > 3 && elapsedSecs < 14400) {
+                          targetWin.postMessage(
+                            JSON.stringify({ event: 'command', func: 'seekTo', args: [elapsedSecs, true] }), '*'
+                          );
+                        }
+                      }
+                      targetWin.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+                    } catch {}
+                  };
+                  initBotSpeaker();
+                  setTimeout(initBotSpeaker, 400);
+                  setTimeout(initBotSpeaker, 1200);
+                } catch {}
+              }}
+            />
+          );
+        });
+      })()}
 
       {/* ──────────────── 13. USER SERVER TAG SELECTION MODAL ──────────────── */}
       {isTagSelectModalOpen && (
@@ -12048,10 +14433,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       } : undefined}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: tag.color }}
-                        />
+                        {tag.icon ? (
+                          <span className="text-sm shrink-0">{tag.icon}</span>
+                        ) : (
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: tag.color }}
+                          />
+                        )}
                         <span className="text-xs font-bold truncate" style={{ color: isSelected ? tag.color : undefined }}>
                           {tag.name}
                         </span>
@@ -12163,7 +14552,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           {/* Avatar Overlap */}
           <div className="px-4 pb-4 -mt-10 relative">
             <div className="flex items-end justify-between mb-2.5">
-              <div className="relative">
+              <div className="relative group/hovAvt">
                 <div
                   className={`w-16 h-16 rounded-2xl overflow-hidden border-4 flex items-center justify-center font-bold text-lg shadow-xl ${
                     isLight ? 'bg-white border-white text-black' : 'bg-[#12121e] border-[#0f0f18] text-white'
@@ -12172,6 +14561,30 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   {renderAvatarContent(hoveredProfile.member.name, resolveUserAvatar(hoveredProfile.member.id, hoveredProfile.member.avatar))}
                 </div>
                 {renderStatusDot(hoveredProfile.member.status, 'md')}
+
+                {/* Thought note bubble on mini profile avatar */}
+                {(() => {
+                  const isMe = hoveredProfile.member.id === 'usr_me' || (currentUser && hoveredProfile.member.id === currentUser.id) || (myParticipantIdRef.current && hoveredProfile.member.id === myParticipantIdRef.current);
+                  const effectiveThought = isMe ? myUserThought : ((hoveredProfile.member as any).thought || realtimeUserPresences[hoveredProfile.member.id]?.thought || null);
+                  if (!effectiveThought) return null;
+                  return (
+                    <div
+                      onClick={() => {
+                        if (isMe) {
+                          setHoveredProfile(null);
+                          handleOpenThoughtModal();
+                        }
+                      }}
+                      title={isMe ? 'Bấm để đổi suy nghĩ người dùng' : undefined}
+                      className={`absolute -top-4 left-1/2 -translate-x-1/2 max-w-[140px] px-2.5 py-0.5 rounded-full bg-zinc-950/95 border border-cyan-400 text-[9.5px] font-mono text-cyan-200 shadow-xl flex items-center gap-1 z-30 truncate ${
+                        isMe ? 'cursor-pointer hover:scale-105 hover:border-cyan-300' : ''
+                      }`}
+                    >
+                      <span className="text-[10px]">💭</span>
+                      <span className="truncate">{effectiveThought}</span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Quick Action Buttons on Mini Profile */}
@@ -12181,16 +14594,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const targetUser = registeredUsers.find(u => u.id === hoveredProfile.member.id);
-                        if (targetUser) {
-                          handleOpenDirectMessage(targetUser);
-                          setHoveredProfile(null);
-                        }
+                        const targetUser = registeredUsers.find(u => u.id === hoveredProfile.member.id) || {
+                          id: hoveredProfile.member.id,
+                          username: hoveredProfile.member.username || hoveredProfile.member.name.toLowerCase().replace(/\s+/g, ''),
+                          display_name: hoveredProfile.member.name,
+                          avatar: resolveUserAvatar(hoveredProfile.member.id, hoveredProfile.member.avatar),
+                          status: (hoveredProfile.member.status || 'online') as CommunityUserProfile['status'],
+                          role: hoveredProfile.member.role || 'THÀNH VIÊN',
+                          bio: hoveredProfile.bio || 'Thành viên Spytify từ hệ thống cộng đồng.',
+                          created_at: new Date().toISOString(),
+                        };
+                        handleOpenDirectMessage(targetUser);
+                        setHoveredProfile(null);
                       }}
-                      className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer shadow"
+                      className="px-2.5 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
                       title={language === 'vi' ? 'Nhắn tin riêng (DM)' : 'Direct Message (DM)'}
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
+                      <span>{language === 'vi' ? 'Nhắn tin' : 'Message'}</span>
                     </button>
                     <button
                       type="button"
@@ -12198,7 +14619,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         handleInviteMemberToVoice(hoveredProfile.member);
                         setHoveredProfile(null);
                       }}
-                      className="p-2 rounded-xl transition-all cursor-pointer shadow text-black"
+                      className="p-1.5 rounded-xl transition-all cursor-pointer shadow text-black"
                       style={{ backgroundColor: accentColor }}
                       title={language === 'vi' ? 'Mời vào Voice Channel' : 'Invite to Voice Channel'}
                     >
@@ -12310,7 +14731,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             boxShadow: `0 0 10px ${tag.color}20`,
                           }}
                         >
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                          {tag.icon ? (
+                            <span className="text-xs">{tag.icon}</span>
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                          )}
                           <span>{tag.name}</span>
                         </span>
                       ))}
@@ -12418,6 +14843,68 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-xl bg-black/30 border border-amber-500/25 space-y-2.5">
+                <div>
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 block mb-1">
+                    TÊN BOT DJ CỦA TRẠM:
+                  </label>
+                  <input
+                    type="text"
+                    value={editStationBotNameDraft}
+                    onChange={e => setEditStationBotNameDraft(e.target.value)}
+                    placeholder="VD: XmasBot, DJ CyberHawk, Custom DJ..."
+                    className={`w-full px-3 py-2 rounded-xl text-xs font-sans outline-none border transition-colors ${
+                      isLight
+                        ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-amber-500'
+                        : 'bg-black/40 border-white/15 text-white focus:border-amber-400'
+                    }`}
+                  />
+                  <p className="text-[9px] text-[#777] font-mono mt-1">
+                    Tên này sẽ hiển thị bên dưới tên trạm thoại và trên thẻ phát sóng.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] block mb-1">
+                    AVATAR / LOGO BOT DJ:
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-zinc-800 border border-white/20 flex items-center justify-center font-bold text-xs text-white shrink-0">
+                      {renderAvatarContent(editStationBotNameDraft || 'Bot', editStationBotAvatarDraft)}
+                    </div>
+                    <label className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[11px] font-mono font-bold cursor-pointer transition-colors flex items-center gap-1">
+                      <span>📷 Tải ảnh</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = ev => {
+                              if (typeof ev.target?.result === 'string') {
+                                setEditStationBotAvatarDraft(ev.target.result);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    {editStationBotAvatarDraft && (
+                      <button
+                        type="button"
+                        onClick={() => setEditStationBotAvatarDraft('')}
+                        className="text-xs text-red-400 hover:underline cursor-pointer font-mono"
+                      >
+                        Xóa
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="text-[10px] font-mono uppercase tracking-wider text-[#888] block mb-1">
                   Link YouTube hoặc ID Video:
@@ -12453,6 +14940,26 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       : 'bg-black/40 border-white/15 text-white focus:border-amber-400'
                   }`}
                 />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-wider text-[#888] block mb-1">
+                  Luồng phát sóng 24/7 dự phòng (Mỗi dòng 1 URL YouTube):
+                </label>
+                <textarea
+                  rows={2}
+                  value={editStationBackupStreamsDraft}
+                  onChange={e => setEditStationBackupStreamsDraft(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=...&#10;https://www.youtube.com/watch?v=..."
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-mono outline-none resize-none border transition-colors ${
+                    isLight
+                      ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-amber-500'
+                      : 'bg-black/40 border-white/15 text-white focus:border-amber-400'
+                  }`}
+                />
+                <p className="text-[9px] text-[#777] font-mono mt-1">
+                  Khi người dùng bấm "Đổi luồng stream 24/7 dự phòng", bot sẽ tự động xoay vòng sang các link này.
+                </p>
               </div>
 
               <div>

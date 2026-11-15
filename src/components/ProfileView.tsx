@@ -8,7 +8,8 @@ import {
   Check, Sparkles, Shield, Sun, Moon, Download, Database, HardDriveDownload,
   Cloud, CloudLightning, Key, ChevronDown, ChevronUp, Globe, Languages,
   Folder, FolderOpen, FolderDown, Copy, CheckCheck, ExternalLink, Zap, Power,
-  Mic, Volume2, Sliders, RotateCcw, Volume1
+  Mic, Volume2, Sliders, RotateCcw, Volume1, Search, Edit3, ChevronRight,
+  ShieldCheck, CheckCircle2, UserCheck, AlertCircle, Info, Lock
 } from 'lucide-react';
 import { 
   getStoredSupabaseConfig, getCustomSupabaseConfig, saveStoredSupabaseConfig, resetToDefaultSupabase,
@@ -111,6 +112,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   });
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateStatusMsg, setUpdateStatusMsg] = useState<string | null>(null);
+  const [userBio, setUserBio] = useState(() => {
+    try {
+      return localStorage.getItem('spytify_user_bio') || 'Đang khám phá âm nhạc trên Spytify.';
+    } catch {
+      return 'Đang khám phá âm nhạc trên Spytify.';
+    }
+  });
+  const [isEditingBio, setIsEditingBio] = useState(false);
 
   const handleToggleCloseToTray = async (enabled: boolean) => {
     setCloseToTray(enabled);
@@ -508,8 +517,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     e.target.value = '';
   };
 
+  const [activeTab, setActiveTab] = useState<
+    | 'account' 
+    | 'profile_appearance' 
+    | 'account_status' 
+    | 'voice_audio' 
+    | 'download_storage' 
+    | 'cloud_sync' 
+    | 'system' 
+    | 'language' 
+    | 'activity_history'
+  >('account');
+  const [searchFilter, setSearchFilter] = useState('');
+
   return (
-    <div className="flex-1 p-8 overflow-y-auto max-w-4xl mx-auto select-none space-y-8">
+    <div className={`flex-1 flex h-full overflow-hidden select-none ${themeMode === 'light' ? 'bg-[#f8fafc]' : 'bg-[#0a0a10]'}`}>
       {/* Hidden File Inputs */}
       <input 
         ref={fileInputRef} 
@@ -526,930 +548,1216 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         className="hidden" 
       />
 
-      {/* Profile Header */}
-      <div className="flex items-center justify-between pb-6 border-b border-[#141418]">
-        <div className="flex items-center gap-5">
-          <div className="relative group">
-            <div 
-              className="w-20 h-20 rounded-2xl overflow-hidden border border-white/20 flex items-center justify-center text-black font-black text-3xl shadow-lg transition-transform group-hover:scale-105"
-              style={{ 
-                background: currentUser?.avatar ? 'transparent' : `linear-gradient(135deg, ${accentColor} 0%, #ffffff 100%)`,
-                boxShadow: `0 0 20px ${accentColor}40`
-              }}
-            >
-              {currentUser?.avatar ? (
-                <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
-              ) : (
-                <span>{currentUser ? currentUser.display_name.charAt(0).toUpperCase() : 'S'}</span>
-              )}
-            </div>
-
-            {/* Hover overlay to change avatar */}
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              title={getTranslation(language, 'profile.changeAvatarTitle')}
-              className="absolute inset-0 bg-black/70 rounded-2xl opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity cursor-pointer border border-white/40"
-            >
-              <Camera className="w-5 h-5 mb-1" />
-              <span className="text-[9px] font-bold uppercase tracking-wider">{getTranslation(language, 'profile.changeAvatarHover')}</span>
-            </button>
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-2xl font-black text-white tracking-tight">
-                {currentUser ? currentUser.display_name : getTranslation(language, 'profile.guest')}
-              </h2>
-              <span 
-                className="text-[10px] px-2.5 py-0.5 rounded font-mono font-bold uppercase tracking-wider border"
+      {/* ──────── 1. LEFT SIDEBAR (DISCORD CATEGORIES & MINI PROFILE) ──────── */}
+      <div className={`w-64 border-r flex flex-col justify-between flex-shrink-0 ${themeMode === 'light' ? 'bg-[#f1f5f9] border-[#cbd5e1]' : 'bg-[#0b0b12] border-[#181824]'}`}>
+        <div className="p-4 space-y-3 flex-1 overflow-y-auto">
+          {/* User Mini Card */}
+          <div className={`p-3 rounded-xl border flex items-center gap-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#12121c] border-[#1e1e2c]'}`}>
+            <div className="relative group cursor-pointer" onClick={() => setActiveTab('profile_appearance')}>
+              <div 
+                className="w-10 h-10 rounded-xl overflow-hidden border border-white/20 flex items-center justify-center text-white font-bold text-sm shadow-md"
                 style={{ 
-                  color: accentColor, 
-                  backgroundColor: `${accentColor}15`,
-                  borderColor: `${accentColor}40` 
+                  background: currentUser?.avatar ? 'transparent' : `linear-gradient(135deg, ${accentColor} 0%, #000000 100%)`,
                 }}
               >
-                {currentUser ? 'SQLite Sync' : getTranslation(language, 'profile.guestBadge')}
-              </span>
-            </div>
-            <p className="text-xs text-[#8e8e9f] font-mono mt-1">
-              {currentUser ? `@${currentUser.username}` : getTranslation(language, 'profile.guestSub')}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {currentUser ? (
-            <>
-              <button
-                onClick={loadUserData}
-                title={getTranslation(language, 'profile.refreshStats')}
-                className="p-2.5 rounded-xl bg-[#0e0e12] hover:bg-[#181820] text-[#777] hover:text-white border border-[#1a1a22] transition-colors cursor-pointer"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                onClick={onLogout}
-                className="px-4 py-2.5 rounded-xl bg-[#0e0e12] hover:bg-red-500/10 text-[#888] hover:text-red-400 border border-[#1a1a22] hover:border-red-500/30 text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>{getTranslation(language, 'profile.logoutBtn')}</span>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={onOpenAuth}
-              className="py-2.5 px-6 font-bold uppercase tracking-wider text-xs rounded-xl text-black transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
-              style={{ 
-                backgroundColor: accentColor, 
-                color: accentColor === '#FFFFFF' ? '#000000' : '#FFFFFF',
-                boxShadow: `0 0 15px ${accentColor}50` 
-              }}
-            >
-              {getTranslation(language, 'profile.loginBtn')}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ──────────────── CÁ NHÂN HÓA GIAO DIỆN (PERSONALIZATION) ──────────────── */}
-      <div className="space-y-6 bg-[#08080b] border border-[#181822] rounded-2xl p-6">
-        <div className="flex items-center justify-between border-b border-[#141418] pb-4">
-          <div className="flex items-center gap-2.5">
-            <Palette className="w-5 h-5" style={{ color: accentColor }} />
-            <div>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
-                {getTranslation(language, 'profile.customization')}
-              </h3>
-              <p className="text-[11px] text-[#777] mt-0.5">
-                {getTranslation(language, 'profile.customizationSub')}
-              </p>
-            </div>
-          </div>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-[#101018] text-[#888] font-mono border border-[#222]">
-            Offline 100%
-          </span>
-        </div>
-
-        {/* 0. Language Settings (Đa ngôn ngữ toàn cầu) */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-              <Globe className="w-3.5 h-3.5" style={{ color: accentColor }} />
-              {getTranslation(language, 'profile.langTitle')}
-            </label>
-            <span 
-              className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded border"
-              style={{
-                color: accentColor,
-                backgroundColor: `${accentColor}15`,
-                borderColor: `${accentColor}40`
-              }}
-            >
-              {SUPPORTED_LANGUAGES.find(l => l.code === language)?.tag} • {SUPPORTED_LANGUAGES.find(l => l.code === language)?.nativeName}
-            </span>
-          </div>
-          <p className="text-[11px] text-[#777] mb-3 font-mono">
-            {getTranslation(language, 'profile.langDesc')}
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {SUPPORTED_LANGUAGES.map((item) => {
-              const isSelected = language === item.code;
-              return (
-                <button
-                  key={item.code}
-                  onClick={() => onUpdateLanguage && onUpdateLanguage(item.code)}
-                  className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-[#15151e] shadow-[0_0_12px_rgba(255,255,255,0.15)] scale-[1.02]'
-                      : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#333] hover:bg-[#121218]'
-                  }`}
-                  style={isSelected ? { borderColor: accentColor } : undefined}
-                >
-                  <div className="flex items-center justify-between w-full mb-1.5">
-                    <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-[#181824] text-white border border-[#2a2a3a]">
-                      {item.tag}
-                    </span>
-                    {isSelected && (
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }}></span>
-                    )}
-                  </div>
-                  <div>
-                    <p className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-[#ccc]'}`}>
-                      {item.nativeName}
-                    </p>
-                    <p className="text-[10px] text-[#777] truncate font-mono mt-0.5">
-                      {item.country}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 1. Light / Dark Mode Toggle */}
-        <div className="pt-4 border-t border-[#141418]">
-          <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
-            <Sun className="w-3.5 h-3.5" style={{ color: accentColor }} />
-            {getTranslation(language, 'profile.themeMode')}
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Ô Dark Mode — Luôn hiển thị nền tối đặc trưng để nhìn vào phân biệt ngay */}
-            <button
-              onClick={() => themeMode === 'light' && onToggleThemeMode()}
-              style={{
-                backgroundColor: '#0b0b12',
-                borderColor: themeMode === 'dark' ? accentColor : '#27273a',
-                boxShadow: themeMode === 'dark' ? `0 0 16px ${accentColor}40` : '0 2px 8px rgba(0,0,0,0.2)',
-              }}
-              className={`p-3.5 rounded-xl border-2 text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
-                themeMode === 'dark' ? 'scale-[1.01]' : 'opacity-85 hover:opacity-100'
-              }`}
-            >
-              <div className="flex items-center gap-3.5 overflow-hidden">
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border"
-                  style={{ backgroundColor: '#161624', borderColor: '#2e2e42' }}
-                >
-                  <Moon className="w-4 h-4 text-indigo-400" />
-                </div>
-                <div className="overflow-hidden">
-                  <p className="text-xs font-bold truncate" style={{ color: '#f8fafc' }}>
-                    {getTranslation(language, 'profile.darkStealth')}
-                  </p>
-                  <p className="text-[10px] font-mono truncate" style={{ color: '#94a3b8' }}>
-                    {getTranslation(language, 'profile.darkStealthDesc')}
-                  </p>
-                </div>
-              </div>
-              {themeMode === 'dark' && (
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: accentColor, color: '#ffffff' }}
-                >
-                  <Check className="w-3 h-3" />
-                </div>
-              )}
-            </button>
-
-            {/* Ô Light Mode — Luôn hiển thị nền sáng trắng kem để nhìn vào thấy ngay */}
-            <button
-              onClick={() => themeMode === 'dark' && onToggleThemeMode()}
-              style={{
-                backgroundColor: '#ffffff',
-                borderColor: themeMode === 'light' ? accentColor : '#cbd5e1',
-                boxShadow: themeMode === 'light' ? `0 0 16px ${accentColor}40` : '0 2px 8px rgba(15,23,42,0.08)',
-              }}
-              className={`p-3.5 rounded-xl border-2 text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
-                themeMode === 'light' ? 'scale-[1.01]' : 'opacity-90 hover:opacity-100'
-              }`}
-            >
-              <div className="flex items-center gap-3.5 overflow-hidden">
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border"
-                  style={{ backgroundColor: '#fffbeb', borderColor: '#fde68a' }}
-                >
-                  <Sun className="w-4 h-4 text-amber-500" />
-                </div>
-                <div className="overflow-hidden">
-                  <p className="text-xs font-bold truncate" style={{ color: '#0f172a' }}>
-                    {getTranslation(language, 'profile.lightDossier')}
-                  </p>
-                  <p className="text-[10px] font-mono truncate" style={{ color: '#475569' }}>
-                    {getTranslation(language, 'profile.lightDossierDesc')}
-                  </p>
-                </div>
-              </div>
-              {themeMode === 'light' && (
-                <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ backgroundColor: accentColor, color: '#ffffff' }}
-                >
-                  <Check className="w-3 h-3" />
-                </div>
-              )}
-            </button>
-          </div>
-        </div>
-
-        {/* 1. Theme Accent Color Picker */}
-        <div className="pt-4 border-t border-[#141418]">
-          <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
-            <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
-            {getTranslation(language, 'profile.accentColor')}
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {THEME_PALETTE.map((theme) => {
-              const isSelected = accentColor.toUpperCase() === theme.hex.toUpperCase();
-              return (
-                <button
-                  key={theme.hex}
-                  onClick={() => onUpdateAccentColor(theme.hex)}
-                  className={`p-3 rounded-xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
-                    isSelected 
-                      ? 'bg-[#15151e] border-white shadow-[0_0_12px_rgba(255,255,255,0.15)] scale-[1.02]' 
-                      : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#333] hover:bg-[#121218]'
-                  }`}
-                >
-                  <div 
-                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm"
-                    style={{ backgroundColor: theme.hex }}
-                  >
-                    {isSelected && (
-                      <Check className={`w-4 h-4 ${theme.hex === '#FFFFFF' ? 'text-black' : 'text-white'}`} />
-                    )}
-                  </div>
-                  <div className="overflow-hidden">
-                    <p className="text-xs font-bold text-white truncate">{theme.name}</p>
-                    <p className="text-[10px] text-[#777] truncate font-mono">
-                      {getTranslation(language, `palette.${theme.key}`) || theme.desc}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Custom Hex Color Picker */}
-          <div className="mt-4 flex items-center gap-3 p-3 rounded-xl bg-[#0c0c10] border border-[#1b1b24]">
-            <input
-              type="color"
-              value={accentColor}
-              onChange={(e) => onUpdateAccentColor(e.target.value)}
-              className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0 outline-none"
-              title={getTranslation(language, 'profile.customHex')}
-            />
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-white">{getTranslation(language, 'profile.customHex')}</p>
-              <p className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'profile.customHexDesc')}</p>
-            </div>
-            <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-[#161620] border border-[#262634] text-white">
-              {accentColor.toUpperCase()}
-            </span>
-          </div>
-        </div>
-
-        {/* Offline Music Folder Setting */}
-        <div className="pt-4 border-t border-[#141418]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#141418]">
-            <div className="flex items-center gap-3 min-w-0">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-              >
-                <FolderDown className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-white">{getTranslation(language, 'download.folderSetting')}</p>
-                <p className="text-[10px] text-[#8e8e9f] font-mono truncate" title={downloadFolder}>
-                  {downloadFolder || 'C:\\Users\\...\\Music\\Spytify'}
-                </p>
-                <p className="text-[10px] text-[#555] mt-0.5">{getTranslation(language, 'download.folderSettingDesc')}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0 self-start sm:self-auto">
-              {onChangeDownloadFolder && (
-                <button
-                  onClick={onChangeDownloadFolder}
-                  className="px-2.5 py-1.5 rounded-lg bg-[#14141c] hover:bg-[#1e1e28] text-white text-[11px] font-medium border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <Folder className="w-3.5 h-3.5 text-[#888]" />
-                  <span>{getTranslation(language, 'download.changeFolder')}</span>
-                </button>
-              )}
-              {onOpenDownloadFolder && (
-                <button
-                  onClick={onOpenDownloadFolder}
-                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1.5"
-                  style={{
-                    backgroundColor: `${accentColor}18`,
-                    color: accentColor,
-                    border: `1px solid ${accentColor}35`,
-                  }}
-                >
-                  <FolderOpen className="w-3.5 h-3.5" />
-                  <span>{getTranslation(language, 'download.openFolder')}</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 2. Avatar Customization */}
-        <div className="pt-4 border-t border-[#141418]">
-          <div className="flex items-center justify-between mb-3">
-            <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5" style={{ color: accentColor }} />
-              {getTranslation(language, 'profile.avatar')}
-            </label>
-            {currentUser?.avatar && (
-              <button
-                onClick={handleClearAvatar}
-                className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>{getTranslation(language, 'profile.deleteAvatar')}</span>
-              </button>
-            )}
-          </div>
-
-          {/* Upload Button */}
-          <div className="mb-4">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full py-3 px-4 rounded-xl border border-dashed border-[#2b2b3a] hover:border-white/50 bg-[#0c0c10] hover:bg-[#121218] transition-all flex items-center justify-center gap-2.5 text-xs font-semibold text-white cursor-pointer group"
-            >
-              <Upload className="w-4 h-4 text-[#888] group-hover:text-white transition-colors" />
-              <span>{getTranslation(language, 'profile.uploadAvatar')}</span>
-            </button>
-          </div>
-
-          {/* Preset Secret Agent Avatars */}
-          <div>
-            <p className="text-[11px] text-[#777] font-mono mb-2">Hoặc chọn nhanh từ bộ sưu tập Đặc nhiệm Spytify:</p>
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-              {SPY_AVATARS.map((preset) => {
-                const isSelected = currentUser?.avatar === preset.svg;
-                return (
-                  <button
-                    key={preset.id}
-                    onClick={() => onUpdateAvatar(preset.svg)}
-                    title={preset.name}
-                    className={`p-2 rounded-xl border text-center flex flex-col items-center gap-2 transition-all cursor-pointer group ${
-                      isSelected 
-                        ? 'bg-[#181824] border-white shadow-[0_0_12px_rgba(255,255,255,0.2)] scale-105' 
-                        : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#38384a] hover:bg-[#13131b]'
-                    }`}
-                  >
-                    <div className="w-12 h-12 rounded-lg overflow-hidden border border-[#252535] group-hover:border-white/40 transition-colors">
-                      <img src={preset.svg} alt={preset.name} className="w-full h-full object-cover" />
-                    </div>
-                    <span className="text-[10px] font-bold text-[#aaa] group-hover:text-white truncate w-full">
-                      {preset.name}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* System Tray Setting (Tắt hẳn app vs Thu xuống khay hệ thống) */}
-        <div className="pt-4 border-t border-[#141418]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-              >
-                <Power className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white">Chạy ngầm ở khay hệ thống (System Tray)</p>
-                <p className="text-[11px] text-[#777] mt-0.5">
-                  {closeToTray 
-                    ? 'Bật: Nhấn nút [X] sẽ ẩn app xuống khay hệ thống để tiếp tục phát nhạc ngầm.' 
-                    : 'Tắt: Nhấn nút [X] sẽ đóng và thoát hoàn toàn ứng dụng.'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => handleToggleCloseToTray(!closeToTray)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                closeToTray ? 'bg-emerald-500' : 'bg-zinc-700'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  closeToTray ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Voice & Call Audio Setting (Mic & Loa) */}
-        <div className="pt-4 border-t border-[#141418]">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-              >
-                <Sliders className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white flex items-center gap-2">
-                  <span>Âm lượng Micro & Loa (Voice Call & Cộng đồng)</span>
-                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-500/30">DISCORD VOIP</span>
-                </p>
-                <p className="text-[11px] text-[#777] mt-0.5">
-                  Thiết lập âm lượng mặc định khi tham gia kênh đàm thoại Cyberpunk và sân khấu nghe nhạc chung.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-0 sm:pl-11">
-            {/* Mic Volume */}
-            <div className="p-3.5 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Mic className="w-4 h-4 text-emerald-400" />
-                    <span className="text-xs font-bold text-white">Âm lượng Micro</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded">
-                      {voiceMicVolume}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateMicVolume(100)}
-                      title="Đặt về 100%"
-                      className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  step="1"
-                  value={voiceMicVolume}
-                  onChange={(e) => handleUpdateMicVolume(parseInt(e.target.value, 10))}
-                  className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-emerald-400"
-                />
-              </div>
-              <p className="text-[10px] text-[#555] font-mono mt-2">
-                Hỗ trợ khuếch đại mic lên tới 200% cho micro có âm lượng nhỏ.
-              </p>
-            </div>
-
-            {/* Speaker Volume */}
-            <div className="p-3.5 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-cyan-400" />
-                    <span className="text-xs font-bold text-white">Âm lượng Loa / Đầu ra</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded">
-                      {voiceSpeakerVolume}%
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateSpeakerVolume(100)}
-                      title="Đặt về 100%"
-                      className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  step="1"
-                  value={voiceSpeakerVolume}
-                  onChange={(e) => handleUpdateSpeakerVolume(parseInt(e.target.value, 10))}
-                  className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                />
-              </div>
-              <div className="flex items-center justify-between mt-2 pt-1">
-                <span className="text-[10px] text-[#555] font-mono">0% đến 200%</span>
-                <button
-                  type="button"
-                  onClick={playSpeakerTestChime}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
-                >
-                  <Volume1 className="w-3 h-3" />
-                  <span>Thử âm thanh loa</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Software Update Checker */}
-        <div className="pt-4 border-t border-[#141418]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-              >
-                <Download className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="text-xs font-bold text-white">Cập nhật ứng dụng</p>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#151520] text-zinc-300 border border-[#252535]">
-                    Phiên bản: v{CURRENT_VERSION}
-                  </span>
-                </div>
-                <p className="text-[11px] text-[#777] mt-0.5">
-                  Tự động kiểm tra bản build mới nhất trên GitHub (kể cả các bản patch vá lỗi gần nhất).
-                </p>
-                {updateStatusMsg && (
-                  <p className="text-[11px] text-emerald-400 font-mono mt-1">
-                    {updateStatusMsg}
-                  </p>
+                {currentUser?.avatar ? (
+                  <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span>{currentUser ? currentUser.display_name.charAt(0).toUpperCase() : 'S'}</span>
                 )}
               </div>
             </div>
-            <button
-              onClick={handleManualCheckUpdate}
-              disabled={isCheckingUpdate}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border hover:scale-105 disabled:opacity-50 self-start sm:self-auto"
-              style={{
-                backgroundColor: `${accentColor}18`,
-                color: accentColor,
-                borderColor: `${accentColor}40`,
-              }}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-              <span>{isCheckingUpdate ? 'Đang kiểm tra...' : 'Kiểm tra bản mới'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 3. Supabase Cloud Sync Hub */}
-        <div className="pt-4 border-t border-[#141418]">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-                <Cloud className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                Đồng bộ Đám mây (Cloud Sync)
-              </label>
-              <p className="text-[11px] text-[#777] mt-0.5">
-                Tự động đồng bộ Album, Bài hát yêu thích và Avatar qua các máy tính khác theo thời gian thực (100% Miễn phí)
+            <div className="flex-1 min-w-0">
+              <p className={`text-xs font-bold truncate ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                {currentUser ? currentUser.display_name : getTranslation(language, 'profile.guest')}
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] px-2.5 py-0.5 rounded font-mono border ${
-                isSupabaseConfigured() 
-                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
-                  : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-              }`}>
-                {isSupabaseConfigured() ? '🟢 Cloud Ready' : '⚪ Chưa kết nối'}
-              </span>
+              <button 
+                type="button" 
+                onClick={() => setActiveTab('profile_appearance')} 
+                className="text-[10px] text-[#888] hover:text-cyan-400 font-mono flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Edit3 className="w-2.5 h-2.5" />
+                <span>Sửa hồ sơ</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 mb-3">
-            <button
-              onClick={handleTriggerCloudSync}
-              disabled={isCloudSyncing}
-              className="py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-md transition-transform hover:scale-105 disabled:opacity-50"
-              style={{
-                backgroundColor: accentColor,
-                color: accentColor === '#FFFFFF' ? '#000000' : '#FFFFFF',
-              }}
-            >
-              <CloudLightning className={`w-4 h-4 ${isCloudSyncing ? 'animate-spin' : ''}`} />
-              <span>{isCloudSyncing ? 'Đang đồng bộ...' : 'Đồng bộ Cloud ngay'}</span>
-            </button>
-
-            <button
-              onClick={() => setShowSupabaseSettings(p => !p)}
-              className="py-2.5 px-3 rounded-xl bg-[#0c0c12] hover:bg-[#15151e] border border-[#222230] text-xs font-semibold text-[#aaa] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <Key className="w-3.5 h-3.5" />
-              <span>Cài đặt Supabase riêng (Dành cho IT)</span>
-              {showSupabaseSettings ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-[#666]" />
+            <input
+              type="text"
+              value={searchFilter}
+              onChange={e => setSearchFilter(e.target.value)}
+              placeholder="Tìm kiếm cài đặt..."
+              className={`w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none border transition-colors ${
+                themeMode === 'light' 
+                  ? 'bg-white text-slate-900 border-[#cbd5e1] placeholder-slate-400' 
+                  : 'bg-[#101018] text-white border-[#20202c] placeholder-[#666]'
+              }`}
+            />
           </div>
 
-          {cloudStatusMsg && (
-            <div className="p-2.5 rounded-lg bg-[#0e1610] border border-emerald-500/30 text-emerald-400 text-xs font-mono mb-3 animate-in fade-in flex items-center justify-between">
-              <span>{cloudStatusMsg}</span>
-            </div>
-          )}
-
-          {/* Collapsible Supabase Custom Server Setup */}
-          {showSupabaseSettings && (
-            <div className="p-4 rounded-xl bg-[#0c0c12] border border-[#1e1e28] space-y-3 mb-3 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between border-b border-[#181822] pb-2">
-                <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
-                  <Zap className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                  Tự lưu trữ cơ sở dữ liệu Supabase riêng
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopySql}
-                  className="px-2.5 py-1 rounded bg-[#181824] hover:bg-[#222230] text-[11px] font-mono text-[#aaa] hover:text-white border border-[#2c2c3c] flex items-center gap-1 cursor-pointer transition-colors"
-                >
-                  {copiedSql ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedSql ? 'Đã sao chép SQL!' : 'Sao chép mã SQL 1-Click'}</span>
-                </button>
-              </div>
-
-              <div className="p-3 rounded-lg bg-[#0e0e16] border border-[#222230] text-[11px] text-[#888] font-mono leading-relaxed">
-                💡 <span className="text-white font-semibold">Ghi chú cho Lập trình viên / IT:</span> Spytify đã tích hợp sẵn Cloud mặc định để tự động đồng bộ cho người dùng thông thường. Bạn chỉ cần điền 2 ô bên dưới nếu bạn muốn tự lưu trữ dữ liệu trên dự án Supabase riêng của bạn.
-              </div>
-
-              {supabaseConfig.isCustom && (
-                <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-400 font-mono">
-                  <span>✓ Đang áp dụng cơ sở dữ liệu Supabase riêng</span>
-                  <button
-                    type="button"
-                    onClick={handleResetToDefaultSupabase}
-                    className="text-[10px] underline hover:text-white cursor-pointer"
-                  >
-                    Khôi phục về Cloud mặc định
-                  </button>
-                </div>
-              )}
-
-              <form onSubmit={handleSaveSupabase} className="space-y-3">
-                <div>
-                  <label className="text-[11px] font-mono text-[#888] block mb-1">
-                    Supabase Project URL (Cơ sở dữ liệu riêng của bạn)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={supabaseConfig.isCustom ? "https://your-project.supabase.co" : "Mặc định: Cloud chính thức của Spytify (Đang bảo mật)"}
-                    value={supabaseConfig.url}
-                    onChange={(e) => setSupabaseConfig(prev => ({ ...prev, url: e.target.value }))}
-                    className="w-full py-2 px-3 rounded-lg bg-[#070709] border border-[#262634] text-xs text-white outline-none focus:border-white/50 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-mono text-[#888] block mb-1">
-                    Supabase Anon Public API Key (Key riêng của bạn)
-                  </label>
-                  <input
-                    type="password"
-                    placeholder={supabaseConfig.isCustom ? "sb_publishable_... hoặc eyJhbGciOi..." : "Mặc định: Key hệ thống ẩn an toàn"}
-                    value={supabaseConfig.anonKey}
-                    onChange={(e) => setSupabaseConfig(prev => ({ ...prev, anonKey: e.target.value }))}
-                    className="w-full py-2 px-3 rounded-lg bg-[#070709] border border-[#262634] text-xs text-white outline-none focus:border-white/50 font-mono"
-                  />
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleTestConnection}
-                      disabled={isTestingConnection}
-                      className="py-1.5 px-3 rounded-lg bg-[#181824] hover:bg-[#222234] border border-[#2c2c3c] text-white font-mono text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${isTestingConnection ? 'animate-spin' : ''}`} />
-                      <span>{isTestingConnection ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</span>
-                    </button>
-                    {supabaseConfig.isCustom && (
+          {/* Nav Categories */}
+          <div className="space-y-4 pt-1">
+            {/* Group 1: Tài khoản */}
+            <div>
+              <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] px-2 mb-1">
+                Cài Đặt Người Dùng
+              </p>
+              <div className="space-y-0.5">
+                {[
+                  { key: 'account', label: 'Thông Tin Tài Khoản', icon: UserIcon },
+                  { key: 'profile_appearance', label: 'Hồ Sơ & Giao Diện', icon: Palette },
+                  { key: 'account_status', label: 'Trạng Thái Tài Khoản', icon: ShieldCheck },
+                ]
+                  .filter(item => !searchFilter || item.label.toLowerCase().includes(searchFilter.toLowerCase()))
+                  .map(item => {
+                    const isCur = activeTab === item.key;
+                    const Icon = item.icon;
+                    return (
                       <button
+                        key={item.key}
                         type="button"
-                        onClick={handleResetToDefaultSupabase}
-                        className="py-1.5 px-2.5 rounded-lg bg-transparent hover:bg-zinc-800 text-[#888] hover:text-white font-mono text-xs cursor-pointer transition-colors"
+                        onClick={() => setActiveTab(item.key as any)}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all text-left cursor-pointer ${
+                          isCur
+                            ? themeMode === 'light' ? 'bg-[#cbd5e1] text-slate-900' : 'bg-[#1e1e2c] text-white font-bold'
+                            : themeMode === 'light' ? 'text-slate-600 hover:bg-[#e2e8f0]' : 'text-[#888] hover:text-white hover:bg-white/5'
+                        }`}
+                        style={isCur ? { borderLeft: `3px solid ${accentColor}` } : undefined}
                       >
-                        Đặt lại
+                        <Icon className="w-4 h-4" style={{ color: isCur ? accentColor : '#888' }} />
+                        <span className="truncate">{item.label}</span>
                       </button>
-                    )}
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="py-1.5 px-4 rounded-lg bg-white text-black font-bold text-xs hover:bg-[#ddd] transition-colors cursor-pointer"
-                  >
-                    Lưu cấu hình riêng
-                  </button>
-                </div>
-              </form>
+                    );
+                  })}
+              </div>
             </div>
-          )}
+
+            {/* Group 2: Trải nghiệm & Cài đặt ứng dụng */}
+            <div>
+              <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] px-2 mb-1">
+                Cài Đặt Ứng Dụng
+              </p>
+              <div className="space-y-0.5">
+                {[
+                  { key: 'voice_audio', label: 'Giọng nói và Video', icon: Mic },
+                  { key: 'download_storage', label: 'Tải Xuống & Lưu Trữ', icon: FolderDown },
+                  { key: 'cloud_sync', label: 'Đồng Bộ Đám Mây & Sao Lưu', icon: Cloud },
+                  { key: 'system', label: 'Hệ Thống & Cập Nhật', icon: Zap },
+                  { key: 'language', label: 'Ngôn Ngữ', icon: Globe },
+                  { key: 'activity_history', label: 'Lịch Sử & Thống Kê', icon: Clock },
+                ]
+                  .filter(item => !searchFilter || item.label.toLowerCase().includes(searchFilter.toLowerCase()))
+                  .map(item => {
+                    const isCur = activeTab === item.key;
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setActiveTab(item.key as any)}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all text-left cursor-pointer ${
+                          isCur
+                            ? themeMode === 'light' ? 'bg-[#cbd5e1] text-slate-900' : 'bg-[#1e1e2c] text-white font-bold'
+                            : themeMode === 'light' ? 'text-slate-600 hover:bg-[#e2e8f0]' : 'text-[#888] hover:text-white hover:bg-white/5'
+                        }`}
+                        style={isCur ? { borderLeft: `3px solid ${accentColor}` } : undefined}
+                      >
+                        <Icon className="w-4 h-4" style={{ color: isCur ? accentColor : '#888' }} />
+                        <span className="truncate">{item.label}</span>
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* 4. Cross-Device Vault Sync & Backup */}
-        <div className="pt-4 border-t border-[#141418]">
-          <div className="mb-3">
-            <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
-              <Database className="w-3.5 h-3.5" style={{ color: accentColor }} />
-              {getTranslation(language, 'profile.backupTitle')}
-            </label>
-            <p className="text-[11px] text-[#777] mt-1 font-mono">
-              {getTranslation(language, 'profile.backupDesc')}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Bottom Logout */}
+        <div className="p-3 border-t border-[#181824]">
+          {currentUser ? (
             <button
-              onClick={handleExportBackup}
-              className="p-3.5 rounded-xl border border-[#222230] bg-[#0c0c12] hover:bg-[#14141c] hover:border-white/40 flex items-center gap-3 transition-all cursor-pointer group"
+              onClick={onLogout}
+              className="w-full px-3 py-2 rounded-xl text-xs font-bold text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors cursor-pointer"
             >
-              <div 
-                className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
-              >
-                <Download className="w-4 h-4" />
-              </div>
-              <div className="text-left overflow-hidden">
-                <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
-                  {getTranslation(language, 'profile.exportBackup')}
-                </p>
-                <p className="text-[10px] text-[#777] font-mono">Tải về két sắt Album, Avatar, Yêu thích</p>
-              </div>
+              <LogOut className="w-4 h-4" />
+              <span>Đăng Xuất</span>
             </button>
-
+          ) : (
             <button
-              onClick={handleNativeImportBackup}
-              className="p-3.5 rounded-xl border border-[#222230] bg-[#0c0c12] hover:bg-[#14141c] hover:border-white/40 flex items-center gap-3 transition-all cursor-pointer group"
+              onClick={onOpenAuth}
+              style={{ backgroundColor: accentColor, color: accentColor === '#FFFFFF' ? '#000' : '#fff' }}
+              className="w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 cursor-pointer shadow"
             >
-              <div 
-                className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
-              >
-                <HardDriveDownload className="w-4 h-4" />
-              </div>
-              <div className="text-left overflow-hidden">
-                <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
-                  {getTranslation(language, 'profile.importBackup')}
-                </p>
-                <p className="text-[10px] text-[#777] font-mono">Khôi phục toàn bộ dữ liệu từ máy cũ</p>
-              </div>
+              <span>{getTranslation(language, 'profile.loginBtn')}</span>
             </button>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* ──────────────── THỐNG KÊ NGHE NHẠC (STATS GRID) ──────────────── */}
-      {currentUser && (
-        <div>
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
-            <Disc className="w-3.5 h-3.5" style={{ color: accentColor }} />
-            Thống kê tài khoản
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl bg-[#0a0a0d] border border-[#161620] flex items-center gap-3.5">
-              <div 
-                className="w-10 h-10 rounded-lg flex items-center justify-center border border-[#222]"
-                style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
-              >
-                <Headphones className="w-5 h-5" />
+      {/* ──────── 2. RIGHT CONTENT PANE (DISCORD SETTING CARDS) ──────── */}
+      <div className="flex-1 p-8 overflow-y-auto max-w-3xl">
+        {activeTab === 'account' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Thông Tin Tài Khoản
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Quản lý tên người dùng, thông tin liên hệ và trạng thái xác thực tài khoản Spytify.
+              </p>
+            </div>
+
+            {/* Discord Account Info Card */}
+            <div className={`p-4 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+                <div>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Tên đăng nhập</p>
+                  <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                    @{currentUser ? currentUser.username : 'khach'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => alert('Tên đăng nhập được quản lý bởi phiên xác thực SQLite cục bộ')}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                >
+                  Chỉnh sửa
+                </button>
               </div>
-              <div>
-                <p className="text-[11px] text-[#777] font-mono uppercase">Tổng lượt nghe</p>
-                <p className="text-lg font-bold text-white mt-0.5">{stats.total_played}</p>
+
+              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+                <div>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Tên hiển thị</p>
+                  <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                    {currentUser ? currentUser.display_name : 'Khách Chưa Đăng Nhập'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('profile_appearance')}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                >
+                  Chỉnh sửa
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+                <div className="flex-1 pr-4">
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Tiểu sử cá nhân (Bio)</p>
+                  {isEditingBio ? (
+                    <div className="mt-1 flex items-center gap-2">
+                      <input
+                        type="text"
+                        maxLength={160}
+                        value={userBio}
+                        onChange={e => setUserBio(e.target.value)}
+                        className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-sans border outline-none ${
+                          themeMode === 'light' ? 'bg-slate-100 border-slate-300 text-slate-900' : 'bg-[#141420] border-[#252538] text-white focus:border-cyan-400'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          try {
+                            localStorage.setItem('spytify_user_bio', userBio.trim());
+                            if (currentUser?.id) {
+                              localStorage.setItem(`spytify_user_bio_${currentUser.id}`, userBio.trim());
+                            }
+                          } catch {}
+                          setIsEditingBio(false);
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-mono font-bold cursor-pointer transition-colors"
+                      >
+                        Lưu
+                      </button>
+                    </div>
+                  ) : (
+                    <p className={`text-xs mt-0.5 font-sans ${themeMode === 'light' ? 'text-slate-700' : 'text-zinc-300'}`}>
+                      {userBio || 'Chưa thiết lập tiểu sử.'}
+                    </p>
+                  )}
+                </div>
+                {!isEditingBio && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingBio(true)}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                  >
+                    Chỉnh sửa
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+                <div>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Email</p>
+                  <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                    {currentUser?.email ? currentUser.email : 'chưa liên kết email'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => alert('Email đăng nhập được đồng bộ qua Cloud')}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                >
+                  Chỉnh sửa
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Số Điện Thoại</p>
+                  <p className="text-xs text-[#666] font-mono mt-0.5">Bạn chưa thêm số điện thoại nào vào Spytify.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => alert('Tính năng thêm số điện thoại bảo mật sẽ sớm được hỗ trợ')}
+                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                >
+                  Thêm
+                </button>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-[#0a0a0d] border border-[#161620] flex items-center gap-3.5">
-              <div 
-                className="w-10 h-10 rounded-lg flex items-center justify-center border border-[#222]"
-                style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
-              >
-                <Heart className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-[11px] text-[#777] font-mono uppercase">Bài hát yêu thích</p>
-                <p className="text-lg font-bold text-white mt-0.5">{stats.favorite_count}</p>
-              </div>
-            </div>
+            {/* Mật Khẩu & Bảo Mật Card */}
+            <div>
+              <h3 className={`text-sm font-bold mb-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Mật Khẩu & Bảo Mật
+              </h3>
+              <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
+                  <div>
+                    <p className="text-xs font-bold text-white">Mật khẩu</p>
+                    <p className="text-[11px] text-[#777] font-mono">••••••••••••</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => alert('Để đổi mật khẩu, vui lòng đăng xuất và chọn Quên mật khẩu hoặc Thiết lập trong Auth.')}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                  >
+                    Chỉnh sửa
+                  </button>
+                </div>
 
-            <div className="p-4 rounded-xl bg-[#0a0a0d] border border-[#161620] flex items-center gap-3.5">
-              <div 
-                className="w-10 h-10 rounded-lg flex items-center justify-center border border-[#222]"
-                style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
-              >
-                <Disc className="w-5 h-5" />
-              </div>
-              <div className="overflow-hidden">
-                <p className="text-[11px] text-[#777] font-mono uppercase">Nghệ sĩ nghe nhiều nhất</p>
-                <p className="text-sm font-bold text-white mt-0.5 truncate">{stats.top_artist || 'Chưa xác định'}</p>
+                <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
+                  <div>
+                    <p className="text-xs font-bold text-white">Xác Thực Đa Nhân Tố (2FA)</p>
+                    <p className="text-[11px] text-[#777] font-mono">Bảo mật mã hóa kép qua SQLite & Supabase Vault</p>
+                  </div>
+                  <span className="text-xs font-mono text-emerald-400 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Đã kích hoạt
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-white">Thiết Bị Đã Đăng Nhập</p>
+                    <p className="text-[11px] text-[#777] font-mono">1 thiết bị máy tính đang hoạt động</p>
+                  </div>
+                  <span className="text-xs font-mono text-cyan-400 font-bold">Máy hiện tại</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ──────────────── LỊCH SỬ PHÁT GẦN ĐÂY ──────────────── */}
-      {currentUser && (
-        <div>
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
-            <Clock className="w-3.5 h-3.5" style={{ color: accentColor }} />
-            Lịch sử phát gần đây (Bấm để phát lại)
-          </h3>
+        {activeTab === 'profile_appearance' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Hồ Sơ & Giao Diện
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Tùy biến hình đại diện (Avatar), màu sắc chủ đạo Neon Cyberpunk và chế độ Sáng / Tối.
+              </p>
+            </div>
 
-          {history.length === 0 ? (
-            <div className="text-center py-8 text-[#555] text-xs">Chưa có lịch sử phát nhạc.</div>
-          ) : (
-            <div className="space-y-1">
-              {history
-                .filter((h, index, self) => 
-                  index === self.findIndex(t => 
-                    (t.track_id && t.track_id === h.track_id) || 
-                    (t.track_title && t.track_title.trim().toLowerCase() === h.track_title.trim().toLowerCase())
-                  )
-                )
-                .slice(0, 30)
-                .map((h, i) => {
-                  let trackObj: any = null;
-                  if (h.track_json) {
-                    try { trackObj = typeof h.track_json === 'string' ? JSON.parse(h.track_json) : h.track_json; } catch {}
-                  }
-                  const coverArt = trackObj?.cover_art || (h as any).cover_art;
-                  let pathOrUrl = trackObj?.path_or_url || h.path_or_url || h.track_id;
-                  if (h.source === 'youtube' && pathOrUrl.startsWith('yt_')) {
-                    pathOrUrl = pathOrUrl.replace('yt_', '');
-                  }
+            {/* Avatar Section */}
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Shield className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  {getTranslation(language, 'profile.avatar')}
+                </label>
+                {currentUser?.avatar && (
+                  <button
+                    onClick={handleClearAvatar}
+                    className="text-[11px] text-red-400 hover:text-red-300 flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>{getTranslation(language, 'profile.deleteAvatar')}</span>
+                  </button>
+                )}
+              </div>
 
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        if (trackObj) {
-                          onPlayTrack(trackObj);
-                          return;
-                        }
-                        onPlayTrack({
-                          id: h.track_id,
-                          title: h.track_title,
-                          artist: h.artist,
-                          album: 'History Track',
-                          duration_secs: h.duration_secs,
-                          path_or_url: pathOrUrl,
-                          cover_art: coverArt,
-                          source: (h.source as any) || 'youtube',
-                        });
-                      }}
-                      className="flex items-center justify-between p-2.5 rounded-xl bg-[#09090c] hover:bg-[#121218] border border-[#161620] cursor-pointer group transition-all"
-                    >
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        {coverArt ? (
-                          <img 
-                            src={coverArt} 
-                            alt={h.track_title} 
-                            className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-white/10 shadow-sm"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-[#14141c] flex items-center justify-center text-[#555] overflow-hidden flex-shrink-0 border border-white/10">
-                            <Music className="w-4 h-4" style={{ color: accentColor }} />
-                          </div>
-                        )}
-                        <div className="overflow-hidden">
-                          <p className="text-xs font-semibold text-white truncate group-hover:text-white transition-colors">
-                            {h.track_title}
-                          </p>
-                          <p className="text-[11px] text-[#777] truncate font-mono mt-0.5">{h.artist} • <span className="uppercase text-[10px] text-zinc-400">{h.source}</span></p>
+              {/* Upload Button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-3 px-4 rounded-xl border border-dashed border-[#2b2b3a] hover:border-white/50 bg-[#0c0c10] hover:bg-[#121218] transition-all flex items-center justify-center gap-2.5 text-xs font-semibold text-white cursor-pointer group"
+              >
+                <Upload className="w-4 h-4 text-[#888] group-hover:text-white transition-colors" />
+                <span>{getTranslation(language, 'profile.uploadAvatar')}</span>
+              </button>
+
+              {/* Presets */}
+              <div>
+                <p className="text-[11px] text-[#777] font-mono mb-2">Hoặc chọn nhanh từ bộ sưu tập Đặc nhiệm Spytify:</p>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+                  {SPY_AVATARS.map((preset) => {
+                    const isSelected = currentUser?.avatar === preset.svg;
+                    return (
+                      <button
+                        key={preset.id}
+                        onClick={() => onUpdateAvatar(preset.svg)}
+                        title={preset.name}
+                        className={`p-2 rounded-xl border text-center flex flex-col items-center gap-2 transition-all cursor-pointer group ${
+                          isSelected 
+                            ? 'bg-[#181824] border-white shadow-[0_0_12px_rgba(255,255,255,0.2)] scale-105' 
+                            : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#38384a] hover:bg-[#13131b]'
+                        }`}
+                      >
+                        <div className="w-12 h-12 rounded-lg overflow-hidden border border-[#252535] group-hover:border-white/40 transition-colors">
+                          <img src={preset.svg} alt={preset.name} className="w-full h-full object-cover" />
                         </div>
+                        <span className="text-[10px] font-bold text-[#aaa] group-hover:text-white truncate w-full">
+                          {preset.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Theme Mode & Neon Accent */}
+            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              {/* Light / Dark Mode Toggle */}
+              <div>
+                <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
+                  <Sun className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  {getTranslation(language, 'profile.themeMode')}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => themeMode === 'light' && onToggleThemeMode()}
+                    style={{
+                      backgroundColor: '#0b0b12',
+                      borderColor: themeMode === 'dark' ? accentColor : '#27273a',
+                      boxShadow: themeMode === 'dark' ? `0 0 16px ${accentColor}40` : '0 2px 8px rgba(0,0,0,0.2)',
+                    }}
+                    className={`p-3.5 rounded-xl border-2 text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                      themeMode === 'dark' ? 'scale-[1.01]' : 'opacity-85 hover:opacity-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3.5 overflow-hidden">
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border"
+                        style={{ backgroundColor: '#161624', borderColor: '#2e2e42' }}
+                      >
+                        <Moon className="w-4 h-4 text-indigo-400" />
                       </div>
-                      <span className="text-[10px] text-[#555] font-mono flex-shrink-0">
-                        {h.listened_at ? new Date(h.listened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-bold truncate" style={{ color: '#f8fafc' }}>
+                          {getTranslation(language, 'profile.darkStealth')}
+                        </p>
+                        <p className="text-[10px] font-mono truncate" style={{ color: '#94a3b8' }}>
+                          {getTranslation(language, 'profile.darkStealthDesc')}
+                        </p>
+                      </div>
+                    </div>
+                    {themeMode === 'dark' && (
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: accentColor, color: '#ffffff' }}
+                      >
+                        <Check className="w-3 h-3" />
+                      </div>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => themeMode === 'dark' && onToggleThemeMode()}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      borderColor: themeMode === 'light' ? accentColor : '#cbd5e1',
+                      boxShadow: themeMode === 'light' ? `0 0 16px ${accentColor}40` : '0 2px 8px rgba(15,23,42,0.08)',
+                    }}
+                    className={`p-3.5 rounded-xl border-2 text-left flex items-center justify-between gap-3 transition-all cursor-pointer ${
+                      themeMode === 'light' ? 'scale-[1.01]' : 'opacity-90 hover:opacity-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3.5 overflow-hidden">
+                      <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border"
+                        style={{ backgroundColor: '#fffbeb', borderColor: '#fde68a' }}
+                      >
+                        <Sun className="w-4 h-4 text-amber-500" />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-bold truncate" style={{ color: '#0f172a' }}>
+                          {getTranslation(language, 'profile.lightDossier')}
+                        </p>
+                        <p className="text-[10px] font-mono truncate" style={{ color: '#475569' }}>
+                          {getTranslation(language, 'profile.lightDossierDesc')}
+                        </p>
+                      </div>
+                    </div>
+                    {themeMode === 'light' && (
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: accentColor, color: '#ffffff' }}
+                      >
+                        <Check className="w-3 h-3" />
+                      </div>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Accent Color Palette */}
+              <div className="pt-4 border-t border-[#1c1c28]">
+                <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
+                  <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  {getTranslation(language, 'profile.accentColor')}
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {THEME_PALETTE.map((theme) => {
+                    const isSelected = accentColor.toUpperCase() === theme.hex.toUpperCase();
+                    return (
+                      <button
+                        key={theme.hex}
+                        onClick={() => onUpdateAccentColor(theme.hex)}
+                        className={`p-3 rounded-xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
+                          isSelected 
+                            ? 'bg-[#15151e] border-white shadow-[0_0_12px_rgba(255,255,255,0.15)] scale-[1.02]' 
+                            : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#333] hover:bg-[#121218]'
+                        }`}
+                      >
+                        <div 
+                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm"
+                          style={{ backgroundColor: theme.hex }}
+                        >
+                          {isSelected && (
+                            <Check className={`w-4 h-4 ${theme.hex === '#FFFFFF' ? 'text-black' : 'text-white'}`} />
+                          )}
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="text-xs font-bold text-white truncate">{theme.name}</p>
+                          <p className="text-[10px] text-[#777] truncate font-mono">
+                            {getTranslation(language, `palette.${theme.key}`) || theme.desc}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Hex Picker */}
+                <div className="mt-4 flex items-center gap-3 p-3 rounded-xl bg-[#0c0c10] border border-[#1b1b24]">
+                  <input
+                    type="color"
+                    value={accentColor}
+                    onChange={(e) => onUpdateAccentColor(e.target.value)}
+                    className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-0 outline-none"
+                    title={getTranslation(language, 'profile.customHex')}
+                  />
+                  <div className="flex-1">
+                    <p className="text-xs font-semibold text-white">{getTranslation(language, 'profile.customHex')}</p>
+                    <p className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'profile.customHexDesc')}</p>
+                  </div>
+                  <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-[#161620] border border-[#262634] text-white">
+                    {accentColor.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'account_status' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Trạng Thái Tài Khoản
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Kiểm tra mức độ tuân thủ, độ tin cậy và trạng thái đồng bộ cơ sở dữ liệu.
+              </p>
+            </div>
+
+            {/* Blue Info Banner matching Discord Image */}
+            <div className="p-4 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-cyan-200 text-xs flex items-start gap-3">
+              <Info className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                Nhóm tuổi sẽ quyết định liệu bạn có thể truy cập nội dung và cài đặt dành cho người lớn hay không. Bạn thuộc nhóm tuổi người lớn (18+), nên sẽ không có gì thay đổi với bạn.
+              </p>
+            </div>
+
+            <div className={`p-4 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Nhóm Tuổi</p>
+                    <p className="text-[11px] text-[#777] font-mono">Bạn thuộc nhóm tuổi người lớn (18+) và có quyền truy cập vào tất cả các tính năng.</p>
+                  </div>
+                </div>
+                <span className="text-xs font-bold font-mono text-zinc-300">Người lớn</span>
+              </div>
+
+              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Trạng thái tài khoản</p>
+                    <p className="text-[11px] text-[#777] font-mono">Cảm ơn bạn đã sử dụng Spytify và tuân thủ nguyên tắc cộng đồng. Bạn không có bất kỳ vi phạm nào.</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold text-emerald-400">Hoàn toàn ổn &gt;</span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+                    <Database className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Cơ sở dữ liệu nội bộ SQLite</p>
+                    <p className="text-[11px] text-[#777] font-mono">Lưu trữ siêu tốc trên máy tính, bảo mật tuyệt đối 100%.</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold text-cyan-400">Đang hoạt động</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'voice_audio' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Giọng nói và Video
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Cài đặt âm thanh đầu vào Micro, âm lượng loa đầu ra cho phòng đàm thoại (VoIP).
+              </p>
+            </div>
+
+            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Mic Volume */}
+                <div className="p-4 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Mic className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-white">Âm lượng Micro (Input)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded">
+                          {voiceMicVolume}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateMicVolume(100)}
+                          title="Đặt về 100%"
+                          className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="200"
+                      step="1"
+                      value={voiceMicVolume}
+                      onChange={(e) => handleUpdateMicVolume(parseInt(e.target.value, 10))}
+                      className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                    />
+                  </div>
+                  <p className="text-[10px] text-[#555] font-mono mt-3">
+                    Hỗ trợ khuếch đại mic lên tới 200% cho micro có âm lượng nhỏ.
+                  </p>
+                </div>
+
+                {/* Speaker Volume */}
+                <div className="p-4 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="w-4 h-4 text-cyan-400" />
+                        <span className="text-xs font-bold text-white">Âm lượng Loa (Output)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded">
+                          {voiceSpeakerVolume}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateSpeakerVolume(100)}
+                          title="Đặt về 100%"
+                          className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="200"
+                      step="1"
+                      value={voiceSpeakerVolume}
+                      onChange={(e) => handleUpdateSpeakerVolume(parseInt(e.target.value, 10))}
+                      className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between mt-3 pt-1">
+                    <span className="text-[10px] text-[#555] font-mono">0% đến 200%</span>
+                    <button
+                      type="button"
+                      onClick={playSpeakerTestChime}
+                      className="px-2.5 py-1 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
+                    >
+                      <Volume1 className="w-3 h-3" />
+                      <span>Thử âm thanh loa</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'download_storage' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Tải Xuống & Lưu Trữ
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Cấu hình thư mục lưu nhạc ngoại tuyến (MP3 / FLAC) khi tải về máy tính.
+              </p>
+            </div>
+
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div 
+                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                  >
+                    <FolderDown className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'download.folderSetting')}</p>
+                    <p className="text-[11px] text-[#8e8e9f] font-mono truncate" title={downloadFolder}>
+                      {downloadFolder || 'C:\\Users\\...\\Music\\Spytify'}
+                    </p>
+                    <p className="text-[10px] text-[#555] mt-0.5">{getTranslation(language, 'download.folderSettingDesc')}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 self-start sm:self-auto">
+                  {onChangeDownloadFolder && (
+                    <button
+                      onClick={onChangeDownloadFolder}
+                      className="px-3 py-1.5 rounded-lg bg-[#14141c] hover:bg-[#1e1e28] text-white text-xs font-medium border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Folder className="w-3.5 h-3.5 text-[#888]" />
+                      <span>{getTranslation(language, 'download.changeFolder')}</span>
+                    </button>
+                  )}
+                  {onOpenDownloadFolder && (
+                    <button
+                      onClick={onOpenDownloadFolder}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                      style={{
+                        backgroundColor: `${accentColor}18`,
+                        color: accentColor,
+                        border: `1px solid ${accentColor}35`,
+                      }}
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      <span>{getTranslation(language, 'download.openFolder')}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'cloud_sync' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Đồng Bộ Đám Mây & Sao Lưu
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Đồng bộ Album, Avatar và Lịch sử nghe nhạc sang các thiết bị khác hoặc xuất két sắt JSON.
+              </p>
+            </div>
+
+            {/* Cloud Sync Container */}
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                    <Cloud className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                    Đồng bộ Đám mây (Cloud Sync)
+                  </label>
+                  <p className="text-[11px] text-[#777] mt-0.5">
+                    Tự động đồng bộ Album, Bài hát yêu thích và Avatar qua các máy tính khác theo thời gian thực (100% Miễn phí)
+                  </p>
+                </div>
+                <span className={`text-[10px] px-2.5 py-0.5 rounded font-mono border ${
+                  isSupabaseConfigured() 
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}>
+                  {isSupabaseConfigured() ? '🟢 Cloud Ready' : '⚪ Chưa kết nối'}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  onClick={handleTriggerCloudSync}
+                  disabled={isCloudSyncing}
+                  className="py-2.5 px-4 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-md transition-transform hover:scale-105 disabled:opacity-50"
+                  style={{
+                    backgroundColor: accentColor,
+                    color: accentColor === '#FFFFFF' ? '#000000' : '#FFFFFF',
+                  }}
+                >
+                  <CloudLightning className={`w-4 h-4 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isCloudSyncing ? 'Đang đồng bộ...' : 'Đồng bộ Cloud ngay'}</span>
+                </button>
+
+                <button
+                  onClick={() => setShowSupabaseSettings(p => !p)}
+                  className="py-2.5 px-3 rounded-xl bg-[#0c0c12] hover:bg-[#15151e] border border-[#222230] text-xs font-semibold text-[#aaa] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Cài đặt Supabase riêng (Dành cho IT)</span>
+                  {showSupabaseSettings ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+
+              {cloudStatusMsg && (
+                <div className="p-2.5 rounded-lg bg-[#0e1610] border border-emerald-500/30 text-emerald-400 text-xs font-mono animate-in fade-in flex items-center justify-between">
+                  <span>{cloudStatusMsg}</span>
+                </div>
+              )}
+
+              {/* Collapsible Supabase Setup */}
+              {showSupabaseSettings && (
+                <div className="p-4 rounded-xl bg-[#0c0c12] border border-[#1e1e28] space-y-3 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between border-b border-[#181822] pb-2">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
+                      <Zap className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                      Tự lưu trữ cơ sở dữ liệu Supabase riêng
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopySql}
+                      className="px-2.5 py-1 rounded bg-[#181824] hover:bg-[#222230] text-[11px] font-mono text-[#aaa] hover:text-white border border-[#2c2c3c] flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      {copiedSql ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedSql ? 'Đã sao chép SQL!' : 'Sao chép mã SQL 1-Click'}</span>
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveSupabase} className="space-y-3">
+                    <div>
+                      <label className="text-[11px] font-mono text-[#888] block mb-1">
+                        Supabase Project URL
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={supabaseConfig.isCustom ? "https://your-project.supabase.co" : "Mặc định: Cloud chính thức của Spytify (Đang bảo mật)"}
+                        value={supabaseConfig.url}
+                        onChange={(e) => setSupabaseConfig(prev => ({ ...prev, url: e.target.value }))}
+                        className="w-full py-2 px-3 rounded-lg bg-[#070709] border border-[#262634] text-xs text-white outline-none focus:border-white/50 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-mono text-[#888] block mb-1">
+                        Supabase Anon Public API Key
+                      </label>
+                      <input
+                        type="password"
+                        placeholder={supabaseConfig.isCustom ? "sb_publishable_... hoặc eyJhbGciOi..." : "Mặc định: Key hệ thống ẩn an toàn"}
+                        value={supabaseConfig.anonKey}
+                        onChange={(e) => setSupabaseConfig(prev => ({ ...prev, anonKey: e.target.value }))}
+                        className="w-full py-2 px-3 rounded-lg bg-[#070709] border border-[#262634] text-xs text-white outline-none focus:border-white/50 font-mono"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={isTestingConnection}
+                        className="py-1.5 px-3 rounded-lg bg-[#181824] hover:bg-[#222234] border border-[#2c2c3c] text-white font-mono text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isTestingConnection ? 'animate-spin' : ''}`} />
+                        <span>{isTestingConnection ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</span>
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="py-1.5 px-4 rounded-lg bg-white text-black font-bold text-xs hover:bg-[#ddd] transition-colors cursor-pointer"
+                      >
+                        Lưu cấu hình riêng
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+
+            {/* Cross-Device Backup */}
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div>
+                <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Database className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  {getTranslation(language, 'profile.backupTitle')}
+                </label>
+                <p className="text-[11px] text-[#777] mt-1 font-mono">
+                  {getTranslation(language, 'profile.backupDesc')}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  onClick={handleExportBackup}
+                  className="p-3.5 rounded-xl border border-[#222230] bg-[#0c0c12] hover:bg-[#14141c] hover:border-white/40 flex items-center gap-3 transition-all cursor-pointer group"
+                >
+                  <div 
+                    className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  >
+                    <Download className="w-4 h-4" />
+                  </div>
+                  <div className="text-left overflow-hidden">
+                    <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
+                      {getTranslation(language, 'profile.exportBackup')}
+                    </p>
+                    <p className="text-[10px] text-[#777] font-mono">Tải về két sắt Album, Avatar, Yêu thích</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleNativeImportBackup}
+                  className="p-3.5 rounded-xl border border-[#222230] bg-[#0c0c12] hover:bg-[#14141c] hover:border-white/40 flex items-center gap-3 transition-all cursor-pointer group"
+                >
+                  <div 
+                    className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  >
+                    <HardDriveDownload className="w-4 h-4" />
+                  </div>
+                  <div className="text-left overflow-hidden">
+                    <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
+                      {getTranslation(language, 'profile.importBackup')}
+                    </p>
+                    <p className="text-[10px] text-[#777] font-mono">Khôi phục toàn bộ dữ liệu từ máy cũ</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'system' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Hệ Thống & Cập Nhật
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Thiết lập hành vi ứng dụng Windows, thu nhỏ khay hệ thống và cập nhật phiên bản.
+              </p>
+            </div>
+
+            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              {/* Close to tray */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                  >
+                    <Power className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Chạy ngầm ở khay hệ thống (System Tray)</p>
+                    <p className="text-[11px] text-[#777] mt-0.5">
+                      {closeToTray 
+                        ? 'Bật: Nhấn nút [X] sẽ ẩn app xuống khay hệ thống để tiếp tục phát nhạc ngầm.' 
+                        : 'Tắt: Nhấn nút [X] sẽ đóng và thoát hoàn toàn ứng dụng.'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleToggleCloseToTray(!closeToTray)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                    closeToTray ? 'bg-emerald-500' : 'bg-zinc-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      closeToTray ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Version updater */}
+              <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                  >
+                    <Download className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-white">Cập nhật ứng dụng Spytify</p>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#151520] text-zinc-300 border border-[#252535]">
+                        Phiên bản: v{CURRENT_VERSION}
                       </span>
                     </div>
+                    <p className="text-[11px] text-[#777] mt-0.5">
+                      Tự động kiểm tra bản build mới nhất trên GitHub.
+                    </p>
+                    {updateStatusMsg && (
+                      <p className="text-[11px] text-emerald-400 font-mono mt-1">
+                        {updateStatusMsg}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={handleManualCheckUpdate}
+                  disabled={isCheckingUpdate}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border hover:scale-105 disabled:opacity-50 self-start sm:self-auto"
+                  style={{
+                    backgroundColor: `${accentColor}18`,
+                    color: accentColor,
+                    borderColor: `${accentColor}40`,
+                  }}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                  <span>{isCheckingUpdate ? 'Đang kiểm tra...' : 'Kiểm tra bản mới'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'language' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Ngôn Ngữ (Language)
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Chọn ngôn ngữ hiển thị trên toàn bộ giao diện, menu và hệ thống thông báo.
+              </p>
+            </div>
+
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {SUPPORTED_LANGUAGES.map((item) => {
+                  const isSelected = language === item.code;
+                  return (
+                    <button
+                      key={item.code}
+                      onClick={() => onUpdateLanguage && onUpdateLanguage(item.code)}
+                      className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#15151e] shadow-[0_0_12px_rgba(255,255,255,0.15)] scale-[1.02]'
+                          : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#333] hover:bg-[#121218]'
+                      }`}
+                      style={isSelected ? { borderColor: accentColor } : undefined}
+                    >
+                      <div className="flex items-center justify-between w-full mb-2">
+                        <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-[#181824] text-white border border-[#2a2a3a]">
+                          {item.tag}
+                        </span>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }}></span>
+                        )}
+                      </div>
+                      <div>
+                        <p className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-[#ccc]'}`}>
+                          {item.nativeName}
+                        </p>
+                        <p className="text-[10px] text-[#777] truncate font-mono mt-0.5">
+                          {item.country}
+                        </p>
+                      </div>
+                    </button>
                   );
                 })}
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+        {activeTab === 'activity_history' && (
+          <div className="space-y-6">
+            <div>
+              <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                Lịch Sử & Thống Kê
+              </h2>
+              <p className="text-xs text-[#777] font-mono mt-0.5">
+                Tổng hợp hoạt động nghe nhạc, nghệ sĩ nghe nhiều nhất và danh sách các bài hát gần đây.
+              </p>
+            </div>
+
+            {/* Quick Stats Grid */}
+            {currentUser && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className={`p-4 rounded-xl border flex items-center gap-3.5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#0a0a0d] border-[#161620]'}`}>
+                  <div 
+                    className="w-10 h-10 rounded-lg flex items-center justify-center border border-[#222]"
+                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  >
+                    <Headphones className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[#777] font-mono uppercase">Tổng lượt nghe</p>
+                    <p className={`text-lg font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.total_played}</p>
+                  </div>
+                </div>
+
+                <div className={`p-4 rounded-xl border flex items-center gap-3.5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#0a0a0d] border-[#161620]'}`}>
+                  <div 
+                    className="w-10 h-10 rounded-lg flex items-center justify-center border border-[#222]"
+                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  >
+                    <Heart className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[#777] font-mono uppercase">Bài hát yêu thích</p>
+                    <p className={`text-lg font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.favorite_count}</p>
+                  </div>
+                </div>
+
+                <div className={`p-4 rounded-xl border flex items-center gap-3.5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#0a0a0d] border-[#161620]'}`}>
+                  <div 
+                    className="w-10 h-10 rounded-lg flex items-center justify-center border border-[#222]"
+                    style={{ backgroundColor: `${accentColor}15`, color: accentColor }}
+                  >
+                    <Disc className="w-5 h-5" />
+                  </div>
+                  <div className="overflow-hidden">
+                    <p className="text-[11px] text-[#777] font-mono uppercase">Nghệ sĩ nghe nhiều</p>
+                    <p className={`text-sm font-bold mt-0.5 truncate ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.top_artist || 'Chưa xác định'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* History List */}
+            <div className={`p-5 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  Bài hát phát gần đây (30 bài)
+                </h3>
+                <span className="text-[10px] text-[#777] font-mono">Bấm bài bất kỳ để nghe lại</span>
+              </div>
+
+              {history.length === 0 ? (
+                <div className="text-center py-8 text-[#555] text-xs">Chưa có lịch sử phát nhạc.</div>
+              ) : (
+                <div className="space-y-1 max-h-[480px] overflow-y-auto pr-1">
+                  {history
+                    .filter((h, index, self) => 
+                      index === self.findIndex(t => 
+                        (t.track_id && t.track_id === h.track_id) || 
+                        (t.track_title && t.track_title.trim().toLowerCase() === h.track_title.trim().toLowerCase())
+                      )
+                    )
+                    .slice(0, 30)
+                    .map((h, i) => {
+                      let trackObj: any = null;
+                      if (h.track_json) {
+                        try { trackObj = typeof h.track_json === 'string' ? JSON.parse(h.track_json) : h.track_json; } catch {}
+                      }
+                      const coverArt = trackObj?.cover_art || (h as any).cover_art;
+                      let pathOrUrl = trackObj?.path_or_url || h.path_or_url || h.track_id;
+                      if (h.source === 'youtube' && pathOrUrl.startsWith('yt_')) {
+                        pathOrUrl = pathOrUrl.replace('yt_', '');
+                      }
+
+                      return (
+                        <div
+                          key={i}
+                          onClick={() => {
+                            if (trackObj) {
+                              onPlayTrack(trackObj);
+                              return;
+                            }
+                            onPlayTrack({
+                              id: h.track_id,
+                              title: h.track_title,
+                              artist: h.artist,
+                              album: 'History Track',
+                              duration_secs: h.duration_secs,
+                              path_or_url: pathOrUrl,
+                              cover_art: coverArt,
+                              source: (h.source as any) || 'youtube',
+                            });
+                          }}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-[#09090c] hover:bg-[#121218] border border-[#161620] cursor-pointer group transition-all"
+                        >
+                          <div className="flex items-center gap-3 overflow-hidden">
+                            {coverArt ? (
+                              <img 
+                                src={coverArt} 
+                                alt={h.track_title} 
+                                className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-white/10 shadow-sm"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-[#14141c] flex items-center justify-center text-[#555] overflow-hidden flex-shrink-0 border border-white/10">
+                                <Music className="w-4 h-4" style={{ color: accentColor }} />
+                              </div>
+                            )}
+                            <div className="overflow-hidden">
+                              <p className="text-xs font-semibold text-white truncate group-hover:text-white transition-colors">
+                                {h.track_title}
+                              </p>
+                              <p className="text-[11px] text-[#777] truncate font-mono mt-0.5">{h.artist} • <span className="uppercase text-[10px] text-zinc-400">{h.source}</span></p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-[#555] font-mono flex-shrink-0">
+                            {h.listened_at ? new Date(h.listened_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

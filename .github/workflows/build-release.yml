@@ -44,7 +44,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Phiên bản Spytify v1.0.1 alpha cho Windows và macOS (nâng cấp Spy Jam Community, Live Station độc quyền, Rythm Bot hàng đợi, bảo vệ license và tối ưu hiển thị danh tính).'
+          releaseBody: 'Phiên bản Spytify v1.0.2 alpha cho Windows và macOS (tính năng đa Bot Yêu Cầu với /play @id_bot, stream xuyên suốt tới khi hết hàng đợi rồi tự rời phòng, sửa phát nhạc từ trạng thái bot, khôi phục âm lượng bot & đồng bộ hồ sơ cộng đồng).'
           releaseDraft: false
           prerelease: false
 
@@ -90,7 +90,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Phiên bản Spytify v1.0.1 alpha cho Windows và macOS (Apple Silicon M1/M2/M3/M4 & Intel).'
+          releaseBody: 'Phiên bản Spytify v1.0.2 alpha cho Windows và macOS (Apple Silicon M1/M2/M3/M4 & Intel).'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin

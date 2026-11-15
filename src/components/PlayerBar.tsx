@@ -3,7 +3,7 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
-  ChevronDown, ChevronUp, Disc
+  ChevronDown, ChevronUp, Disc, Activity
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -909,7 +909,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               : 'text-[#666] hover:text-white border-transparent'
           }`}
         >
-          <Sparkles className="w-4 h-4" />
+          <Activity className="w-4 h-4" />
         </button>
 
         {/* Source Badge */}
