@@ -238,27 +238,77 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   onActiveServerChange,
 }) => {
   const isLight = themeMode === 'light';
-  // Load custom servers from localStorage
+  // Load servers (built-in overrides + custom servers) from localStorage
   const [servers, setServers] = useState<CommunityServer[]>(() => {
     try {
+      const overridesRaw = localStorage.getItem('spytify_builtin_server_overrides');
+      const overrides: Record<string, Partial<CommunityServer>> = overridesRaw ? JSON.parse(overridesRaw) : {};
+      const mergedBuiltins = BUILTIN_SERVERS.map(b =>
+        overrides[b.id] ? { ...b, ...overrides[b.id] } : b
+      );
+
       const saved = localStorage.getItem('spytify_user_servers');
       if (saved) {
+        const migratedFlag = localStorage.getItem('spytify_custom_srv_zero_members_v1');
         const parsed: CommunityServer[] = JSON.parse(saved);
-        const cleaned = parsed.map(s => ({
-          ...s,
-          channels: s.channels.filter(c => c.type !== 'stage')
-        }));
-        return [...BUILTIN_SERVERS, ...cleaned];
+        const cleaned = parsed.map(s => {
+          const isOldDefaultMembers =
+            !migratedFlag &&
+            Array.isArray(s.member_ids) &&
+            s.member_ids.length === 3 &&
+            s.member_ids.includes('usr_me') &&
+            s.member_ids.includes('usr_host') &&
+            s.member_ids.includes('usr_agent_01');
+          return {
+            ...s,
+            is_custom: true,
+            channels: s.channels.filter(c => c.type !== 'stage'),
+            member_ids: isOldDefaultMembers ? ['usr_me'] : (s.member_ids || ['usr_me']),
+          };
+        });
+        if (!migratedFlag) {
+          localStorage.setItem('spytify_custom_srv_zero_members_v1', '1');
+          localStorage.setItem('spytify_user_servers', JSON.stringify(cleaned));
+        }
+        return [...mergedBuiltins, ...cleaned];
       }
+      return mergedBuiltins;
     } catch {}
     return BUILTIN_SERVERS;
   });
+
+  const persistServers = (nextServers: CommunityServer[]) => {
+    try {
+      const customOnly = nextServers.filter(s => s.id.startsWith('srv_custom_') || s.is_custom);
+      localStorage.setItem('spytify_user_servers', JSON.stringify(customOnly));
+
+      const overrides: Record<string, Partial<CommunityServer>> = {};
+      for (const s of nextServers) {
+        if (!s.id.startsWith('srv_custom_') && !s.is_custom) {
+          overrides[s.id] = {
+            name: s.name,
+            description: s.description,
+            icon: s.icon,
+            accent_color: s.accent_color,
+            max_members: s.max_members,
+            channels: s.channels,
+            member_ids: s.member_ids,
+          };
+        }
+      }
+      localStorage.setItem('spytify_builtin_server_overrides', JSON.stringify(overrides));
+    } catch {}
+  };
 
   const [selectedServer, setSelectedServer] = useState<CommunityServer>(servers[0]);
   const [selectedChannel, setSelectedChannel] = useState<CommunityChannel>(servers[0].channels[0]);
   const [messages, setMessages] = useState<CommunityMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [attachCurrentTrack, setAttachCurrentTrack] = useState(false);
+
+  // ──────── TẠO PHÒNG CHAT / PHÒNG THOẠI MỚI TRONG SERVER ────────
+  const [creatingChannelType, setCreatingChannelType] = useState<'text' | 'voice' | null>(null);
+  const [newChannelName, setNewChannelName] = useState('');
 
   // ──────── MODAL TẠO SERVER MỚI ────────
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -269,7 +319,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [newServerColor, setNewServerColor] = useState('#00E5FF');
 
   const getChannelName = (channel: CommunityChannel) => {
-    if (channel.id === 'ch_cyber_voice') return getTranslation(language, 'community.agentVoiceRoom');
     return channel.name;
   };
 
@@ -744,9 +793,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     const updatedList = servers.map(s => s.id === selectedServer.id ? updatedSrv : s);
     setServers(updatedList);
     setSelectedServer(updatedSrv);
-
-    const customOnly = updatedList.filter(s => s.id.startsWith('srv_custom_') || s.is_custom);
-    localStorage.setItem('spytify_user_servers', JSON.stringify(customOnly));
+    persistServers(updatedList);
 
     onActiveServerChange?.(updatedSrv);
     setIsServerSettingsOpen(false);
@@ -755,23 +802,106 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const handleDeleteServer = (srvId: string) => {
     const nextServers = servers.filter(s => s.id !== srvId);
     setServers(nextServers);
-    const customOnly = nextServers.filter(s => s.id.startsWith('srv_custom_') || s.is_custom);
-    localStorage.setItem('spytify_user_servers', JSON.stringify(customOnly));
+    persistServers(nextServers);
     setSelectedServer(nextServers[0]);
     setSelectedChannel(nextServers[0].channels[0]);
     onActiveServerChange?.(nextServers[0]);
     setIsServerSettingsOpen(false);
   };
 
+  // Check if a user is a member of the currently selected server
+  const isMemberInServer = (userId: string, srv: CommunityServer = selectedServer): boolean => {
+    if (userId === 'usr_me') return true;
+    const isCustomSrv = Boolean(srv.is_custom || srv.id.startsWith('srv_custom_'));
+    if (isCustomSrv) {
+      return Array.isArray(srv.member_ids) ? srv.member_ids.includes(userId) : false;
+    }
+    if (Array.isArray(srv.member_ids)) {
+      return srv.member_ids.includes(userId);
+    }
+    return true;
+  };
+
   const handleKickMember = (memberId: string) => {
-    setSelectedServer(prev => {
-      const nextMemberIds = (prev.member_ids || ['usr_me', 'usr_host', 'usr_agent_01']).filter(id => id !== memberId);
-      const updated = { ...prev, member_ids: nextMemberIds };
-      setServers(curr => curr.map(s => s.id === prev.id ? updated : s));
-      const customOnly = servers.map(s => s.id === prev.id ? updated : s).filter(s => s.id.startsWith('srv_custom_') || s.is_custom);
-      localStorage.setItem('spytify_user_servers', JSON.stringify(customOnly));
-      return updated;
-    });
+    if (memberId === 'usr_me') return;
+    const currentMemberIds = Array.isArray(selectedServer.member_ids)
+      ? selectedServer.member_ids
+      : ['usr_me', ...registeredUsers.map(u => u.id), ...Object.keys(realtimeUserPresences)];
+    const nextMemberIds = currentMemberIds.filter(id => id !== memberId);
+    const updatedSrv: CommunityServer = { ...selectedServer, member_ids: nextMemberIds };
+    const nextServers = servers.map(s => (s.id === selectedServer.id ? updatedSrv : s));
+    setServers(nextServers);
+    setSelectedServer(updatedSrv);
+    persistServers(nextServers);
+    setVoiceParticipants(prev => prev.filter(p => p.id !== memberId));
+  };
+
+  const handleInviteMemberToServer = (memberId: string) => {
+    const currentMemberIds = Array.isArray(selectedServer.member_ids)
+      ? selectedServer.member_ids
+      : selectedServer.is_custom || selectedServer.id.startsWith('srv_custom_')
+      ? ['usr_me']
+      : ['usr_me', ...registeredUsers.map(u => u.id)];
+    if (currentMemberIds.includes(memberId)) return;
+    const nextMemberIds = [...currentMemberIds, memberId];
+    const updatedSrv: CommunityServer = { ...selectedServer, member_ids: nextMemberIds };
+    const nextServers = servers.map(s => (s.id === selectedServer.id ? updatedSrv : s));
+    setServers(nextServers);
+    setSelectedServer(updatedSrv);
+    persistServers(nextServers);
+  };
+
+  const handleCreateChannel = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = newChannelName.trim();
+    if (!cleanName || !creatingChannelType) return;
+    const formattedName =
+      creatingChannelType === 'text'
+        ? cleanName.toLowerCase().replace(/\s+/g, '-')
+        : cleanName;
+    const newCh: CommunityChannel = {
+      id: `ch_${selectedServer.id}_${Date.now()}`,
+      name: formattedName,
+      type: creatingChannelType,
+      topic:
+        creatingChannelType === 'text'
+          ? `Kênh trò chuyện #${formattedName}`
+          : `Phòng đàm thoại ${formattedName}`,
+    };
+    const updatedSrv: CommunityServer = {
+      ...selectedServer,
+      channels: [...selectedServer.channels, newCh],
+    };
+    const nextServers = servers.map(s => (s.id === selectedServer.id ? updatedSrv : s));
+    setServers(nextServers);
+    setSelectedServer(updatedSrv);
+    persistServers(nextServers);
+    setCreatingChannelType(null);
+    setNewChannelName('');
+    handleSelectChannel(newCh);
+  };
+
+  const handleDeleteChannel = (channelId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const target = selectedServer.channels.find(c => c.id === channelId);
+    if (!target) return;
+    const sameTypeCount = selectedServer.channels.filter(c => c.type === target.type).length;
+    if (sameTypeCount <= 1) return;
+    if (connectedVoiceChannel === channelId) {
+      handleLeaveVoiceCall();
+    }
+    const nextChannels = selectedServer.channels.filter(c => c.id !== channelId);
+    const updatedSrv: CommunityServer = {
+      ...selectedServer,
+      channels: nextChannels,
+    };
+    const nextServers = servers.map(s => (s.id === selectedServer.id ? updatedSrv : s));
+    setServers(nextServers);
+    setSelectedServer(updatedSrv);
+    persistServers(nextServers);
+    if (selectedChannel.id === channelId && nextChannels.length > 0) {
+      setSelectedChannel(nextChannels[0]);
+    }
   };
 
   const handleCopyInvite = (srvId: string) => {
@@ -788,10 +918,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     return 'offline';
   };
 
-  // Online & server members list synced with real-time presence + server nicknames
+  // Online & server members list synced with real-time presence + server nicknames + server membership
   const myEffectivePublicStatus: 'online' | 'dnd' | 'offline' = myStatus === 'invisible' ? 'offline' : myStatus;
   const rawMembers = [
     ...registeredUsers
+      .filter(u => isMemberInServer(u.id))
       .filter(u => !currentUser || (u.id !== currentUser.id && u.username.toLowerCase() !== (currentUser.username || '').toLowerCase()))
       .map(u => {
         const rt = realtimeUserPresences[u.id] || Object.values(realtimeUserPresences).find(p => p.username.toLowerCase() === u.username.toLowerCase());
@@ -816,9 +947,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           },
         };
       }),
-    // Include any real-time connected users not yet in registeredUsers
+    // Include any real-time connected users not yet in registeredUsers (if in server)
     ...Object.values(realtimeUserPresences)
       .filter(rt =>
+        isMemberInServer(rt.id) &&
         rt.id !== (currentUser?.id || myParticipantIdRef.current) &&
         !registeredUsers.some(u => u.id === rt.id || u.username.toLowerCase() === rt.username.toLowerCase())
       )
@@ -1554,15 +1686,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       owner_id: currentUser?.id || 'usr_me',
       is_custom: true,
       max_members: 50,
-      member_ids: ['usr_me', 'usr_host', 'usr_agent_01'],
+      member_ids: ['usr_me'],
     };
 
     const updated = [...servers, createdServer];
     setServers(updated);
-
-    // Save custom servers to localStorage
-    const customOnly = updated.filter(s => s.id.startsWith('srv_custom_'));
-    localStorage.setItem('spytify_user_servers', JSON.stringify(customOnly));
+    persistServers(updated);
 
     setIsCreateModalOpen(false);
     setSelectedServer(createdServer);
@@ -1871,28 +2000,95 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             <div className="flex-1 overflow-y-auto p-2 space-y-4 text-xs font-sans">
           {/* Text Channels Group */}
           <div>
-            <p className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 mb-1 flex items-center gap-1.5 ${isLight ? 'text-[#64748b]' : 'text-[#555]'}`}>
-              <MessageSquare className="w-3 h-3 text-[#444]" />
-              {getTranslation(language, 'community.textChannels')}
-            </p>
+            <div className="flex items-center justify-between px-2 mb-1">
+              <p className={`text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 ${isLight ? 'text-[#64748b]' : 'text-[#555]'}`}>
+                <MessageSquare className="w-3 h-3 text-[#444]" />
+                {getTranslation(language, 'community.textChannels')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingChannelType(prev => (prev === 'text' ? null : 'text'));
+                  setNewChannelName('');
+                }}
+                title="Thêm phòng trò chuyện mới"
+                className={`p-0.5 rounded transition-colors cursor-pointer ${
+                  isLight ? 'text-[#64748b] hover:text-[#0f172a] hover:bg-slate-200' : 'text-[#666] hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {creatingChannelType === 'text' && (
+              <form onSubmit={handleCreateChannel} className="mb-1.5 px-1 space-y-1.5">
+                <input
+                  type="text"
+                  autoFocus
+                  maxLength={28}
+                  value={newChannelName}
+                  onChange={e => setNewChannelName(e.target.value)}
+                  placeholder="Đặt tên kênh chat..."
+                  className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] border outline-none ${
+                    isLight
+                      ? 'bg-white border-slate-300 text-slate-900 focus:border-slate-500'
+                      : 'bg-[#12121c] border-[#262638] text-white focus:border-white/50'
+                  }`}
+                />
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { setCreatingChannelType(null); setNewChannelName(''); }}
+                    className="px-2 py-0.5 rounded text-[10px] font-mono text-[#888] hover:text-white cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newChannelName.trim()}
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                    }}
+                    className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold disabled:opacity-40 cursor-pointer"
+                  >
+                    Tạo phòng
+                  </button>
+                </div>
+              </form>
+            )}
+
             <div className="space-y-0.5">
               {selectedServer.channels
                 .filter(c => c.type === 'text')
                 .map(channel => {
                   const isCur = selectedChannel.id === channel.id;
+                  const textCount = selectedServer.channels.filter(c => c.type === 'text').length;
                   return (
-                    <button
+                    <div
                       key={channel.id}
                       onClick={() => handleSelectChannel(channel)}
-                      className={`w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-left cursor-pointer transition-colors ${
+                      className={`group/ch w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2 text-left cursor-pointer transition-colors ${
                         isCur
                           ? isLight ? 'bg-[#e2e8f0] text-[#0f172a] font-semibold' : 'bg-[#151520] text-white font-semibold'
                           : isLight ? 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#edf2f7]' : 'text-[#888899] hover:text-white hover:bg-[#0e0e14]'
                       }`}
                     >
-                      <Hash className="w-3.5 h-3.5 text-[#666]" />
-                      <span className="truncate">{channel.name}</span>
-                    </button>
+                      <div className="flex items-center gap-2 truncate">
+                        <Hash className="w-3.5 h-3.5 text-[#666] flex-shrink-0" />
+                        <span className="truncate">{channel.name}</span>
+                      </div>
+                      {textCount > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteChannel(channel.id, e)}
+                          title="Xóa phòng chat"
+                          className="opacity-0 group-hover/ch:opacity-100 p-0.5 rounded text-[#666] hover:text-red-400 transition-opacity cursor-pointer flex-shrink-0"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
             </div>
@@ -1900,10 +2096,64 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           {/* Voice Call Channels Group */}
           <div>
-            <p className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 mb-1 flex items-center gap-1.5 ${isLight ? 'text-[#64748b]' : 'text-[#555]'}`}>
-              <Mic className="w-3 h-3 text-[#444]" />
-              {getTranslation(language, 'community.voiceChannels')}
-            </p>
+            <div className="flex items-center justify-between px-2 mb-1">
+              <p className={`text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 ${isLight ? 'text-[#64748b]' : 'text-[#555]'}`}>
+                <Mic className="w-3 h-3 text-[#444]" />
+                {getTranslation(language, 'community.voiceChannels')}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreatingChannelType(prev => (prev === 'voice' ? null : 'voice'));
+                  setNewChannelName('');
+                }}
+                title="Thêm phòng đàm thoại (Voice) mới"
+                className={`p-0.5 rounded transition-colors cursor-pointer ${
+                  isLight ? 'text-[#64748b] hover:text-[#0f172a] hover:bg-slate-200' : 'text-[#666] hover:text-white hover:bg-white/10'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {creatingChannelType === 'voice' && (
+              <form onSubmit={handleCreateChannel} className="mb-1.5 px-1 space-y-1.5">
+                <input
+                  type="text"
+                  autoFocus
+                  maxLength={28}
+                  value={newChannelName}
+                  onChange={e => setNewChannelName(e.target.value)}
+                  placeholder="Đặt tên phòng thoại..."
+                  className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] border outline-none ${
+                    isLight
+                      ? 'bg-white border-slate-300 text-slate-900 focus:border-slate-500'
+                      : 'bg-[#12121c] border-[#262638] text-white focus:border-white/50'
+                  }`}
+                />
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => { setCreatingChannelType(null); setNewChannelName(''); }}
+                    className="px-2 py-0.5 rounded text-[10px] font-mono text-[#888] hover:text-white cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newChannelName.trim()}
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                    }}
+                    className="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold disabled:opacity-40 cursor-pointer"
+                  >
+                    Tạo phòng
+                  </button>
+                </div>
+              </form>
+            )}
+
             <div className="space-y-0.5">
               {selectedServer.channels
                 .filter(c => c.type === 'voice')
@@ -1912,39 +2162,52 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   const isVoiceActive = connectedVoiceChannel === channel.id;
                   const otherVoiceParticipants = voiceParticipants.filter(p => p.id !== myParticipantIdRef.current);
                   const totalVoiceCount = (isVoiceActive ? 1 : 0) + otherVoiceParticipants.length;
+                  const voiceCount = selectedServer.channels.filter(c => c.type === 'voice').length;
 
                   return (
                     <div key={channel.id} className="space-y-1">
-                      <button
+                      <div
                         onClick={() => handleSelectChannel(channel)}
-                        className={`w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left cursor-pointer transition-colors ${
+                        className={`group/vch w-full px-2.5 py-1.5 rounded-lg flex items-center justify-between text-left cursor-pointer transition-colors ${
                           isCur
                             ? isLight ? 'bg-[#e2e8f0] text-[#0f172a] font-semibold' : 'bg-[#161624] text-white font-semibold'
                             : isLight ? 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#edf2f7]' : 'text-[#888899] hover:text-white hover:bg-[#0e0e14]'
                         }`}
                       >
                         <div className="flex items-center gap-2 truncate">
-                          <Volume2 className="w-3.5 h-3.5" style={{ color: isVoiceActive ? '#00FF66' : accentColor }} />
+                          <Volume2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isVoiceActive ? '#00FF66' : accentColor }} />
                           <span className="truncate">{getChannelName(channel)}</span>
                         </div>
-                        {isVoiceActive ? (
-                          <span 
-                            className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.2 rounded border"
-                            style={{
-                              color: accentColor,
-                              backgroundColor: `${accentColor}18`,
-                              borderColor: `${accentColor}40`,
-                            }}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: accentColor }} />
-                            {getTranslation(language, 'community.connected')}
-                          </span>
-                        ) : totalVoiceCount > 0 ? (
-                          <span className={`shrink-0 whitespace-nowrap text-[9px] font-mono px-1.5 py-0.2 rounded border ${isLight ? 'bg-[#ffffff] text-[#64748b] border-[#cbd5e1]' : 'bg-[#121218] text-[#666] border-[#202028]'}`}>
-                            {totalVoiceCount} {getTranslation(language, 'community.members')}
-                          </span>
-                        ) : null}
-                      </button>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {isVoiceActive ? (
+                            <span 
+                              className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.2 rounded border"
+                              style={{
+                                color: accentColor,
+                                backgroundColor: `${accentColor}18`,
+                                borderColor: `${accentColor}40`,
+                              }}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: accentColor }} />
+                              {getTranslation(language, 'community.connected')}
+                            </span>
+                          ) : totalVoiceCount > 0 ? (
+                            <span className={`shrink-0 whitespace-nowrap text-[9px] font-mono px-1.5 py-0.2 rounded border ${isLight ? 'bg-[#ffffff] text-[#64748b] border-[#cbd5e1]' : 'bg-[#121218] text-[#666] border-[#202028]'}`}>
+                              {totalVoiceCount} {getTranslation(language, 'community.members')}
+                            </span>
+                          ) : null}
+                          {voiceCount > 1 && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteChannel(channel.id, e)}
+                              title="Xóa phòng thoại"
+                              className="opacity-0 group-hover/vch:opacity-100 p-0.5 rounded text-[#666] hover:text-red-400 transition-opacity cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
                       {/* Indented Participants list under voice channel */}
                       {(isVoiceActive || otherVoiceParticipants.length > 0) && (
@@ -4012,11 +4275,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               )}
 
               {serverSettingsTab === 'invites' && (
-                <div className="space-y-4 max-w-lg">
+                <div className="space-y-5 max-w-xl">
                   <div>
                     <h4 className={`text-sm font-bold mb-1 ${isLight ? 'text-slate-900' : 'text-white'}`}>MỜI BẠN BÈ VÀO MÁY CHỦ</h4>
                     <p className="text-xs text-[#888] font-mono">
-                      Chia sẻ liên kết bên dưới để bạn bè tham gia phòng chat và nghe nhạc cùng bạn.
+                      Chia sẻ liên kết bên dưới hoặc mời trực tiếp từ danh sách bạn bè của bạn.
                     </p>
                   </div>
 
@@ -4031,11 +4294,107 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     />
                     <button
                       onClick={() => handleCopyInvite(selectedServer.id)}
-                      className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs flex items-center gap-1.5 transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                      style={{
+                        backgroundColor: accentColor,
+                        color: getContrastTextColor(accentColor),
+                      }}
+                      className="px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-md"
                     >
                       {inviteCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       <span>{inviteCopied ? 'Đã sao chép!' : 'Sao chép link'}</span>
                     </button>
+                  </div>
+
+                  {/* Direct Friend & Member Invite List */}
+                  <div className="pt-3 border-t border-white/10 space-y-2.5">
+                    <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider text-[#888]">
+                      <span>DANH SÁCH BẠN BÈ & ĐẶC VỤ ({registeredUsers.length})</span>
+                      <span>TRẠNG THÁI TRONG SERVER</span>
+                    </div>
+
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                      {[...registeredUsers]
+                        .sort((a, b) => {
+                          const aFr = isMutualFriend(a) ? 0 : followingUserIds.has(a.id) ? 1 : 2;
+                          const bFr = isMutualFriend(b) ? 0 : followingUserIds.has(b.id) ? 1 : 2;
+                          return aFr - bFr;
+                        })
+                        .map(u => {
+                          const inSrv = isMemberInServer(u.id);
+                          const isFr = isMutualFriend(u);
+                          const isFol = followingUserIds.has(u.id);
+                          const effSt = getEffectiveStatus(u);
+                          return (
+                            <div
+                              key={u.id}
+                              className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 ${
+                                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 truncate">
+                                <div className="relative flex-shrink-0">
+                                  <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-white/10 flex items-center justify-center font-bold text-xs text-white">
+                                    {u.display_name.charAt(0).toUpperCase()}
+                                  </div>
+                                  {renderStatusDot(effSt, 'sm')}
+                                </div>
+                                <div className="truncate">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`text-xs font-bold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                      {u.display_name}
+                                    </span>
+                                    <span className="text-[10px] text-cyan-400 font-mono">@{u.username}</span>
+                                    {isFr ? (
+                                      <span className="text-[8px] font-mono font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-500/20 px-1.5 py-0.2 rounded">
+                                        BẠN BÈ
+                                      </span>
+                                    ) : isFol ? (
+                                      <span className="text-[8px] font-mono text-cyan-400 bg-cyan-400/10 px-1.5 py-0.2 rounded">
+                                        Đang theo dõi
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <p className="text-[10px] text-[#777] font-mono truncate">
+                                    {u.role} {u.listening ? `• 🎵 ${u.listening}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {inSrv ? (
+                                  <>
+                                    <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-bold flex items-center gap-1">
+                                      <Check className="w-3 h-3" />
+                                      <span>Đã tham gia</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleKickMember(u.id)}
+                                      className="p-1.5 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors cursor-pointer"
+                                      title="Kick khỏi server"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInviteMemberToServer(u.id)}
+                                    style={{
+                                      backgroundColor: accentColor,
+                                      color: getContrastTextColor(accentColor),
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer transition-transform hover:scale-105 active:scale-95 shadow-sm"
+                                  >
+                                    <UserPlus className="w-3.5 h-3.5" />
+                                    <span>Mời vào Server</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
                   </div>
                 </div>
               )}
