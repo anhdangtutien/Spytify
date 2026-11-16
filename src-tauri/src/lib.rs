@@ -1007,7 +1007,7 @@ fn compare_semver(v1: &str, v2: &str) -> std::cmp::Ordering {
 }
 
 #[tauri::command]
-async fn check_for_updates(current_build_date: Option<String>) -> Result<AppUpdateInfo, String> {
+async fn check_for_updates(_current_build_date: Option<String>) -> Result<AppUpdateInfo, String> {
     let client = reqwest::Client::builder()
         .user_agent("Spytify-Desktop-App/0.1.1")
         .timeout(std::time::Duration::from_secs(8))
@@ -1071,11 +1071,8 @@ async fn check_for_updates(current_build_date: Option<String>) -> Result<AppUpda
     let cmp = compare_semver(&clean_tag, current_version);
     let is_newer_version = cmp == std::cmp::Ordering::Greater;
 
-    // Only compare dates if versions are identical (patch re-release with same tag)
-    let base_date = current_build_date.unwrap_or_else(|| "2026-11-14T20:00:00Z".to_string());
-    let is_patch_update = cmp == std::cmp::Ordering::Equal && !effective_remote_date.is_empty() && effective_remote_date > base_date;
-
-    let has_update = is_newer_version || is_patch_update;
+    // Chỉ thông báo có cập nhật khi phiên bản trên GitHub thực sự lớn hơn phiên bản hiện tại
+    let has_update = is_newer_version;
 
     Ok(AppUpdateInfo {
         has_update,

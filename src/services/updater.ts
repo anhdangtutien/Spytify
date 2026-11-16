@@ -46,8 +46,8 @@ export async function checkGitHubUpdate(force = false): Promise<{ hasUpdate: boo
         return { hasUpdate: false, info };
       }
 
-      // If version is equal or older, never prompt automatically on startup
-      if (!force && compareSemver(info.version, CURRENT_VERSION) <= 0) {
+      // Nếu phiên bản trên GitHub nhỏ hơn hoặc bằng phiên bản hiện tại -> đã là bản mới nhất
+      if (compareSemver(info.version, CURRENT_VERSION) <= 0) {
         return { hasUpdate: false, info };
       }
 
@@ -102,13 +102,7 @@ export async function checkGitHubUpdate(force = false): Promise<{ hasUpdate: boo
     };
 
     const isNewerVersion = compareSemver(info.version, CURRENT_VERSION) > 0;
-    const remoteTime = new Date(effectiveRemoteDate).getTime();
-    const localTime = new Date(CURRENT_BUILD_DATE).getTime();
-    const isNewerBuild = remoteTime > localTime && compareSemver(info.version, CURRENT_VERSION) === 0;
-
-    const hasUpdate = Boolean(isNewerVersion || isNewerBuild);
-
-    if (!hasUpdate) {
+    if (!isNewerVersion) {
       return { hasUpdate: false, info };
     }
 

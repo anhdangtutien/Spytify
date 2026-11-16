@@ -1291,10 +1291,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     );
   };
 
-  // Đồng bộ luồng video chia sẻ màn hình vào thẻ video ngay khi đổi tab hoặc có stream mới
+  // Đồng bộ luồng video chia sẻ màn hình vào thẻ video ngay khi đổi tab hoặc có stream mới (hỗ trợ macOS WebKit autoplay)
   useEffect(() => {
     if (screenVideoRef.current) {
       if (activeScreenShare?.stream) {
+        screenVideoRef.current.muted = true;
+        screenVideoRef.current.playsInline = true;
+        screenVideoRef.current.setAttribute('playsinline', 'true');
+        screenVideoRef.current.setAttribute('muted', 'true');
         if (screenVideoRef.current.srcObject !== activeScreenShare.stream) {
           screenVideoRef.current.srcObject = activeScreenShare.stream;
         }
@@ -2738,6 +2742,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     const curTrackId = botState.currentTrack.id;
     if (endedTrackId && endedTrackId !== curTrackId) return;
+
+    // BẢO VỆ: Nếu bài hát mới bắt đầu chưa được 4 giây, bỏ qua sự kiện ended giả mạo do YouTube iframe khởi tạo
+    if (botState.startedAt && Date.now() - botState.startedAt < 4000) {
+      console.warn('[Demand Bot] Bỏ qua sự kiện kết thúc sớm (<4s từ lúc bắt đầu):', curTrackId);
+      return;
+    }
+
     if (!botState.isLooping && lastEndedBotTrackRef.current[botKey] === curTrackId) return;
     lastEndedBotTrackRef.current[botKey] = curTrackId;
 
@@ -2834,7 +2845,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         srvId
       );
     }
-    handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
+    // Nếu còn bài trong hàng đợi thì chuyển bài, nếu hết bài thì tạm dừng phát nhưng không out room đột ngột
+    if (botState.queue && botState.queue.length > 0) {
+      handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
+    } else {
+      updateServerRythmBot(srvId, botId, prev => ({ ...prev, isPlaying: false, currentTrack: null }));
+      syncBotState(null, [], false, botState.voiceChannelId, srvId, botId, false, undefined);
+    }
   };
 
   const processBotMusicCommand = async (content: string, sender: { id: string; name: string; username: string }) => {
@@ -3365,11 +3382,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           if (data.event === 'onStateChange') {
             const state = data.info !== undefined ? data.info : data.data;
             if (state === 0) {
-              handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
+              const elapsed = botState.startedAt ? Date.now() - botState.startedAt : 0;
+              if (elapsed >= 4000) {
+                handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
+              }
             }
           }
           if (data.event === 'infoDelivery' && data.info?.playerState === 0) {
-            handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
+            const elapsed = botState.startedAt ? Date.now() - botState.startedAt : 0;
+            if (elapsed >= 4000) {
+              handleRequestBotTrackEnded(srvId, botId, botState.currentTrack?.id);
+            }
           }
           return;
         }
@@ -4298,6 +4321,44 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     );
     setIsBotModalOpen(false);
     setEditingBotTargetId(null);
+  };
+
+  const handleDeleteBot = (botId: string, botName: string) => {
+    // 1. Loại bỏ khỏi Server: custom_bots, member_ids, kicked_ids, channels
+    const nextCustomBots = (selectedServer.custom_bots || []).filter(b => b.id !== botId);
+    const nextMemberIds = (selectedServer.member_ids || []).filter(id => id !== botId);
+    const nextKicked = Array.from(new Set([...(selectedServer.kicked_ids || []).filter(id => id !== botId), botId]));
+    const nextChannels = selectedServer.channels.filter(c => c.dj_bot_id !== botId);
+
+    const updatedSrv: CommunityServer = {
+      ...selectedServer,
+      custom_bots: nextCustomBots,
+      member_ids: nextMemberIds,
+      kicked_ids: nextKicked,
+      channels: nextChannels,
+    };
+    broadcastAndPersistServerUpdate(updatedSrv);
+
+    // 2. Cập nhật registeredUsers
+    setRegisteredUsers(prev => {
+      const next = prev.filter(u => u.id !== botId);
+      try {
+        localStorage.setItem('spytify_registered_users', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    // 3. Dọn dẹp trạng thái voice và queue
+    setVoiceParticipants(prev => prev.filter(p => p.id !== botId));
+    updateServerRythmBot(selectedServer.id, botId, () => ({ ...EMPTY_DEMAND_BOT_STATE }));
+
+    // 4. Loại bỏ khỏi DJ_BOT_OPTIONS nếu có
+    const djIdx = DJ_BOT_OPTIONS.findIndex(d => d.id === botId);
+    if (djIdx !== -1) {
+      DJ_BOT_OPTIONS.splice(djIdx, 1);
+    }
+
+    showVoiceToast(language === 'vi' ? `Đã xóa bot ${botName} khỏi server` : `Removed bot ${botName}`);
   };
 
   // ──────── QUYỀN HẠN TRONG SERVER (CHỦ SERVER / MOD / THÀNH VIÊN) ────────
@@ -5583,6 +5644,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       remoteAudioRef.current.delete(peerId);
     }
     removeScreenShare(peerId);
+    // Dọn dẹp người dùng khỏi danh sách voice participants khi ngắt kết nối / shutdown
+    setVoiceParticipants(prev => prev.filter(p => p.id !== peerId));
   };
 
   useEffect(() => {
@@ -5657,8 +5720,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               avatar: peerAvatar,
               stream: videoStream,
             },
-            false
+            true
           );
+          if (screenVideoRef.current) {
+            screenVideoRef.current.muted = true;
+            screenVideoRef.current.playsInline = true;
+            screenVideoRef.current.setAttribute('playsinline', 'true');
+            screenVideoRef.current.setAttribute('muted', 'true');
+            screenVideoRef.current.srcObject = videoStream;
+            screenVideoRef.current.play().catch(() => {});
+          }
           return;
         }
         let el = remoteAudioRef.current.get(peerId);
@@ -5680,7 +5751,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       };
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') setDmCallConnected(true);
-        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') closePeer(peerId);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          closePeer(peerId);
+        }
+      };
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+          closePeer(peerId);
+        } else if (pc.iceConnectionState === 'disconnected') {
+          setTimeout(() => {
+            const currentPc = peersRef.current.get(peerId);
+            if (
+              currentPc &&
+              (currentPc.iceConnectionState === 'disconnected' ||
+                currentPc.iceConnectionState === 'failed' ||
+                currentPc.iceConnectionState === 'closed' ||
+                currentPc.connectionState === 'failed' ||
+                currentPc.connectionState === 'closed')
+            ) {
+              closePeer(peerId);
+            }
+          }, 6000);
+        }
       };
       return pc;
     };
@@ -5778,13 +5870,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     });
 
+    ch.on('broadcast', { event: 'voice_heartbeat' }, ({ payload }) => {
+      if (!payload || !payload.id) return;
+      const now = Date.now();
+      setVoiceParticipants(prev =>
+        prev.map(p => (p.id === payload.id ? { ...p, lastSeen: now } : p))
+      );
+    });
+
     // Đồng bộ người tham gia voice & sự kiện nói/tắt mic trực tiếp trên kênh voice (đảm bảo không bị ngắt khi đổi server)
     ch.on('broadcast', { event: 'voice_presence' }, ({ payload }) => {
       if (!payload) return;
+      const now = Date.now();
       if ((payload.action === 'join' || payload.action === 'here') && payload.participant) {
         const incomingVp: VoiceParticipant = {
           ...payload.participant,
           serverId: payload.participant.serverId || voiceServerIdRef.current,
+          lastSeen: now,
         };
         setVoiceParticipants(prev => {
           const exists = prev.some(
@@ -5793,7 +5895,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           if (exists) {
             return prev.map(p =>
               p.id === incomingVp.id && (p.serverId || voiceServerIdRef.current) === incomingVp.serverId
-                ? { ...p, ...incomingVp }
+                ? { ...p, ...incomingVp, lastSeen: now }
                 : p
             );
           }
@@ -5879,6 +5981,72 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       ch.unsubscribe();
     };
   }, [connectedVoiceChannel]);
+
+  // ──────── ĐỊNH KỲ PHÁT HEARTBEAT XÁC NHẬN ĐANG HOẠT ĐỘNG VÀ TRONG VOICE ────────
+  useEffect(() => {
+    if (!currentUser) return;
+    const heartbeatTimer = setInterval(() => {
+      const myId = currentUser.id || myParticipantIdRef.current;
+      if (activeChannelRef.current && myPresencePayloadRef.current && myStatus !== 'invisible') {
+        activeChannelRef.current.send({
+          type: 'broadcast',
+          event: 'user_presence_heartbeat',
+          payload: { id: myId },
+        });
+      }
+      if (connectedVoiceChannel && myVoiceParticipantRef.current && rtcSendRef.current) {
+        rtcSendRef.current('voice_heartbeat', {
+          id: myParticipantIdRef.current,
+          channelId: connectedVoiceChannel,
+        });
+      }
+    }, 12000);
+
+    return () => clearInterval(heartbeatTimer);
+  }, [currentUser, myStatus, connectedVoiceChannel]);
+
+  // ──────── TỰ ĐỘNG DỌN DẸP KHI ĐỐI PHƯƠNG TẮT MÁY / SHUT DOWN KHÔNG KỊP TẮT APP ────────
+  useEffect(() => {
+    const staleInterval = setInterval(() => {
+      const now = Date.now();
+      const STALE_TIMEOUT_MS = 40_000; // 40s không có heartbeat coi như đã shutdown máy
+
+      // 1. Dọn dẹp người trong phòng thoại
+      setVoiceParticipants(prev => {
+        let changed = false;
+        const filtered = prev.filter(p => {
+          if (p.id === myParticipantIdRef.current || p.id === currentUser?.id) return true;
+          if (ACTIVE_BOT_IDS.has(p.id) || p.isBot) return true;
+          const ls = (p as any).lastSeen;
+          if (ls && now - ls > STALE_TIMEOUT_MS) {
+            changed = true;
+            closePeer(p.id);
+            return false;
+          }
+          return true;
+        });
+        return changed ? filtered : prev;
+      });
+
+      // 2. Chuyển trạng thái offline cho user trong danh sách thành viên nếu tắt máy
+      setRealtimeUserPresences(prev => {
+        let changed = false;
+        const next = { ...prev };
+        Object.entries(next).forEach(([uid, u]) => {
+          if (uid === myParticipantIdRef.current || uid === currentUser?.id) return;
+          if (ACTIVE_BOT_IDS.has(uid)) return;
+          const ls = (u as any).lastSeen;
+          if (u.status !== 'offline' && ls && now - ls > STALE_TIMEOUT_MS) {
+            next[uid] = { ...u, status: 'offline', listening: null, listeningTrack: null };
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 8000);
+
+    return () => clearInterval(staleInterval);
+  }, [currentUser]);
 
   // ──────── TỰ ĐỘNG THÔNG BÁO VÀ NGẮT VOICE SẠCH SẼ KHI TẮT CỬA SỔ / THOÁT ỨNG DỤNG ────────
   useEffect(() => {
@@ -7098,8 +7266,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     });
 
+    channel.on('broadcast', { event: 'user_presence_heartbeat' }, ({ payload }) => {
+      if (!payload || !payload.id) return;
+      const now = Date.now();
+      setRealtimeUserPresences(prev => {
+        if (!prev[payload.id]) return prev;
+        return {
+          ...prev,
+          [payload.id]: {
+            ...prev[payload.id],
+            lastSeen: now,
+          },
+        };
+      });
+    });
+
     channel.on('broadcast', { event: 'user_presence' }, ({ payload }) => {
       if (!payload || !payload.id) return;
+      const now = Date.now();
       setRealtimeUserPresences(prev => ({
         ...prev,
         [payload.id]: {
@@ -7111,6 +7295,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           custom_status: payload.custom_status ?? payload.thought ?? prev[payload.id]?.custom_status ?? null,
           bio: payload.bio ?? prev[payload.id]?.bio ?? null,
           tags: payload.tags ?? prev[payload.id]?.tags ?? null,
+          lastSeen: now,
         },
       }));
       ensureMemberSyncedToServer(
@@ -8513,15 +8698,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             data-screen-share-video
             ref={(el) => {
               screenVideoRef.current = el;
-              if (el && activeScreenShare?.stream && el.srcObject !== activeScreenShare.stream) {
-                el.srcObject = activeScreenShare.stream;
-                el.play().catch(() => {});
+              if (el) {
+                el.muted = true;
+                el.playsInline = true;
+                el.setAttribute('playsinline', 'true');
+                el.setAttribute('muted', 'true');
+                if (activeScreenShare?.stream && el.srcObject !== activeScreenShare.stream) {
+                  el.srcObject = activeScreenShare.stream;
+                  el.play().catch(() => {});
+                }
               }
             }}
             onDoubleClick={handleToggleScreenFullscreen}
             autoPlay
             playsInline
-            muted={activeScreenShare?.userId === myParticipantIdRef.current}
+            muted
             className={`w-full object-contain bg-black cursor-pointer ${
               isScreenFullscreen ? 'h-full max-h-none' : 'max-h-[62vh]'
             }`}
@@ -13268,6 +13459,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             <div className="pt-4 mt-4 border-t border-white/10 flex items-center justify-end gap-2">
+              {editingBotTargetId && (isServerOwner ? editingBotTargetId !== 'usr_host' : !BASE_BOT_IDS.has(editingBotTargetId)) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDeleteBot(editingBotTargetId, botDraftName);
+                    setIsBotModalOpen(false);
+                    setEditingBotTargetId(null);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-400 font-bold text-xs flex items-center gap-1.5 cursor-pointer mr-auto transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa Bot</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -14308,29 +14513,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                     <Sliders className="w-3 h-3" />
                                     <span>Tùy biến</span>
                                   </button>
-                                  {!BASE_BOT_IDS.has(mem.id) && (
+                                  {(isServerOwner ? mem.id !== 'usr_host' : !BASE_BOT_IDS.has(mem.id)) && (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        if (Array.isArray(selectedServer.member_ids)) {
-                                          const updatedSrv: CommunityServer = {
-                                            ...selectedServer,
-                                            member_ids: selectedServer.member_ids.filter(id => id !== mem.id),
-                                            channels: selectedServer.channels.filter(c => c.dj_bot_id !== mem.id),
-                                          };
-                                          broadcastAndPersistServerUpdate(updatedSrv);
-                                        }
-                                        setRegisteredUsers(prev => {
-                                          const next = prev.filter(u => u.id !== mem.id);
-                                          try {
-                                            localStorage.setItem('spytify_registered_users', JSON.stringify(next));
-                                          } catch {}
-                                          return next;
-                                        });
-                                        showVoiceToast(language === 'vi' ? `Đã xóa bot ${mem.name}` : `Removed bot ${mem.name}`);
-                                      }}
+                                      onClick={() => handleDeleteBot(mem.id, mem.name)}
                                       className="px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 text-[11px] font-mono flex items-center gap-1 transition-colors cursor-pointer"
-                                      title="Xóa bot tùy biến khỏi server"
+                                      title="Xóa bot khỏi server"
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </button>
