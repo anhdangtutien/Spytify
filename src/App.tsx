@@ -791,14 +791,19 @@ export default function App() {
       if (immediateData) {
         setNextTrackPopup(immediateData);
       } else {
-        setNextTrackPopup({
-          title: 'AI Smart DJ Ready',
-          artist: 'Spytify Intelligence',
-          source: 'youtube',
-          modeLabel: getTranslation(language, 'mode.freshPopup'),
-          isCountdown: false,
-          alternatives: [],
-        });
+        if (currentTrackRef.current) {
+          setIsAiLoadingNext(true);
+          fetchUpcomingForTrack(currentTrackRef.current);
+        } else {
+          setNextTrackPopup({
+            title: 'AI Smart DJ Ready',
+            artist: 'Spytify Intelligence',
+            source: 'youtube',
+            modeLabel: getTranslation(language, 'mode.freshPopup'),
+            isCountdown: false,
+            alternatives: [],
+          });
+        }
       }
       showNotification(getTranslation(language, 'popup.enabledToast'));
     }
@@ -1282,21 +1287,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       if (related && related.length > 0) {
         const listened = listenedHistoryTitlesRef.current;
         const curTitleLower = targetTrack.title.toLowerCase();
+        const curUrl = (targetTrack.path_or_url || '').toLowerCase();
+        const curId = targetTrack.id.toLowerCase();
 
-        // Filter out tracks already in any user playlist (Favorites, Albums, Local, Active Queue) or listened history
+        // Filter out currently playing track, user playlists, and listened history
         const strictOutsideCandidates = related.filter(r => {
           const rTitle = r.title.toLowerCase();
+          const rUrl = (r.url_or_id || '').toLowerCase();
+          if (curUrl && rUrl === curUrl) return false;
+          if (curId && (curId === rUrl || curId.includes(rUrl))) return false;
           if (rTitle.includes(curTitleLower) || curTitleLower.includes(rTitle)) return false;
-          if (listened.has(rTitle) || listened.has(r.url_or_id.toLowerCase())) return false;
+          if (listened.has(rTitle) || listened.has(rUrl)) return false;
           if (isTrackInUserPlaylists(r.title, r.url_or_id)) return false;
           return true;
         });
 
         const rawPool = strictOutsideCandidates.length > 0
           ? strictOutsideCandidates
-          : related.filter(r => !isTrackInUserPlaylists(r.title, r.url_or_id));
+          : related.filter(r => {
+              const rUrl = (r.url_or_id || '').toLowerCase();
+              if (curUrl && rUrl === curUrl) return false;
+              return !isTrackInUserPlaylists(r.title, r.url_or_id);
+            });
 
-        const candidates = (rawPool.length > 0 ? rawPool : related).map((r): Track => ({
+        const candidates = (rawPool.length > 0 ? rawPool : related.filter(r => (r.url_or_id || '').toLowerCase() !== curUrl)).map((r): Track => ({
           id: `${r.source}_rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           title: r.title,
           artist: r.artist,
@@ -2238,9 +2252,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     let nextPreloaded: Track | null = null;
     const curArtistNorm = track.artist.trim().toLowerCase();
     if (
-      curArtistNorm &&
+      preloadedNextTrackRef.current &&
       isValidNewCandidate(preloadedNextTrackRef.current) &&
-      preloadedNextTrackRef.current.artist.trim().toLowerCase() === curArtistNorm
+      (
+        (curArtistNorm && preloadedNextTrackRef.current.artist.trim().toLowerCase() === curArtistNorm) ||
+        preloadedNextTrackRef.current.title.trim().toLowerCase() !== trackTitleNorm
+      )
     ) {
       nextPreloaded = preloadedNextTrackRef.current;
     } else {
@@ -2258,19 +2275,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     isPlayingRef.current = false;
     setIsPlaying(false);
 
-    if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
-      if (nextPreloaded) {
-        setIsAiLoadingNext(false);
+    // Smart DJ always prepares upcoming tracks for seamless auto-play & immediate popup
+    if (nextPreloaded) {
+      setIsAiLoadingNext(false);
+      if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
         const immediateData = buildImmediatePopupData();
         if (immediateData) {
           setNextTrackPopup(immediateData);
         }
-      } else {
-        // AI is loading related tracks for this new song
-        setIsAiLoadingNext(true);
-        setNextTrackPopup(null);
+      }
+      if (preloadedAlternativesRef.current.length < 2) {
         fetchUpcomingForTrack(track);
       }
+    } else {
+      setIsAiLoadingNext(true);
+      if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
+        setNextTrackPopup(null);
+      }
+      fetchUpcomingForTrack(track);
     }
 
     // Reset Wall-clock timer (start timestamp only when playback actually begins for online streams)
@@ -2866,7 +2888,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     catch { return []; }
   };
 
-  const handlePlaySearchResult = (result: SearchResult) => {
+  const handlePlaySearchResult = (result: SearchResult, allResults?: SearchResult[]) => {
     const safeUrl = result.url_or_id.replace(/[^a-zA-Z0-9_-]/g, '_');
     const deterministicId = `${result.source}_${safeUrl}`;
 
@@ -2891,6 +2913,34 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     activeQueueContextRef.current = currentView;
     setActiveQueueContext(currentView);
+
+    // If search or view provided the list of results, preload genuine recommendations instantly
+    let queueFromResults: Track[] = [track];
+    if (allResults && allResults.length > 1) {
+      const otherResults = allResults.filter(
+        r => r.url_or_id !== result.url_or_id &&
+             r.title.trim().toLowerCase() !== result.title.trim().toLowerCase()
+      );
+      if (otherResults.length > 0) {
+        const candidateTracks = otherResults.map((r): Track => ({
+          id: `${r.source}_rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          title: r.title,
+          artist: r.artist,
+          album: r.album || 'Gợi ý tìm kiếm',
+          duration_secs: r.duration_secs || 210,
+          path_or_url: r.url_or_id,
+          cover_art: r.thumbnail,
+          source: r.source,
+        }));
+        preloadedNextTrackRef.current = candidateTracks[0];
+        setPreloadedNextTrack(candidateTracks[0]);
+        preloadedAlternativesRef.current = candidateTracks.slice(1, 6);
+        queueFromResults = [track, ...candidateTracks];
+      }
+    }
+    activeQueueRef.current = queueFromResults;
+    setActiveQueue(queueFromResults);
+
     setTracks(prev => {
       const filtered = prev.filter(t => t.id !== track.id && t.path_or_url !== track.path_or_url);
       return [track, ...filtered];
@@ -3103,7 +3153,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   }}
                   style={{
                     backgroundColor: activeAccentColor,
-                    color: '#ffffff',
+                    color: (activeAccentColor === '#ffffff' || activeAccentColor.toLowerCase() === '#fff') ? '#000000' : '#ffffff',
                   }}
                   className="p-2 rounded-lg hover:scale-105 active:scale-95 transition-transform flex-shrink-0 cursor-pointer shadow-sm"
                   title={getTranslation(language, 'popup.playNow')}
@@ -3595,7 +3645,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       onClick={async () => {
                         showNotification(`${getTranslation(language, 'toast.searching')}: "${t}"...`);
                         const r = await handleSearchOnline(t, 'youtube');
-                        if (r.length) handlePlaySearchResult(r[0]);
+                        if (r.length) handlePlaySearchResult(r[0], r);
                       }}
                       className="px-3 py-1 bg-[#0a0a0a] hover:bg-[#141414] border border-[#1c1c1c] text-xs text-[#888] hover:text-white rounded flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
@@ -3646,7 +3696,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       onClick={async () => {
                         showNotification(`${getTranslation(language, 'toast.searching')}: "${t}" (SoundCloud)...`);
                         const r = await handleSearchOnline(t, 'soundcloud');
-                        if (r.length) handlePlaySearchResult(r[0]);
+                        if (r.length) handlePlaySearchResult(r[0], r);
                       }}
                       className="px-3 py-1 bg-[#0a0a0a] hover:bg-[#141414] border border-[#1c1c1c] text-xs text-[#888] hover:text-white rounded flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
@@ -3697,7 +3747,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       onClick={async () => {
                         showNotification(`${getTranslation(language, 'toast.searching')}: "${t}" (Audius 320K)...`);
                         const r = await handleSearchOnline(t, 'audius');
-                        if (r.length) handlePlaySearchResult(r[0]);
+                        if (r.length) handlePlaySearchResult(r[0], r);
                       }}
                       className="px-3 py-1 bg-[#0a0a0a] hover:bg-[#141414] border border-[#1c1c1c] text-xs text-[#888] hover:text-white rounded flex items-center gap-1.5 cursor-pointer transition-colors"
                     >

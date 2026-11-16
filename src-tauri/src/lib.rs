@@ -1534,3 +1534,16 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running soundify application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_related() {
+        let res = get_related_tracks("Kaikai Kitan".to_string(), "Eve".to_string()).await;
+        assert!(res.is_ok());
+        let list = res.unwrap();
+        assert!(!list.is_empty());
+    }
+}

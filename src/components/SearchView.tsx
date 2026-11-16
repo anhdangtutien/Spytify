@@ -7,7 +7,7 @@ import { getContrastTextColor, optimizeThumbnailUrl, handleImageError, sanitizeT
 import { LanguageCode, getTranslation } from '../locales/i18n';
 
 interface SearchViewProps {
-  onPlaySearchResult: (result: SearchResult) => void;
+  onPlaySearchResult: (result: SearchResult, allResults?: SearchResult[]) => void;
   onSearchOnline: (query: string, source: string) => Promise<SearchResult[]>;
   localTracks: Track[];
   onTrackSelect: (track: Track) => void;
@@ -378,7 +378,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
               return (
                 <div
                   key={i}
-                  onClick={() => onPlaySearchResult(r)}
+                  onClick={() => onPlaySearchResult(r, results)}
                   style={isMatchCurrent ? {
                     borderColor: `${accentColor}`,
                     boxShadow: `0 0 16px ${accentColor}40`,

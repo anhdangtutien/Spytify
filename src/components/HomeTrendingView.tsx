@@ -10,7 +10,7 @@ import { getContrastTextColor, optimizeThumbnailUrl, handleImageError, sanitizeT
 import { LanguageCode, getTranslation } from '../locales/i18n';
 
 interface HomeTrendingViewProps {
-  onPlaySearchResult: (result: SearchResult) => void;
+  onPlaySearchResult: (result: SearchResult, allResults?: SearchResult[]) => void;
   currentTrack: Track | null;
   isPlaying: boolean;
   favorites: Set<string>;
@@ -1034,7 +1034,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
 
             <div className="pt-2 flex items-center gap-3">
               <button
-                onClick={() => onPlaySearchResult(featured)}
+                onClick={() => onPlaySearchResult(featured, trendingTracks)}
                 style={{
                   backgroundColor: accentColor,
                   color: getContrastTextColor(accentColor),
@@ -1058,7 +1058,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
 
           {/* Featured Cover Art */}
           <div
-            onClick={() => onPlaySearchResult(featured)}
+            onClick={() => onPlaySearchResult(featured, trendingTracks)}
             className="relative w-44 h-44 lg:w-52 lg:h-52 rounded-2xl overflow-hidden border border-[#2a2a35] flex-shrink-0 cursor-pointer shadow-xl group"
           >
             {featured.thumbnail ? (
@@ -1223,7 +1223,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
               return (
                 <div
                   key={idx}
-                  onClick={() => onPlaySearchResult(item)}
+                  onClick={() => onPlaySearchResult(item, top10)}
                   style={{
                     borderColor: isCurrent ? accentColor : undefined,
                     backgroundColor: isCurrent ? `${accentColor}18` : undefined,
@@ -1361,7 +1361,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
             {remaining.map((item, idx) => (
               <div
                 key={idx}
-                onClick={() => onPlaySearchResult(item)}
+                onClick={() => onPlaySearchResult(item, remaining)}
                 className="card-hover-accent p-2.5 rounded-xl bg-[#09090c] hover:bg-[#121218] border border-[#161620] transition-all flex flex-col group cursor-pointer"
               >
                 <div className="relative aspect-square w-full rounded-lg overflow-hidden mb-2 bg-[#14141c]">
