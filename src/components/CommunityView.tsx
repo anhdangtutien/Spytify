@@ -1185,26 +1185,41 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [isScreenFullscreen, setIsScreenFullscreen] = useState(false);
 
   const handleToggleScreenFullscreen = () => {
-    const targetEl = screenShareStageRef.current || screenVideoRef.current;
-    if (!targetEl) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    } else {
-      targetEl.requestFullscreen().catch(() => {
-        screenVideoRef.current?.requestFullscreen().catch(() => {});
-      });
-    }
+    setIsScreenFullscreen(prev => {
+      const next = !prev;
+      if (next) {
+        if (document.documentElement?.requestFullscreen && !document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      } else {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
     const onFullscreenChange = () => {
-      const fsEl = document.fullscreenElement;
-      setIsScreenFullscreen(
-        Boolean(fsEl && (fsEl === screenShareStageRef.current || fsEl === screenVideoRef.current))
-      );
+      if (!document.fullscreenElement) {
+        setIsScreenFullscreen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsScreenFullscreen(false);
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, []);
 
   // Helper hiển thị hộp thoại suy nghĩ có đuôi (lệch sang phải Avatar)
@@ -1430,6 +1445,101 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // ──────── AUDIO & VOICE SETTINGS (MIC & SPEAKER) ────────
   const [isAudioSettingsOpen, setIsAudioSettingsOpen] = useState(false);
   const [audioSettingsTab, setAudioSettingsTab] = useState<'mic' | 'speaker' | 'bot' | 'processing'>('mic');
+  const [availableAudioInputs, setAvailableAudioInputs] = useState<MediaDeviceInfo[]>([]);
+  const [availableAudioOutputs, setAvailableAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedAudioInputId, setSelectedAudioInputId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('spytify_audio_input_id') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [selectedAudioOutputId, setSelectedAudioOutputId] = useState<string>(() => {
+    try {
+      return localStorage.getItem('spytify_audio_output_id') || '';
+    } catch {
+      return '';
+    }
+  });
+  const selectedAudioInputIdRef = useRef<string>(selectedAudioInputId);
+  selectedAudioInputIdRef.current = selectedAudioInputId;
+  const selectedAudioOutputIdRef = useRef<string>(selectedAudioOutputId);
+  selectedAudioOutputIdRef.current = selectedAudioOutputId;
+
+  const refreshAudioDevices = async () => {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter(d => d.kind === 'audioinput');
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      setAvailableAudioInputs(inputs);
+      setAvailableAudioOutputs(outputs);
+    } catch (err) {
+      console.warn('Cannot enumerate audio devices:', err);
+    }
+  };
+
+  useEffect(() => {
+    refreshAudioDevices();
+    if (navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', refreshAudioDevices);
+      return () => {
+        navigator.mediaDevices.removeEventListener('devicechange', refreshAudioDevices);
+      };
+    }
+  }, []);
+
+  const handleSelectAudioInput = (deviceId: string) => {
+    setSelectedAudioInputId(deviceId);
+    try {
+      localStorage.setItem('spytify_audio_input_id', deviceId);
+    } catch {}
+    // Nếu đang trong voice call, cập nhật track mic theo thiết bị mới
+    if (micStreamRef.current && outboundStreamRef.current) {
+      const audioConstraints: MediaTrackConstraints = {
+        noiseSuppression,
+        echoCancellation,
+        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      };
+      navigator.mediaDevices.getUserMedia({ audio: audioConstraints }).then(newStream => {
+        const newTrack = newStream.getAudioTracks()[0];
+        if (!newTrack) return;
+        const oldTrack = micStreamRef.current?.getAudioTracks()[0];
+        if (oldTrack) oldTrack.stop();
+        micStreamRef.current = newStream;
+        if (audioContextRef.current) {
+          try {
+            const newSource = audioContextRef.current.createMediaStreamSource(newStream);
+            if (micGainRef.current) {
+              newSource.connect(micGainRef.current);
+            }
+          } catch {}
+        }
+        peersRef.current.forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
+          if (sender) {
+            sender.replaceTrack(newTrack).catch(() => {});
+          }
+        });
+      }).catch(err => {
+        console.warn('Failed to switch audio input device:', err);
+      });
+    }
+  };
+
+  const handleSelectAudioOutput = (deviceId: string) => {
+    setSelectedAudioOutputId(deviceId);
+    try {
+      localStorage.setItem('spytify_audio_output_id', deviceId);
+    } catch {}
+    // Áp dụng setSinkId cho tất cả remote audio elements nếu trình duyệt hỗ trợ
+    remoteAudioRef.current.forEach(el => {
+      if ('setSinkId' in el && typeof (el as any).setSinkId === 'function') {
+        (el as any).setSinkId(deviceId).catch(() => {});
+      }
+    });
+  };
+
   const [micVolume, setMicVolume] = useState<number>(() => {
     try {
       const v = localStorage.getItem('spytify_mic_volume');
@@ -1552,6 +1662,34 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const incomingVoiceInviteRef = useRef<typeof incomingVoiceInvite>(null);
   incomingVoiceInviteRef.current = incomingVoiceInvite;
 
+  // Chống spam lời mời vào phòng thoại: từ chối 2 lần liên tiếp -> đợi 60 giây mới mời lại được
+  const VOICE_INVITE_COOLDOWN_MS = 60_000;
+  type VoiceDeclineEntry = { count: number; blockedUntil: number; lastDeclinedAt: number };
+  const [voiceInviteCooldowns, setVoiceInviteCooldowns] = useState<Record<string, VoiceDeclineEntry>>({});
+  const voiceInviteCooldownsRef = useRef<Record<string, VoiceDeclineEntry>>({});
+  voiceInviteCooldownsRef.current = voiceInviteCooldowns;
+  const receivedVoiceDeclineRef = useRef<Record<string, VoiceDeclineEntry>>({});
+  const [voiceInviteModalChannel, setVoiceInviteModalChannel] = useState<CommunityChannel | null>(null);
+  const [, setInviteCooldownTick] = useState(0);
+
+  useEffect(() => {
+    if (!voiceInviteModalChannel) return;
+    const timer = setInterval(() => {
+      setInviteCooldownTick(t => t + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [voiceInviteModalChannel]);
+
+  const computeNextDeclineEntry = (prevEntry: VoiceDeclineEntry | undefined, now: number): VoiceDeclineEntry => {
+    const expired = !prevEntry || (prevEntry.blockedUntil > 0 && now >= prevEntry.blockedUntil) || now - prevEntry.lastDeclinedAt > 5 * 60_000;
+    const nextCount = expired ? 1 : prevEntry.count + 1;
+    return {
+      count: nextCount,
+      blockedUntil: nextCount >= 2 ? now + VOICE_INVITE_COOLDOWN_MS : 0,
+      lastDeclinedAt: now,
+    };
+  };
+
   // Local Mute for Me (Tắt tiếng cá nhân người khác khi họ ồn ào)
   const [locallyMutedUsers, setLocallyMutedUsers] = useState<Record<string, boolean>>(() => {
     try {
@@ -1615,6 +1753,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     if (!incomingVoiceInvite) return;
     const inv = incomingVoiceInvite;
     setIncomingVoiceInvite(null);
+    if (inv.fromUserId) {
+      delete receivedVoiceDeclineRef.current[inv.fromUserId];
+    }
 
     // Nếu là cuộc gọi thoại riêng 1-1 (DM Private Call): mở đúng khung DM của người gọi và kết nối trực tiếp topic dm_private
     if (inv.isDmCall || inv.serverId === 'dm_private') {
@@ -1652,6 +1793,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const handleDeclineVoiceInvite = () => {
     const inv = incomingVoiceInvite;
     setIncomingVoiceInvite(null);
+    if (inv && !inv.isDmCall && inv.serverId !== 'dm_private' && inv.fromUserId) {
+      const now = Date.now();
+      receivedVoiceDeclineRef.current[inv.fromUserId] = computeNextDeclineEntry(
+        receivedVoiceDeclineRef.current[inv.fromUserId],
+        now
+      );
+    }
     if (inv && currentUser) {
       globalSocialChannelRef.current?.send({
         type: 'broadcast',
@@ -1712,12 +1860,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     return () => window.removeEventListener('click', handleCloseMenu);
   }, []);
 
-  const handleInviteMemberToVoice = (member: { id: string; name: string; isHost?: boolean }) => {
+  const handleInviteMemberToVoice = (
+    member: { id: string; name: string; isHost?: boolean },
+    explicitChannel?: CommunityChannel | null
+  ) => {
     const defaultVoiceCh = selectedServer.channels.find(c => c.type === 'voice') || selectedChannel;
-    const targetVoiceChId =
-      connectedVoiceServerId === selectedServer.id && connectedVoiceChannel
-        ? connectedVoiceChannel
-        : defaultVoiceCh.id;
+    const targetChannel =
+      (explicitChannel && explicitChannel.type === 'voice' ? explicitChannel : null) ||
+      (connectedVoiceServerId === selectedServer.id && connectedVoiceChannel
+        ? selectedServer.channels.find(c => c.id === connectedVoiceChannel) || defaultVoiceCh
+        : selectedChannel.type === 'voice'
+        ? selectedChannel
+        : defaultVoiceCh);
+    const targetVoiceChId = targetChannel.id;
 
     // "các bot live stream nếu đã được phân vào live station thì nếu mời thì sẽ không hợp lệ"
     const assignedLiveStation = selectedServer.channels.find(
@@ -1733,13 +1888,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return;
     }
 
-    // If not currently in this server's voice channel, join voice first!
-    if (connectedVoiceServerId !== selectedServer.id || !connectedVoiceChannel) {
-      handleJoinVoiceCall(targetVoiceChId);
+    const isBotTarget = ACTIVE_BOT_IDS.has(member.id) || Boolean(member.isHost);
+    if (!isBotTarget) {
+      const now = Date.now();
+      const cooldown = voiceInviteCooldownsRef.current[member.id];
+      if (cooldown && cooldown.blockedUntil > now) {
+        const secsLeft = Math.ceil((cooldown.blockedUntil - now) / 1000);
+        showVoiceToast(
+          language === 'vi'
+            ? `${member.name} đã từ chối 2 lần. Vui lòng đợi ${secsLeft} giây nữa trước khi mời lại!`
+            : `${member.name} declined twice. Please wait ${secsLeft}s before inviting again!`
+        );
+        return;
+      }
+    }
+
+    // Tự động tham gia đúng phòng thoại muốn mời nếu người mời chưa ở trong phòng đó
+    if (connectedVoiceServerId !== selectedServer.id || connectedVoiceChannel !== targetVoiceChId) {
+      handleJoinVoiceCall(targetVoiceChId, targetChannel);
     }
 
     // Nếu là DJ Bot hệ thống: Cho vào phòng đàm thoại ngay lập tức
-    if (ACTIVE_BOT_IDS.has(member.id) || member.isHost) {
+    if (isBotTarget) {
       const newVp: VoiceParticipant = {
         id: member.id,
         name: member.name,
@@ -1760,12 +1930,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       });
 
       playAudioChime('join');
+      showVoiceToast(
+        language === 'vi'
+          ? `Đã mời ${member.name} vào phòng "${getChannelName(targetChannel)}"!`
+          : `Invited ${member.name} to "${getChannelName(targetChannel)}"!`
+      );
       setMemberMenu(null);
       return;
     }
 
-    // Nếu là Người dùng (Human): Gửi lời mời qua broadcast -> Bên kia phải nhấn CHẤP NHẬN mới vào!
-    const targetChannel = selectedServer.channels.find(c => c.id === targetVoiceChId) || defaultVoiceCh;
+    // Nếu là Người dùng (Human): Gửi lời mời qua broadcast (ai trong server cũng mời được) -> Bên kia nhấn CHẤP NHẬN mới vào
     const invitePayload = {
       fromUserId: myParticipantIdRef.current,
       fromUserName: currentUser?.display_name || 'Người dùng',
@@ -1775,7 +1949,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       serverId: selectedServer.id,
       serverName: selectedServer.name,
       channelId: targetVoiceChId,
-      channelName: targetChannel?.name || 'Phòng Thoại Voice',
+      channelName: getChannelName(targetChannel) || 'Phòng Thoại Voice',
       timestamp: Date.now(),
     };
 
@@ -1790,6 +1964,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       payload: invitePayload,
     });
 
+    showVoiceToast(
+      language === 'vi'
+        ? `Đã gửi lời mời vào phòng "${getChannelName(targetChannel)}" tới ${member.name}`
+        : `Sent room invite "${getChannelName(targetChannel)}" to ${member.name}`
+    );
     setMemberMenu(null);
   };
 
@@ -5486,10 +5665,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         if (!el) {
           el = new Audio();
           el.autoplay = true;
+          if (selectedAudioOutputIdRef.current && 'setSinkId' in el && typeof (el as any).setSinkId === 'function') {
+            (el as any).setSinkId(selectedAudioOutputIdRef.current).catch(() => {});
+          }
           remoteAudioRef.current.set(peerId, el);
         }
         el.srcObject = e.streams[0] || new MediaStream([e.track]);
         applyRemoteVolume(peerId);
+        // Tự động resume AudioContext nếu bị suspend trên macOS WebKit
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume().catch(() => {});
+        }
         el.play().catch(() => {});
       };
       pc.onconnectionstatechange = () => {
@@ -6237,6 +6423,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           setDmCallConnected(true);
           return;
         }
+        // Chống spam: nếu người mời này đã bị từ chối 2 lần và đang trong thời gian chờ -> bỏ qua popup
+        if (!payload.isDmCall && payload.serverId !== 'dm_private' && payload.fromUserId) {
+          const recDecline = receivedVoiceDeclineRef.current[payload.fromUserId];
+          if (recDecline && recDecline.blockedUntil > Date.now()) {
+            return;
+          }
+        }
         playAudioChime('join');
         setIncomingVoiceInvite(payload);
         onIncomingVoiceCall?.();
@@ -6264,6 +6457,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         ) {
           handleLeaveVoiceCallRef.current();
           showVoiceToast(`${payload.declinedByName || 'Người nhận'} đã từ chối cuộc gọi.`);
+        } else if (!payload.isDmCall && payload.serverId !== 'dm_private' && payload.declinedByUserId) {
+          const now = Date.now();
+          const prevEntry = voiceInviteCooldownsRef.current[payload.declinedByUserId];
+          const nextEntry = computeNextDeclineEntry(prevEntry, now);
+          setVoiceInviteCooldowns(prev => ({
+            ...prev,
+            [payload.declinedByUserId]: nextEntry,
+          }));
+          if (nextEntry.blockedUntil > now) {
+            showVoiceToast(
+              `⛔ ${payload.declinedByName || 'Thành viên'} đã từ chối 2 lần. Vui lòng đợi 60 giây trước khi mời lại!`
+            );
+          } else {
+            showVoiceToast(
+              `${payload.declinedByName || 'Thành viên'} đã từ chối lời mời vào phòng thoại (1/2).`
+            );
+          }
         }
       }
     });
@@ -7007,6 +7217,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     channel.on('broadcast', { event: 'voice_call_invite' }, ({ payload }) => {
       if (payload && (payload.targetUserId === myParticipantIdRef.current || (currentUser && payload.targetUserId === currentUser.id))) {
+        if (!payload.isDmCall && payload.serverId !== 'dm_private' && payload.fromUserId) {
+          const recDecline = receivedVoiceDeclineRef.current[payload.fromUserId];
+          if (recDecline && recDecline.blockedUntil > Date.now()) {
+            return;
+          }
+        }
         playAudioChime('join');
         setIncomingVoiceInvite(payload);
         onIncomingVoiceCall?.();
@@ -7096,15 +7312,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     };
 
     try {
+      const audioConstraints: MediaTrackConstraints = {
+        noiseSuppression,
+        echoCancellation,
+        autoGainControl: true,
+        ...(selectedAudioInputIdRef.current ? { deviceId: { exact: selectedAudioInputIdRef.current } } : {}),
+      };
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          noiseSuppression,
-          echoCancellation,
-        },
+        audio: audioConstraints,
       });
       micStreamRef.current = stream;
 
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       const source = audioCtx.createMediaStreamSource(stream);
@@ -7487,15 +7709,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const startMicTest = async () => {
     try {
       setIsTestingMic(true);
+      const audioConstraints: MediaTrackConstraints = {
+        noiseSuppression,
+        echoCancellation,
+        autoGainControl: true,
+        ...(selectedAudioInputIdRef.current ? { deviceId: { exact: selectedAudioInputIdRef.current } } : {}),
+      };
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          noiseSuppression,
-          echoCancellation,
-        },
+        audio: audioConstraints,
       });
       testStreamRef.current = stream;
 
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       const source = audioCtx.createMediaStreamSource(stream);
@@ -7861,12 +8089,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     };
 
     try {
+      const audioConstraints: MediaTrackConstraints = {
+        noiseSuppression,
+        echoCancellation,
+        autoGainControl: true,
+        ...(selectedAudioInputIdRef.current ? { deviceId: { exact: selectedAudioInputIdRef.current } } : {}),
+      };
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { noiseSuppression, echoCancellation },
+        audio: audioConstraints,
       });
       micStreamRef.current = stream;
 
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 256;
       const source = audioCtx.createMediaStreamSource(stream);
@@ -8150,6 +8387,149 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       </div>
     );
   }
+
+  const renderScreenShareStage = () => {
+    if (!activeScreenShare) return null;
+    return (
+      <div
+        className={`w-full flex flex-col items-center ${
+          isScreenFullscreen ? 'screen-share-stage-fullscreen' : 'max-w-5xl mb-4'
+        }`}
+      >
+        {/* Thanh Tab chọn màn hình của từng người trong cuộc gọi */}
+        <div
+          className={`w-full flex items-center justify-between gap-2 mb-2 px-1 ${
+            isScreenFullscreen ? 'absolute top-3 left-4 right-4 z-30 pointer-events-auto' : ''
+          }`}
+        >
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+            {screenSharesList.map(ss => {
+              const isActiveTab = activeScreenShare.userId === ss.userId;
+              const isMine = ss.userId === myParticipantIdRef.current;
+              return (
+                <button
+                  key={ss.userId}
+                  type="button"
+                  onClick={() => setSelectedScreenShareUserId(ss.userId)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer flex-shrink-0 ${
+                    isActiveTab
+                      ? 'shadow-lg'
+                      : isLight && !isScreenFullscreen
+                      ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
+                      : 'bg-[#14151e]/90 hover:bg-[#1c1e2b] border-white/10 text-zinc-300'
+                  }`}
+                  style={
+                    isActiveTab
+                      ? {
+                          backgroundColor: `${accentColor}22`,
+                          borderColor: accentColor,
+                          color: isLight && !isScreenFullscreen ? '#0f172a' : '#ffffff',
+                        }
+                      : undefined
+                  }
+                >
+                  <div className="w-4 h-4 rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
+                    {renderAvatarContent(ss.userName, resolveUserAvatar(ss.userId, ss.avatar))}
+                  </div>
+                  <Monitor className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActiveTab ? accentColor : '#10b981' }} />
+                  <span className="truncate max-w-[140px]">
+                    {ss.userName}
+                    {isMine ? ` (${getTranslation(language, 'community.you')})` : ''}
+                  </span>
+                  <span className="px-1 py-0.2 rounded text-[8px] font-mono font-bold bg-red-600 text-white">
+                    LIVE
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {screenSharesList.length > 1 && (
+            <span className="text-[10px] font-mono text-zinc-400 flex-shrink-0 px-2 py-1 rounded-lg bg-black/60 border border-white/10 backdrop-blur-sm">
+              {screenSharesList.length} màn hình đang chia sẻ
+            </span>
+          )}
+        </div>
+
+        <div
+          ref={screenShareStageRef}
+          data-screen-share-fullscreen
+          className={`w-full bg-black/95 overflow-hidden relative group flex items-center justify-center ${
+            isScreenFullscreen
+              ? 'h-full max-h-none rounded-none border-none'
+              : 'rounded-2xl border border-white/15 shadow-2xl'
+          }`}
+        >
+          {/* Top Screen Share Header Bar */}
+          <div
+            className={`absolute left-0 right-0 p-3 bg-gradient-to-b from-black/85 to-transparent flex items-center justify-between z-20 transition-opacity ${
+              isScreenFullscreen ? 'top-12 opacity-0 group-hover:opacity-100' : 'top-0 opacity-95 group-hover:opacity-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
+                <Monitor className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-white tracking-wide">
+                    {activeScreenShare.userName}
+                    {activeScreenShare.userId === myParticipantIdRef.current
+                      ? ` (${getTranslation(language, 'community.you')})`
+                      : ''}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-red-600 text-white animate-pulse">
+                    LIVE
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-400 font-mono">Đang chia sẻ màn hình trực tiếp</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {activeScreenShare.userId === myParticipantIdRef.current && (
+                <button
+                  type="button"
+                  onClick={handleStopScreenShare}
+                  className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shadow-md"
+                >
+                  <MonitorOff className="w-3.5 h-3.5" />
+                  <span>Dừng chia sẻ</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleToggleScreenFullscreen}
+                className="p-1.5 rounded-lg bg-black/60 hover:bg-white/20 text-white transition-all cursor-pointer shadow-md"
+                title={isScreenFullscreen ? 'Thu nhỏ màn hình (Esc)' : 'Toàn màn hình'}
+              >
+                {isScreenFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Video Stream Element */}
+          <video
+            key={activeScreenShare.userId}
+            data-screen-share-video
+            ref={(el) => {
+              screenVideoRef.current = el;
+              if (el && activeScreenShare?.stream && el.srcObject !== activeScreenShare.stream) {
+                el.srcObject = activeScreenShare.stream;
+                el.play().catch(() => {});
+              }
+            }}
+            onDoubleClick={handleToggleScreenFullscreen}
+            autoPlay
+            playsInline
+            muted={activeScreenShare?.userId === myParticipantIdRef.current}
+            className={`w-full object-contain bg-black cursor-pointer ${
+              isScreenFullscreen ? 'h-full max-h-none' : 'max-h-[62vh]'
+            }`}
+          />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={`flex-1 flex h-full select-none overflow-hidden font-sans ${isLight ? 'bg-[#f8fafc] text-[#0f172a]' : 'bg-[#07070a] text-white'}`}>
@@ -8903,23 +9283,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             </span>
                           ) : null}
 
-                          {/* Nút Thêm Người (Mời bạn bè vào phòng thoại / Server) */}
+                          {/* Nút Thêm Người (Mời thành viên trong Server vào phòng thoại — ai cũng mời được) */}
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               e.preventDefault();
-                              if (selectedServer.allow_member_invites === false && !canManageServer) {
-                                showVoiceToast(
-                                  language === 'vi'
-                                    ? 'Chủ máy chủ đã tắt quyền mời tự do. Chỉ Chủ Server và Mod mới có thể mời thành viên!'
-                                    : 'Server owner disabled free invites. Only Owner & Mods can invite members!'
-                                );
-                                return;
-                              }
-                              handleOpenServerSettings(selectedServer, 'invites');
+                              setVoiceInviteModalChannel(channel);
                             }}
-                            title={language === 'vi' ? 'Mời bạn bè vào phòng thoại & máy chủ' : 'Invite friends to this voice channel & server'}
+                            title={language === 'vi' ? 'Mời thành viên vào phòng thoại này' : 'Invite members to this voice room'}
                             className="opacity-0 group-hover/vch:opacity-100 p-1 rounded hover:bg-white/10 text-[#777] hover:text-white transition-all cursor-pointer"
                           >
                             <UserPlus className="w-3.5 h-3.5" />
@@ -9387,6 +9759,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       : 'bg-gradient-to-r from-[#091512] via-[#0b0e17] to-[#091512] border-emerald-500/30'
                   }`}
                 >
+                  {/* Discord-style Screen Share Stage trong cuộc gọi riêng 1-1 */}
+                  {activeScreenShare && (
+                    <div className="w-full flex justify-center">
+                      {renderScreenShareStage()}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-[1fr_auto_1fr] items-start justify-items-center gap-4 sm:gap-8 w-full max-w-xl mx-auto py-1">
                     {/* You */}
                     <div className="w-44 sm:w-52 flex flex-col items-center text-center gap-2">
@@ -9475,6 +9854,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     >
                       {isDeafened ? <VolumeX className="w-4 h-4" /> : <Headphones className="w-4 h-4 text-cyan-400" />}
                       <span>{isDeafened ? 'Bật Loa' : 'Tắt Loa'}</span>
+                    </button>
+
+                    {/* Nút Chia Sẻ Màn Hình trong cuộc gọi riêng 1-1 */}
+                    <button
+                      type="button"
+                      onClick={isScreenSharing ? handleStopScreenShare : handleStartScreenShare}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 cursor-pointer border transition-all ${
+                        isScreenSharing
+                          ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                          : 'bg-[#161624] hover:bg-[#1f1f32] border-white/15 text-white'
+                      }`}
+                      title={isScreenSharing ? 'Dừng chia sẻ màn hình' : 'Chia sẻ màn hình'}
+                    >
+                      {isScreenSharing ? <MonitorOff className="w-4 h-4" /> : <Monitor className="w-4 h-4 text-cyan-400" />}
+                      <span>{isScreenSharing ? 'Dừng Share' : 'Share màn hình'}</span>
                     </button>
 
                     <button
@@ -10393,6 +10787,32 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono text-[#777]">
+            {/* Nút Mời vào phòng thoại (Ai trong server cũng mời được) */}
+            {selectedServer.channels.some(c => c.type === 'voice') && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetVoice =
+                    (selectedChannel.type === 'voice' ? selectedChannel : null) ||
+                    (connectedVoiceServerId === selectedServer.id && connectedVoiceChannel
+                      ? selectedServer.channels.find(c => c.id === connectedVoiceChannel)
+                      : null) ||
+                    selectedServer.channels.find(c => c.type === 'voice') ||
+                    selectedChannel;
+                  setVoiceInviteModalChannel(targetVoice);
+                }}
+                title={language === 'vi' ? 'Mời thành viên vào phòng thoại' : 'Invite members to voice room'}
+                className={`px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isLight
+                    ? 'bg-[#ffffff] hover:bg-[#f1f5f9] border-[#cbd5e1] text-[#334155] hover:text-[#0f172a]'
+                    : 'bg-[#12121c] hover:bg-[#1a1a2a] border-[#222234] text-cyan-300 hover:text-white hover:border-cyan-400/50'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span className="hidden md:inline text-[11px] font-bold">Mời vào phòng</span>
+              </button>
+            )}
+
             {/* Discord-style Member List Toggle Button (Single User Icon) */}
             <button
               onClick={toggleMemberList}
@@ -10422,121 +10842,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             isLight ? 'bg-gradient-to-b from-[#f8fafc] to-[#f1f5f9]' : 'bg-gradient-to-b from-[#08080f] to-[#040407]'
           }`}>
             {/* Discord-style Multi-Screen Share Stage View (Chia Tab chọn từng màn hình đang phát) */}
-            {activeScreenShare && (
-              <div className="w-full max-w-5xl flex flex-col items-center mb-4">
-                {/* Thanh Tab chọn màn hình của từng người trong cuộc gọi */}
-                <div className="w-full flex items-center justify-between gap-2 mb-2 px-1">
-                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-                    {screenSharesList.map(ss => {
-                      const isActiveTab = activeScreenShare.userId === ss.userId;
-                      const isMine = ss.userId === myParticipantIdRef.current;
-                      return (
-                        <button
-                          key={ss.userId}
-                          type="button"
-                          onClick={() => setSelectedScreenShareUserId(ss.userId)}
-                          className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer flex-shrink-0 ${
-                            isActiveTab
-                              ? 'shadow-lg'
-                              : isLight
-                              ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
-                              : 'bg-[#14151e] hover:bg-[#1c1e2b] border-white/10 text-zinc-300'
-                          }`}
-                          style={isActiveTab ? {
-                            backgroundColor: `${accentColor}22`,
-                            borderColor: accentColor,
-                            color: isLight ? '#0f172a' : '#ffffff',
-                          } : undefined}
-                        >
-                          <div className="w-4 h-4 rounded-full overflow-hidden bg-zinc-800 flex items-center justify-center text-[9px] font-bold flex-shrink-0">
-                            {renderAvatarContent(ss.userName, resolveUserAvatar(ss.userId, ss.avatar))}
-                          </div>
-                          <Monitor className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isActiveTab ? accentColor : '#10b981' }} />
-                          <span className="truncate max-w-[140px]">
-                            {ss.userName}{isMine ? ` (${getTranslation(language, 'community.you')})` : ''}
-                          </span>
-                          <span className="px-1 py-0.2 rounded text-[8px] font-mono font-bold bg-red-600 text-white">
-                            LIVE
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {screenSharesList.length > 1 && (
-                    <span className="text-[10px] font-mono text-zinc-400 flex-shrink-0 px-2 py-1 rounded-lg bg-black/40 border border-white/10">
-                      {screenSharesList.length} màn hình đang chia sẻ
-                    </span>
-                  )}
-                </div>
-
-                <div
-                  ref={screenShareStageRef}
-                  data-screen-share-fullscreen
-                  className="w-full rounded-2xl bg-black/95 border border-white/15 overflow-hidden shadow-2xl relative group flex items-center justify-center"
-                >
-                  {/* Top Screen Share Header Bar */}
-                  <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between z-20 opacity-95 group-hover:opacity-100 transition-opacity">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">
-                        <Monitor className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-white tracking-wide">
-                            {activeScreenShare.userName}
-                            {activeScreenShare.userId === myParticipantIdRef.current ? ` (${getTranslation(language, 'community.you')})` : ''}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-red-600 text-white animate-pulse">
-                            LIVE
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-zinc-400 font-mono">Đang chia sẻ màn hình trực tiếp</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {activeScreenShare.userId === myParticipantIdRef.current && (
-                        <button
-                          onClick={handleStopScreenShare}
-                          className="px-3 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                        >
-                          <MonitorOff className="w-3.5 h-3.5" />
-                          <span>Dừng chia sẻ</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleToggleScreenFullscreen}
-                        className="p-1.5 rounded-lg bg-black/60 hover:bg-white/20 text-white transition-all cursor-pointer"
-                        title={isScreenFullscreen ? 'Thu nhỏ màn hình' : 'Toàn màn hình'}
-                      >
-                        {isScreenFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Video Stream Element */}
-                  <video
-                    key={activeScreenShare.userId}
-                    data-screen-share-video
-                    ref={(el) => {
-                      screenVideoRef.current = el;
-                      if (el && activeScreenShare?.stream && el.srcObject !== activeScreenShare.stream) {
-                        el.srcObject = activeScreenShare.stream;
-                        el.play().catch(() => {});
-                      }
-                    }}
-                    onDoubleClick={handleToggleScreenFullscreen}
-                    autoPlay
-                    playsInline
-                    muted={activeScreenShare?.userId === myParticipantIdRef.current}
-                    className={`w-full object-contain bg-black cursor-pointer ${
-                      isScreenFullscreen ? 'h-full max-h-none' : 'max-h-[62vh]'
-                    }`}
-                  />
-                </div>
-              </div>
-            )}
+            {renderScreenShareStage()}
 
             {/* Participants Grid */}
             <div className="w-full max-w-4xl flex flex-col items-center pt-2 pb-6">
@@ -12146,9 +12452,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 ) : null;
               }
 
-              // Nếu người dùng chưa tham gia phòng thoại nào thì không hiện nút mời vào phòng thoại
-              if (!connectedVoiceChannel) return null;
-
               return (
                 <button
                   type="button"
@@ -13097,6 +13400,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 <div className={`p-4 rounded-xl border ${
                   isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
                 }`}>
+                  {/* Device Selector: Microphone */}
+                  <div className="mb-4">
+                    <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-1.5 ${isLight ? 'text-slate-700' : 'text-zinc-400'}`}>
+                      Thiết bị đầu vào (Microphone Device):
+                    </label>
+                    <select
+                      value={selectedAudioInputId}
+                      onChange={e => handleSelectAudioInput(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-xl text-xs font-mono border outline-none cursor-pointer ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0d0d16] border-[#2c2c42] text-white focus:border-cyan-400'
+                      }`}
+                    >
+                      <option value="">-- Mặc định hệ thống (Default Microphone) --</option>
+                      {availableAudioInputs.map((d, idx) => (
+                        <option key={d.deviceId || idx} value={d.deviceId}>
+                          {d.label || `Microphone ${idx + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Mic className="w-4 h-4" style={{ color: accentColor }} />
@@ -13215,6 +13539,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 <div className={`p-4 rounded-xl border ${
                   isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#13131e] border-[#222234]'
                 }`}>
+                  {/* Device Selector: Speaker / Headphone */}
+                  <div className="mb-4">
+                    <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-1.5 ${isLight ? 'text-slate-700' : 'text-zinc-400'}`}>
+                      Thiết bị đầu ra (Speaker / Headphone Device):
+                    </label>
+                    <select
+                      value={selectedAudioOutputId}
+                      onChange={e => handleSelectAudioOutput(e.target.value)}
+                      className={`w-full px-3 py-2 rounded-xl text-xs font-mono border outline-none cursor-pointer ${
+                        isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0d0d16] border-[#2c2c42] text-white focus:border-cyan-400'
+                      }`}
+                    >
+                      <option value="">-- Mặc định hệ thống (Default Speaker/Headphone) --</option>
+                      {availableAudioOutputs.map((d, idx) => (
+                        <option key={d.deviceId || idx} value={d.deviceId}>
+                          {d.label || `Speaker/Headphone ${idx + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <Volume2 className="w-4 h-4" style={{ color: accentColor }} />
@@ -15630,73 +15975,216 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         </div>
       )}
 
-      {/* ──────────────── 15. INCOMING VOICE CALL INVITATION MODAL DIALOG ──────────────── */}
+      {/* ──────────────── 15. INCOMING VOICE CALL / ROOM INVITE FLOATING CORNER POPUP ──────────────── */}
       {incomingVoiceInvite && (
-        <div className="fixed inset-0 z-[75] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div
-            className={`w-full max-w-sm rounded-2xl shadow-2xl border p-5 flex flex-col items-center text-center animate-in zoom-in-95 duration-200 ${
-              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#10101c] border-[#2c2c42] text-white'
-            }`}
-          >
-            <div className="relative mb-3">
+        <div
+          className={`fixed bottom-24 right-5 z-[75] w-80 max-w-[calc(100vw-2rem)] rounded-2xl shadow-2xl border p-4 animate-in slide-in-from-bottom-4 fade-in duration-200 backdrop-blur-md ${
+            isLight
+              ? 'bg-white/95 border-slate-300 text-slate-900 shadow-slate-400/40'
+              : 'bg-[#10101c]/95 border-[#2c2c42] text-white shadow-black/90'
+          }`}
+          style={{
+            boxShadow: `0 12px 32px rgba(0,0,0,0.55), 0 0 0 1px ${accentColor}30`,
+          }}
+        >
+          <div className="flex items-start gap-3">
+            <div className="relative shrink-0">
               <div
-                className="w-16 h-16 rounded-2xl overflow-hidden border-2 flex items-center justify-center text-xl font-bold shadow-xl animate-bounce"
+                className="w-11 h-11 rounded-xl overflow-hidden border-2 flex items-center justify-center text-sm font-bold shadow-md"
                 style={{ borderColor: accentColor }}
               >
                 {renderAvatarContent(incomingVoiceInvite.fromUserName, incomingVoiceInvite.fromUserAvatar)}
               </div>
               <span
-                className="absolute -bottom-1 -right-1 p-1.5 rounded-full text-black shadow-lg"
+                className="absolute -bottom-1 -right-1 p-1 rounded-full text-black shadow"
                 style={{ backgroundColor: accentColor }}
               >
-                <PhoneCall className="w-3.5 h-3.5 fill-current animate-pulse" />
+                <PhoneCall className="w-2.5 h-2.5 fill-current animate-pulse" />
               </span>
             </div>
 
-            <h3 className="text-base font-extrabold tracking-tight">
-              {incomingVoiceInvite.isDmCall || incomingVoiceInvite.serverId === 'dm_private'
-                ? 'Cuộc Gọi Thoại Đến'
-                : 'Lời Mời Vào Phòng Thoại'}
-            </h3>
-            <p className="text-xs text-[#888] mt-1.5 max-w-xs">
-              {incomingVoiceInvite.isDmCall || incomingVoiceInvite.serverId === 'dm_private' ? (
-                <>
-                  <strong className={isLight ? 'text-slate-900' : 'text-white'}>{incomingVoiceInvite.fromUserName}</strong> đang gọi thoại riêng cho bạn. Bạn có muốn bắt máy không?
-                </>
-              ) : (
-                <>
-                  <strong className={isLight ? 'text-slate-900' : 'text-white'}>{incomingVoiceInvite.fromUserName}</strong> đang mời bạn tham gia phòng thoại{' '}
-                  <strong className="text-cyan-400">"{incomingVoiceInvite.channelName}"</strong> tại máy chủ{' '}
-                  <strong className="text-amber-400">{incomingVoiceInvite.serverName}</strong>.
-                </>
-              )}
-            </p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-extrabold tracking-tight truncate">
+                  {incomingVoiceInvite.isDmCall || incomingVoiceInvite.serverId === 'dm_private'
+                    ? 'Cuộc Gọi Thoại Đến'
+                    : 'Lời Mời Vào Phòng Thoại'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleDeclineVoiceInvite}
+                  className="p-0.5 rounded text-[#777] hover:text-white cursor-pointer"
+                  title="Đóng / Từ chối"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <p className="text-[11px] text-[#888] mt-1 leading-snug">
+                {incomingVoiceInvite.isDmCall || incomingVoiceInvite.serverId === 'dm_private' ? (
+                  <>
+                    <strong className={isLight ? 'text-slate-900' : 'text-white'}>{incomingVoiceInvite.fromUserName}</strong> đang gọi thoại riêng cho bạn.
+                  </>
+                ) : (
+                  <>
+                    <strong className={isLight ? 'text-slate-900' : 'text-white'}>{incomingVoiceInvite.fromUserName}</strong> mời bạn vào{' '}
+                    <strong className="text-cyan-400">"{incomingVoiceInvite.channelName}"</strong> ({incomingVoiceInvite.serverName}).
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
 
-            <div className="grid grid-cols-2 gap-2.5 w-full mt-5">
+          <div className="grid grid-cols-2 gap-2 w-full mt-3.5">
+            <button
+              type="button"
+              onClick={handleDeclineVoiceInvite}
+              className={`py-2 px-3 rounded-xl text-[11px] font-bold font-mono border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
+                isLight
+                  ? 'border-slate-300 hover:bg-slate-100 text-slate-700'
+                  : 'border-white/10 hover:bg-white/5 text-zinc-300'
+              }`}
+            >
+              <PhoneOff className="w-3 h-3 text-red-400" />
+              <span>Từ chối</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleAcceptVoiceInvite}
+              style={{
+                backgroundColor: accentColor,
+                color: getContrastTextColor(accentColor),
+              }}
+              className="py-2 px-3 rounded-xl text-[11px] font-bold font-mono flex items-center justify-center gap-1.5 transition-transform hover:scale-[1.03] active:scale-95 cursor-pointer shadow-md"
+            >
+              <PhoneCall className="w-3 h-3 fill-current" />
+              <span>Chấp nhận</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────── 15B. MODAL MỜI THÀNH VIÊN VÀO PHÒNG THOẠI (AI CŨNG MỜI ĐƯỢC) ──────────────── */}
+      {voiceInviteModalChannel && (
+        <div className="fixed inset-0 z-[72] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div
+            className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150 ${
+              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#10101c] border-[#2c2c42] text-white'
+            }`}
+          >
+            <div className="flex items-center justify-between border-b pb-3 border-white/10">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className="p-2 rounded-xl border shrink-0"
+                  style={{ backgroundColor: `${accentColor}15`, borderColor: `${accentColor}40`, color: accentColor }}
+                >
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold tracking-wide truncate">
+                    Mời Vào Phòng Thoại
+                  </h3>
+                  <p className="text-[11px] text-[#888] font-mono truncate">
+                    #{getChannelName(voiceInviteModalChannel)} • {selectedServer.name}
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={handleDeclineVoiceInvite}
-                className={`py-2.5 px-4 rounded-xl text-xs font-bold font-mono border flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
-                  isLight
-                    ? 'border-slate-300 hover:bg-slate-100 text-slate-700'
-                    : 'border-white/10 hover:bg-white/5 text-zinc-300'
-                }`}
+                onClick={() => setVoiceInviteModalChannel(null)}
+                className="p-1.5 rounded-full text-[#666] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
               >
-                <PhoneOff className="w-3.5 h-3.5 text-red-400" />
-                <span>Từ chối</span>
+                <X className="w-4 h-4" />
               </button>
+            </div>
 
+            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+              {(() => {
+                const roomParticipants = getEffectiveVoiceParticipants(voiceInviteModalChannel);
+                const now = Date.now();
+                const candidates = onlineMembers.filter(m => {
+                  if (m.id === 'usr_me' || (currentUser?.id && m.id === currentUser.id)) return false;
+                  if (roomParticipants.some(vp => vp.id === m.id)) return false;
+                  return true;
+                });
+
+                if (candidates.length === 0) {
+                  return (
+                    <div className="py-8 text-center text-xs text-[#888] font-mono">
+                      Tất cả thành viên hiện đều đã ở trong phòng này hoặc chưa có thành viên khác trong server.
+                    </div>
+                  );
+                }
+
+                return candidates.map(mem => {
+                  const cooldown = voiceInviteCooldowns[mem.id];
+                  const secsLeft = cooldown && cooldown.blockedUntil > now ? Math.ceil((cooldown.blockedUntil - now) / 1000) : 0;
+                  const isBotMem = ACTIVE_BOT_IDS.has(mem.id) || Boolean(mem.isHost);
+                  const assignedStation = isBotMem
+                    ? selectedServer.channels.find(
+                        c => c.type === 'voice' && c.is_radio && (c.dj_bot_id === mem.id || (!c.dj_bot_id && mem.id === 'usr_host'))
+                      )
+                    : undefined;
+
+                  return (
+                    <div
+                      key={mem.id}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border ${
+                        isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#141422] border-[#222234]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative shrink-0">
+                          <div className="w-8 h-8 rounded-lg bg-zinc-800 overflow-hidden flex items-center justify-center text-xs font-bold text-white">
+                            {renderAvatarContent(mem.name, resolveUserAvatar(mem.id, mem.avatar))}
+                          </div>
+                          {renderStatusDot(mem.status, 'sm')}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold truncate">{mem.name}</p>
+                          <p className="text-[10px] font-mono text-[#777] truncate">
+                            {assignedStation
+                              ? `📻 Trạm Live: ${getChannelName(assignedStation)}`
+                              : secsLeft > 0
+                              ? `⏳ Đã từ chối 2 lần • Đợi ${secsLeft}s`
+                              : mem.status === 'online'
+                              ? '● Trực tuyến'
+                              : mem.status === 'dnd'
+                              ? '⛔ Bận'
+                              : '○ Ngoại tuyến'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={Boolean(assignedStation) || secsLeft > 0}
+                        onClick={() => handleInviteMemberToVoice(mem, voiceInviteModalChannel)}
+                        style={
+                          !assignedStation && secsLeft === 0
+                            ? { backgroundColor: accentColor, color: getContrastTextColor(accentColor) }
+                            : undefined
+                        }
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed transition-transform hover:scale-105 active:scale-95 shrink-0"
+                      >
+                        <PhoneCall className="w-3 h-3" />
+                        <span>{secsLeft > 0 ? `Đợi ${secsLeft}s` : assignedStation ? 'Đang trực trạm' : 'Mời'}</span>
+                      </button>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2 text-[11px] text-[#888]">
+              <span className="font-mono truncate">Muốn mời người ngoài Server?</span>
               <button
                 type="button"
-                onClick={handleAcceptVoiceInvite}
-                style={{
-                  backgroundColor: accentColor,
-                  color: getContrastTextColor(accentColor),
-                }}
-                className="py-2.5 px-4 rounded-xl text-xs font-bold font-mono flex items-center justify-center gap-1.5 transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow-lg"
+                onClick={() => handleCopyInvite(selectedServer.id)}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-cyan-300 font-mono font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
               >
-                <PhoneCall className="w-3.5 h-3.5 fill-current" />
-                <span>Chấp nhận</span>
+                <Copy className="w-3 h-3" />
+                <span>Copy Link Server</span>
               </button>
             </div>
           </div>

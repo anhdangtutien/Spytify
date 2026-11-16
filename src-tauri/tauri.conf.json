@@ -35,7 +35,11 @@
     "targets": "all",
     "macOS": {
       "frameworks": [],
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Spytify cần quyền truy cập Microphone để bạn có thể đàm thoại trong phòng voice và cuộc gọi riêng.",
+        "NSCameraUsageDescription": "Spytify cần quyền truy cập Camera/Màn hình để chia sẻ màn hình trong phòng thoại."
+      }
     },
     "icon": [
       "icons/32x32.png",
