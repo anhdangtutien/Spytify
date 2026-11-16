@@ -246,9 +246,25 @@ video::-webkit-media-controls-enclosure {
   justify-content: center !important;
 }
 
-.screen-share-stage-fullscreen video {
+.screen-share-stage-fullscreen [data-screen-share-fullscreen] {
   width: 100vw !important;
   height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.screen-share-stage-fullscreen video,
+[data-screen-share-fullscreen]:fullscreen video,
+[data-screen-share-fullscreen]:-webkit-full-screen video,
+video[data-screen-share-video]:fullscreen,
+video[data-screen-share-video]:-webkit-full-screen {
+  width: 100% !important;
+  height: 100% !important;
   max-width: 100vw !important;
   max-height: 100vh !important;
   object-fit: contain !important;

@@ -1188,7 +1188,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setIsScreenFullscreen(prev => {
       const next = !prev;
       if (next) {
-        if (document.documentElement?.requestFullscreen && !document.fullscreenElement) {
+        if (screenShareStageRef.current?.requestFullscreen && !document.fullscreenElement) {
+          screenShareStageRef.current.requestFullscreen().catch(() => {
+            if (document.documentElement?.requestFullscreen && !document.fullscreenElement) {
+              document.documentElement.requestFullscreen().catch(() => {});
+            }
+          });
+        } else if (document.documentElement?.requestFullscreen && !document.fullscreenElement) {
           document.documentElement.requestFullscreen().catch(() => {});
         }
       } else {
@@ -1651,6 +1657,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [incomingVoiceInvite, setIncomingVoiceInvite] = useState<{
     callId?: string;
     isDmCall?: boolean;
+    isTextRoom?: boolean;
     roomId?: string;
     fromUserId: string;
     fromUserName: string;
@@ -1753,7 +1760,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const startPrivateCallRef = useRef<(friend: CommunityUserProfile, opts?: { isAnswering?: boolean }) => Promise<void>>(async () => {});
 
-  const handleAcceptVoiceInvite = () => {
+  const handleAcceptVoiceInvite = async () => {
     if (!incomingVoiceInvite) return;
     const inv = incomingVoiceInvite;
     setIncomingVoiceInvite(null);
@@ -1783,15 +1790,32 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return;
     }
 
+    // Tự động tham gia máy chủ nếu chưa tham gia
+    let targetServer = servers.find(s => s.id === inv.serverId);
+    if (!targetServer) {
+      const ok = await joinServerAndWelcome(inv.serverId);
+      if (ok) {
+        targetServer = servers.find(s => s.id === inv.serverId);
+      }
+    }
+
     // Chuyển sang máy chủ của lời mời nếu khác máy chủ hiện tại
-    const targetServer = servers.find(s => s.id === inv.serverId);
     if (targetServer && targetServer.id !== selectedServer.id) {
       setSelectedServer(targetServer);
       setIsFriendsTabActive(false);
     }
-    const targetChannel = (targetServer || selectedServer).channels.find(c => c.id === inv.channelId);
-    handleJoinVoiceCall(inv.channelId, targetChannel);
-    playAudioChime('join');
+    const currentSrv = targetServer || selectedServer;
+    const targetChannel = currentSrv.channels.find(c => c.id === inv.channelId);
+
+    if (inv.isTextRoom) {
+      if (targetChannel) {
+        handleSelectChannel(targetChannel);
+      }
+      playAudioChime('join');
+    } else {
+      handleJoinVoiceCall(inv.channelId, targetChannel);
+      playAudioChime('join');
+    }
   };
 
   const handleDeclineVoiceInvite = () => {
@@ -1868,9 +1892,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     member: { id: string; name: string; isHost?: boolean },
     explicitChannel?: CommunityChannel | null
   ) => {
+    const isTextRoom = explicitChannel?.type === 'text';
     const defaultVoiceCh = selectedServer.channels.find(c => c.type === 'voice') || selectedChannel;
     const targetChannel =
-      (explicitChannel && explicitChannel.type === 'voice' ? explicitChannel : null) ||
+      explicitChannel ||
       (connectedVoiceServerId === selectedServer.id && connectedVoiceChannel
         ? selectedServer.channels.find(c => c.id === connectedVoiceChannel) || defaultVoiceCh
         : selectedChannel.type === 'voice'
@@ -1885,7 +1910,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     if (assignedLiveStation) {
       showVoiceToast(
         language === 'vi'
-          ? `Bot "${member.name}" đã được phân bổ cho Trạm Live "${assignedLiveStation.name}". Không thể mời sang phòng thoại khác!`
+          ? `Bot "${member.name}" đã được phân bổ cho Trạm Live "${assignedLiveStation.name}". Không thể mời sang phòng khác!`
           : `Bot "${member.name}" is dedicated to Live Station "${assignedLiveStation.name}". Cannot invite to another room!`
       );
       setMemberMenu(null);
@@ -1907,13 +1932,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     }
 
-    // Tự động tham gia đúng phòng thoại muốn mời nếu người mời chưa ở trong phòng đó
-    if (connectedVoiceServerId !== selectedServer.id || connectedVoiceChannel !== targetVoiceChId) {
+    // Tự động tham gia đúng phòng thoại muốn mời nếu người mời chưa ở trong phòng đó (chỉ áp dụng cho voice)
+    if (!isTextRoom && (connectedVoiceServerId !== selectedServer.id || connectedVoiceChannel !== targetVoiceChId)) {
       handleJoinVoiceCall(targetVoiceChId, targetChannel);
     }
 
-    // Nếu là DJ Bot hệ thống: Cho vào phòng đàm thoại ngay lập tức
-    if (isBotTarget) {
+    // Nếu là DJ Bot hệ thống: Cho vào phòng đàm thoại ngay lập tức (chỉ khi là phòng voice)
+    if (isBotTarget && !isTextRoom) {
       const newVp: VoiceParticipant = {
         id: member.id,
         name: member.name,
@@ -1953,7 +1978,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       serverId: selectedServer.id,
       serverName: selectedServer.name,
       channelId: targetVoiceChId,
-      channelName: getChannelName(targetChannel) || 'Phòng Thoại Voice',
+      channelName: getChannelName(targetChannel) || (isTextRoom ? 'Phòng Trò Chuyện' : 'Phòng Thoại Voice'),
+      isTextRoom,
       timestamp: Date.now(),
     };
 
@@ -7597,8 +7623,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     if (!connectedVoiceChannel) return;
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: {
+          frameRate: { ideal: 30, max: 60 },
+        },
         audio: true,
+      }).catch(() => {
+        return navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
       });
       screenStreamRef.current = stream;
       const myId = myParticipantIdRef.current;
@@ -8713,6 +8746,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             autoPlay
             playsInline
             muted
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
             className={`w-full object-contain bg-black cursor-pointer ${
               isScreenFullscreen ? 'h-full max-h-none' : 'max-h-[62vh]'
             }`}
@@ -9226,6 +9260,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             {chUnread > 99 ? '99+' : chUnread}
                           </span>
                         )}
+                        {/* Nút Mời vào phòng chat này */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            setVoiceInviteModalChannel(channel);
+                          }}
+                          title={language === 'vi' ? 'Mời bạn bè / thành viên vào phòng chat này' : 'Invite members to this chat room'}
+                          className="opacity-70 group-hover/ch:opacity-100 p-1 rounded hover:bg-white/10 text-[#888] hover:text-white transition-all cursor-pointer flex-shrink-0"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                        </button>
                         {canManageServer && textCount > 1 && (
                           <button
                             type="button"
@@ -9483,7 +9530,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               setVoiceInviteModalChannel(channel);
                             }}
                             title={language === 'vi' ? 'Mời thành viên vào phòng thoại này' : 'Invite members to this voice room'}
-                            className="opacity-0 group-hover/vch:opacity-100 p-1 rounded hover:bg-white/10 text-[#777] hover:text-white transition-all cursor-pointer"
+                            className="opacity-70 group-hover/vch:opacity-100 p-1 rounded hover:bg-white/10 text-[#888] hover:text-white transition-all cursor-pointer"
                           >
                             <UserPlus className="w-3.5 h-3.5" />
                           </button>
@@ -11444,6 +11491,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     title={getTranslation(language, 'community.voiceSettings')}
                   >
                     <Sliders className="w-5 h-5 text-emerald-400" />
+                  </button>
+
+                  {/* Invite Members to Voice Room Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curChannel = selectedServer.channels.find(c => c.id === connectedVoiceChannel) || selectedChannel;
+                      setVoiceInviteModalChannel(curChannel);
+                    }}
+                    className="w-11 h-11 rounded-full bg-[#2b2d31] hover:bg-[#35373c] text-zinc-300 hover:text-emerald-400 transition-all cursor-pointer flex items-center justify-center shadow-md"
+                    title={language === 'vi' ? 'Mời thành viên vào phòng đàm thoại' : 'Invite members to voice call'}
+                  >
+                    <UserPlus className="w-5 h-5 text-emerald-400" />
                   </button>
 
                   {/* Disconnect Red Button */}
@@ -16187,7 +16247,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 className="absolute -bottom-1 -right-1 p-1 rounded-full text-black shadow"
                 style={{ backgroundColor: accentColor }}
               >
-                <PhoneCall className="w-2.5 h-2.5 fill-current animate-pulse" />
+                {incomingVoiceInvite.isTextRoom ? (
+                  <MessageSquare className="w-2.5 h-2.5 fill-current animate-pulse" />
+                ) : (
+                  <PhoneCall className="w-2.5 h-2.5 fill-current animate-pulse" />
+                )}
               </span>
             </div>
 
@@ -16196,6 +16260,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 <h3 className="text-xs font-extrabold tracking-tight truncate">
                   {incomingVoiceInvite.isDmCall || incomingVoiceInvite.serverId === 'dm_private'
                     ? 'Cuộc Gọi Thoại Đến'
+                    : incomingVoiceInvite.isTextRoom
+                    ? 'Lời Mời Vào Phòng Chat'
                     : 'Lời Mời Vào Phòng Thoại'}
                 </h3>
                 <button
@@ -16245,16 +16311,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               }}
               className="py-2 px-3 rounded-xl text-[11px] font-bold font-mono flex items-center justify-center gap-1.5 transition-transform hover:scale-[1.03] active:scale-95 cursor-pointer shadow-md"
             >
-              <PhoneCall className="w-3 h-3 fill-current" />
-              <span>Chấp nhận</span>
+              {incomingVoiceInvite.isTextRoom ? (
+                <MessageSquare className="w-3 h-3 fill-current" />
+              ) : (
+                <PhoneCall className="w-3 h-3 fill-current" />
+              )}
+              <span>{incomingVoiceInvite.isTextRoom ? 'Vào phòng' : 'Chấp nhận'}</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* ──────────────── 15B. MODAL MỜI THÀNH VIÊN VÀO PHÒNG THOẠI (AI CŨNG MỜI ĐƯỢC) ──────────────── */}
+      {/* ──────────────── 15B. MODAL MỜI THÀNH VIÊN VÀO PHÒNG THOẠI & PHÒNG CHAT ──────────────── */}
       {voiceInviteModalChannel && (
-        <div className="fixed inset-0 z-[72] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-[80] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div
             className={`w-full max-w-md rounded-2xl shadow-2xl border p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150 ${
               isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#10101c] border-[#2c2c42] text-white'
@@ -16270,7 +16340,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 </div>
                 <div className="min-w-0">
                   <h3 className="text-sm font-bold tracking-wide truncate">
-                    Mời Vào Phòng Thoại
+                    {voiceInviteModalChannel.type === 'text' ? 'Mời Vào Phòng Chat' : 'Mời Vào Phòng Thoại'}
                   </h3>
                   <p className="text-[11px] text-[#888] font-mono truncate">
                     #{getChannelName(voiceInviteModalChannel)} • {selectedServer.name}
@@ -16288,18 +16358,60 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
             <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
               {(() => {
-                const roomParticipants = getEffectiveVoiceParticipants(voiceInviteModalChannel);
+                const isTextRoom = voiceInviteModalChannel.type === 'text';
+                const roomParticipants = isTextRoom ? [] : getEffectiveVoiceParticipants(voiceInviteModalChannel);
                 const now = Date.now();
-                const candidates = onlineMembers.filter(m => {
+
+                // 1. Thành viên trong Server
+                const serverCandidates = onlineMembers.filter(m => {
                   if (m.id === 'usr_me' || (currentUser?.id && m.id === currentUser.id)) return false;
-                  if (roomParticipants.some(vp => vp.id === m.id)) return false;
+                  if (!isTextRoom && roomParticipants.some(vp => vp.id === m.id)) return false;
                   return true;
                 });
+
+                // 2. Bạn bè hoặc người dùng ngoài Server (để mời họ vào server và phòng cùng lúc)
+                const friendCandidates = registeredUsers
+                  .filter(u => {
+                    if (u.id === 'usr_me' || (currentUser?.id && u.id === currentUser.id)) return false;
+                    if (serverCandidates.some(sc => sc.id === u.id)) return false;
+                    return isMutualFriend(u) || followingUserIds.has(u.id);
+                  })
+                  .map(u => ({
+                    id: u.id,
+                    name: u.display_name,
+                    username: u.username,
+                    avatar: u.avatar || null,
+                    role: isMutualFriend(u) ? 'BẠN BÈ' : 'THEO DÕI',
+                    status: getEffectiveStatus(u),
+                    isHost: false,
+                    isFriend: true,
+                  }));
+
+                // 3. Người dùng realtime khác nếu có
+                const extraRtCandidates = Object.values(realtimeUserPresences)
+                  .filter(rt => {
+                    if (rt.id === 'usr_me' || (currentUser?.id && rt.id === currentUser.id)) return false;
+                    if (serverCandidates.some(sc => sc.id === rt.id)) return false;
+                    if (friendCandidates.some(fc => fc.id === rt.id)) return false;
+                    return rt.status === 'online' || rt.status === 'dnd';
+                  })
+                  .map(rt => ({
+                    id: rt.id,
+                    name: rt.display_name,
+                    username: rt.username,
+                    avatar: rt.avatar || null,
+                    role: 'CỘNG ĐỒNG',
+                    status: rt.status,
+                    isHost: false,
+                    isFriend: false,
+                  }));
+
+                const candidates = [...serverCandidates, ...friendCandidates, ...extraRtCandidates];
 
                 if (candidates.length === 0) {
                   return (
                     <div className="py-8 text-center text-xs text-[#888] font-mono">
-                      Tất cả thành viên hiện đều đã ở trong phòng này hoặc chưa có thành viên khác trong server.
+                      Không tìm thấy thành viên hoặc bạn bè nào để mời.
                     </div>
                   );
                 }
@@ -16329,7 +16441,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           {renderStatusDot(mem.status, 'sm')}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-xs font-bold truncate">{mem.name}</p>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <p className="text-xs font-bold truncate">{mem.name}</p>
+                            {'isFriend' in mem && mem.isFriend && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                Bạn bè
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[10px] font-mono text-[#777] truncate">
                             {assignedStation
                               ? `📻 Trạm Live: ${getChannelName(assignedStation)}`
@@ -16355,7 +16474,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         }
                         className="px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed transition-transform hover:scale-105 active:scale-95 shrink-0"
                       >
-                        <PhoneCall className="w-3 h-3" />
+                        {isTextRoom ? <MessageSquare className="w-3 h-3" /> : <PhoneCall className="w-3 h-3" />}
                         <span>{secsLeft > 0 ? `Đợi ${secsLeft}s` : assignedStation ? 'Đang trực trạm' : 'Mời'}</span>
                       </button>
                     </div>
