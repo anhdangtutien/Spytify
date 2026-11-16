@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
 import { HoverMarquee } from './HoverMarquee';
@@ -41,6 +42,74 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(800);
+  const [sortBy, setSortBy] = useState<string>('default');
+  const [sortAsc, setSortAsc] = useState<boolean>(true);
+  const [filterQuery, setFilterQuery] = useState<string>('');
+  const [displayList, setDisplayList] = useState<Track[]>(tracks);
+
+  // Native Rust-powered fast filtering and sorting
+  useEffect(() => {
+    let isCancelled = false;
+
+    const processTracks = async () => {
+      let current = tracks;
+      if (filterQuery.trim()) {
+        try {
+          current = await invoke<Track[]>('rust_filter_tracks', { tracks: current, query: filterQuery });
+        } catch {
+          const q = filterQuery.trim().toLowerCase();
+          current = current.filter(t => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q));
+        }
+      }
+
+      if (sortBy !== 'default') {
+        try {
+          current = await invoke<Track[]>('rust_sort_tracks', { tracks: current, sortBy, ascending: sortAsc });
+        } catch {
+          current = [...current].sort((a, b) => {
+            let res = 0;
+            if (sortBy === 'title') res = a.title.localeCompare(b.title);
+            else if (sortBy === 'artist') res = a.artist.localeCompare(b.artist);
+            else if (sortBy === 'duration') res = a.duration_secs - b.duration_secs;
+            else if (sortBy === 'source') res = a.source.localeCompare(b.source);
+            return sortAsc ? res : -res;
+          });
+        }
+      }
+
+      if (!isCancelled) {
+        setDisplayList(current);
+      }
+    };
+
+    processTracks();
+    return () => { isCancelled = true; };
+  }, [tracks, sortBy, sortAsc, filterQuery]);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      if (sortAsc) {
+        setSortAsc(false);
+      } else {
+        setSortBy('default');
+        setSortAsc(true);
+      }
+    } else {
+      setSortBy(field);
+      setSortAsc(true);
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortBy !== field) {
+      return <ArrowUpDown className="w-2.5 h-2.5 opacity-0 group-hover/col:opacity-40 transition-opacity ml-1" />;
+    }
+    return sortAsc ? (
+      <ArrowUp className="w-2.5 h-2.5 ml-1 flex-shrink-0" style={{ color: accentColor }} />
+    ) : (
+      <ArrowDown className="w-2.5 h-2.5 ml-1 flex-shrink-0" style={{ color: accentColor }} />
+    );
+  };
 
   // Virtual Scrolling scroll listener on parent container
   useEffect(() => {
@@ -72,7 +141,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
     };
   }, []);
 
-  const totalCount = tracks.length;
+  const totalCount = displayList.length;
   const isVirtual = totalCount > 25;
 
   let startIndex = 0;
@@ -85,7 +154,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
     endIndex = Math.min(totalCount, Math.ceil((relativeScroll + containerHeight) / ROW_HEIGHT) + OVERSCAN);
   }
 
-  const visibleTracks = isVirtual ? tracks.slice(startIndex, endIndex) : tracks;
+  const visibleTracks = isVirtual ? displayList.slice(startIndex, endIndex) : displayList;
   const topPadding = isVirtual ? startIndex * ROW_HEIGHT : 0;
   const bottomPadding = isVirtual ? (totalCount - endIndex) * ROW_HEIGHT : 0;
   const formatTime = (secs: number) => {
@@ -149,14 +218,82 @@ export const TrackTable: React.FC<TrackTableProps> = ({
 
   return (
     <div ref={containerRef} className="w-full text-xs select-none">
-      {/* Header — Spy Minimalist */}
+      {/* Top Fast Filter & Status Bar */}
+      {tracks.length > 5 && (
+        <div className="flex items-center justify-between gap-3 px-3 py-2 mb-2 bg-[#09090c] rounded-xl border border-[#161620]">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#555]" />
+            <input
+              type="text"
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder={language === 'vi' ? 'Lọc nhanh bằng Rust...' : 'Fast filter with Rust...'}
+              className="w-full bg-[#101016] text-xs text-white placeholder-[#555] pl-8 pr-6 py-1.5 rounded-lg border border-[#1c1c28] focus:border-white/30 focus:outline-none font-mono"
+            />
+            {filterQuery && (
+              <button
+                onClick={() => setFilterQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#666] hover:text-white text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2.5 text-[10px] font-mono">
+            {sortBy !== 'default' && (
+              <button
+                onClick={() => { setSortBy('default'); setSortAsc(true); }}
+                className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 cursor-pointer transition-colors"
+                title={language === 'vi' ? 'Đặt lại thứ tự ban đầu' : 'Reset default sort'}
+              >
+                <Zap className="w-2.5 h-2.5 fill-current" />
+                <span>Rust: {sortBy} ({sortAsc ? '▲' : '▼'})</span>
+                <span className="ml-1 text-xs leading-none">✕</span>
+              </button>
+            )}
+            <span className="text-[#666]">
+              {displayList.length} / {tracks.length} {language === 'vi' ? 'bài hát' : 'tracks'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Header — Spy Minimalist with Rust native sorting */}
       <div className="grid grid-cols-[40px_1fr_1fr_90px_90px] px-3 py-2 border-b border-[#141418] text-[10px] font-bold text-[#666677] uppercase tracking-wider sticky top-0 bg-black/90 backdrop-blur z-10 font-mono">
-        <span className="text-center">#</span>
-        <span>{getTranslation(language, 'table.title')}</span>
-        <span>{getTranslation(language, 'table.artistAlbum')}</span>
-        <span className="text-center">{getTranslation(language, 'table.source')}</span>
-        <span className="flex items-center justify-end pr-2">
+        <span 
+          onClick={() => { setSortBy('default'); setSortAsc(true); }}
+          className="text-center cursor-pointer hover:text-white transition-colors"
+          title={language === 'vi' ? 'Thứ tự ban đầu' : 'Default index'}
+        >
+          #
+        </span>
+        <span 
+          onClick={() => handleSort('title')}
+          className="group/col flex items-center cursor-pointer hover:text-white transition-colors"
+        >
+          <span>{getTranslation(language, 'table.title')}</span>
+          {renderSortIcon('title')}
+        </span>
+        <span 
+          onClick={() => handleSort('artist')}
+          className="group/col flex items-center cursor-pointer hover:text-white transition-colors"
+        >
+          <span>{getTranslation(language, 'table.artistAlbum')}</span>
+          {renderSortIcon('artist')}
+        </span>
+        <span 
+          onClick={() => handleSort('source')}
+          className="group/col flex items-center justify-center cursor-pointer hover:text-white transition-colors text-center"
+        >
+          <span>{getTranslation(language, 'table.source')}</span>
+          {renderSortIcon('source')}
+        </span>
+        <span 
+          onClick={() => handleSort('duration')}
+          className="group/col flex items-center justify-end pr-2 cursor-pointer hover:text-white transition-colors"
+        >
           <Clock3 className="w-3.5 h-3.5" />
+          {renderSortIcon('duration')}
         </span>
       </div>
 

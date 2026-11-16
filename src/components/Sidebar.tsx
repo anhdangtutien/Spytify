@@ -214,11 +214,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             AI
           </span>
         )}
-        {navItem('rust_ui', '⚡ Rust Fast UI', <Zap className="w-4 h-4 text-amber-400" />,
-          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">
-            FAST
-          </span>
-        )}
       </div>
 
       {/* Library Section */}

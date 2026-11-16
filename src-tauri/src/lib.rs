@@ -1038,6 +1038,71 @@ fn rust_ui_sort(
     Ok(rust_ui.snapshot(&audio))
 }
 
+#[tauri::command]
+fn rust_sort_tracks(mut tracks: Vec<Track>, sort_by: String, ascending: bool) -> Vec<Track> {
+    match sort_by.as_str() {
+        "title" => {
+            tracks.sort_by(|a, b| {
+                let ord = a.title.to_lowercase().cmp(&b.title.to_lowercase());
+                if ascending { ord } else { ord.reverse() }
+            });
+        }
+        "artist" => {
+            tracks.sort_by(|a, b| {
+                let ord = a.artist.to_lowercase().cmp(&b.artist.to_lowercase());
+                if ascending { ord } else { ord.reverse() }
+            });
+        }
+        "duration" => {
+            tracks.sort_by(|a, b| {
+                let ord = a.duration_secs.cmp(&b.duration_secs);
+                if ascending { ord } else { ord.reverse() }
+            });
+        }
+        "source" => {
+            tracks.sort_by(|a, b| {
+                let ord = format!("{:?}", a.source).cmp(&format!("{:?}", b.source));
+                if ascending { ord } else { ord.reverse() }
+            });
+        }
+        _ => {}
+    }
+    tracks
+}
+
+#[tauri::command]
+fn rust_filter_tracks(tracks: Vec<Track>, query: String) -> Vec<Track> {
+    let q = query.trim().to_lowercase();
+    if q.is_empty() {
+        return tracks;
+    }
+    tracks
+        .into_iter()
+        .filter(|t| {
+            t.title.to_lowercase().contains(&q)
+                || t.artist.to_lowercase().contains(&q)
+                || t.album.to_lowercase().contains(&q)
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn rust_dedup_tracks(tracks: Vec<Track>) -> Vec<Track> {
+    let mut seen = std::collections::HashSet::new();
+    let mut res = Vec::with_capacity(tracks.len());
+    for t in tracks {
+        let key = if !t.path_or_url.is_empty() {
+            t.path_or_url.clone()
+        } else {
+            t.id.clone()
+        };
+        if seen.insert(key) {
+            res.push(t);
+        }
+    }
+    res
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct AppUpdateInfo {
     pub has_update: bool,
@@ -1526,6 +1591,9 @@ pub fn run() {
             rust_ui_seek,
             rust_ui_toggle_favorite,
             rust_ui_sort,
+            rust_sort_tracks,
+            rust_filter_tracks,
+            rust_dedup_tracks,
             check_for_updates,
             download_and_install_update,
             get_launch_on_startup,

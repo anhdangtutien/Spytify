@@ -17,7 +17,6 @@ import { AlbumsView } from './components/AlbumsView';
 import { AddToAlbumModal } from './components/AddToAlbumModal';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
-import { RustFastUiView } from './components/RustFastUiView';
 import { checkGitHubUpdate, UpdateInfo, CURRENT_VERSION } from './services/updater';
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle } from './utils/trackUtils';
@@ -3357,8 +3356,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#666]">
                 {currentView === 'community'
                   ? getTranslation(language, 'nav.community').toUpperCase()
-                  : currentView === 'rust_ui'
-                  ? 'RUST NATIVE FAST UI (BLITZ)'
                   : currentView === 'search'
                   ? getTranslation(language, 'nav.search').toUpperCase()
                   : currentView === 'albums'
@@ -3580,13 +3577,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onToggleSmartDj={() => setSmartDjEnabled(p => !p)}
                 accentColor={activeAccentColor}
                 language={language}
-              />
-            ) : currentView === 'rust_ui' ? (
-              <RustFastUiView
-                userId={currentUser?.id || 'guest'}
-                localTracks={tracks}
-                onExitRustUi={() => setCurrentView('library')}
-                onPlayTrackFromRust={handlePlayTrack}
               />
             ) : currentView === 'profile' ? (
               <ProfileView
