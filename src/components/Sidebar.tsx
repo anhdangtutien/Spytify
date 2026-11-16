@@ -1,7 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { 
   Search, FolderPlus, HardDrive, Heart, Sparkles, User as UserIcon, LogIn, Flame, Layers,
-  PanelLeftClose, PanelLeftOpen, Wand2
+  PanelLeftClose, PanelLeftOpen, Wand2, Zap
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, SpytifyBrandLogo } from './Icons';
 import { ViewType, User } from '../types';
@@ -212,6 +212,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }}
           >
             AI
+          </span>
+        )}
+        {navItem('rust_ui', '⚡ Rust Fast UI', <Zap className="w-4 h-4 text-amber-400" />,
+          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">
+            FAST
           </span>
         )}
       </div>

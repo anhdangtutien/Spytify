@@ -968,6 +968,76 @@ fn rust_ui_play_index(
     Ok(None)
 }
 
+#[tauri::command]
+fn rust_ui_toggle_play(
+    rust_ui: State<'_, RustUiEngine>,
+    audio: State<'_, AudioPlayerManager>,
+) -> Result<RustUiSnapshot, String> {
+    rust_ui.toggle_play(&audio);
+    Ok(rust_ui.snapshot(&audio))
+}
+
+#[tauri::command]
+fn rust_ui_next(
+    rust_ui: State<'_, RustUiEngine>,
+    audio: State<'_, AudioPlayerManager>,
+) -> Result<RustUiSnapshot, String> {
+    rust_ui.play_next(&audio);
+    Ok(rust_ui.snapshot(&audio))
+}
+
+#[tauri::command]
+fn rust_ui_prev(
+    rust_ui: State<'_, RustUiEngine>,
+    audio: State<'_, AudioPlayerManager>,
+) -> Result<RustUiSnapshot, String> {
+    rust_ui.play_prev(&audio);
+    Ok(rust_ui.snapshot(&audio))
+}
+
+#[tauri::command]
+fn rust_ui_set_volume(
+    volume: f32,
+    rust_ui: State<'_, RustUiEngine>,
+    audio: State<'_, AudioPlayerManager>,
+) -> Result<RustUiSnapshot, String> {
+    rust_ui.set_volume(&audio, volume);
+    Ok(rust_ui.snapshot(&audio))
+}
+
+#[tauri::command]
+fn rust_ui_seek(
+    seconds: u64,
+    rust_ui: State<'_, RustUiEngine>,
+    audio: State<'_, AudioPlayerManager>,
+) -> Result<RustUiSnapshot, String> {
+    rust_ui.seek(&audio, seconds);
+    Ok(rust_ui.snapshot(&audio))
+}
+
+#[tauri::command]
+fn rust_ui_toggle_favorite(
+    user_id: String,
+    track: Track,
+    rust_ui: State<'_, RustUiEngine>,
+    db: State<'_, DatabaseManager>,
+    audio: State<'_, AudioPlayerManager>,
+) -> Result<RustUiSnapshot, String> {
+    rust_ui.toggle_favorite(&db, &user_id, track);
+    Ok(rust_ui.snapshot(&audio))
+}
+
+#[tauri::command]
+fn rust_ui_sort(
+    sort_by: String,
+    ascending: bool,
+    rust_ui: State<'_, RustUiEngine>,
+    audio: State<'_, AudioPlayerManager>,
+) -> Result<RustUiSnapshot, String> {
+    rust_ui.sort_tracks(&sort_by, ascending);
+    Ok(rust_ui.snapshot(&audio))
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct AppUpdateInfo {
     pub has_update: bool,
@@ -1449,6 +1519,13 @@ pub fn run() {
             rust_ui_filter,
             rust_ui_search_online,
             rust_ui_play_index,
+            rust_ui_toggle_play,
+            rust_ui_next,
+            rust_ui_prev,
+            rust_ui_set_volume,
+            rust_ui_seek,
+            rust_ui_toggle_favorite,
+            rust_ui_sort,
             check_for_updates,
             download_and_install_update,
             get_launch_on_startup,

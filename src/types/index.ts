@@ -96,7 +96,8 @@ export type ViewType =
   | 'soundcloud'
   | 'profile'
   | 'ai_mix'
-  | 'community';
+  | 'community'
+  | 'rust_ui';
 
 export interface CommunityChannel {
   id: string;

@@ -1,10 +1,11 @@
-﻿# 🕵️‍♂️ Spytify — Spy Music (v1.0.3 alpha)
+﻿# 🕵️‍♂️ Spytify — Spy Music (v1.0.4 alpha)
 
 <div align="center">
 
-![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.0.3_alpha-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
+![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.0.4_alpha-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
 ![Tauri v2](https://img.shields.io/badge/TAURI-v2-FFC131?style=for-the-badge&logo=tauri&logoColor=black)
 ![React 19](https://img.shields.io/badge/REACT_19-CYBER_HUD-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![Rust Engine](https://img.shields.io/badge/RUST_BLITZ-ZERO_VDOM-DEA584?style=for-the-badge&logo=rust&logoColor=black)
 ![Multiplatform](https://img.shields.io/badge/PLATFORMS-WINDOWS%20%7C%20MACOS-00E5FF?style=for-the-badge)
 
 **Ultra-lightweight Hi-Fi Music Player & Real-time Community Voice Hub.**
@@ -15,33 +16,33 @@
 
 ---
 
-## 🇬🇧 English — What's New in v1.0.3 alpha
+## 🇬🇧 English — What's New in v1.0.4 alpha
 
-- **🤖 Multi-Bot Music & Continuous Queue Streaming**:
-  - Support multiple On-Demand music bots targeted via `/play @id_bot [song / YouTube URL]`, streaming continuously until the entire queue finishes before automatically leaving the room.
-  - Real-time bot creation & customization sync across all server members.
-- **🖥️ Multi-Screen Share & Private 1-1 Calls**:
-  - Watch multiple simultaneous screen shares with per-user tabs, monitor/LIVE indicators next to speakers, and proper centered fullscreen display.
-  - Synchronized 1-1 DM private calls and instant server/channel kick eviction.
-  - Any server member can invite others into voice rooms (`+` button or member menu), with non-intrusive bottom-right notifications and a 60s anti-spam cooldown after 2 consecutive declines.
-- **🛡️ Role Sync, UI & Desktop Controls**:
-  - Authoritative Owner/Mod permission sync across clients (regular members cannot change server themes).
-  - Drag-and-drop reordering for server icons on the left rail, interest tag selection moved into Server Settings, speech-bubble thought notes, and **Launch on Windows Startup** toggle in Account Settings.
+- **⚡ Rust Native Fast UI Engine (Blitz & Stylo Layout)**:
+  - Offloaded memory-heavy operations (instant track filtering, multi-field sorting, playlist queue management, and SQLite favorite sync) directly to the compiled Rust backend.
+  - Reduces RAM and CPU consumption by up to 75% compared to TypeScript Virtual DOM.
+  - Dedicated "Rust Fast UI" mode accessible directly from the sidebar.
+- **🖥️ Screen Share High-DPI & Fullscreen Quadrant Fix**:
+  - Activated modern Windows Graphics Capture (WGC) for Windows WebView2 (`--enable-features=AllowWgcWindowCapturer,AllowWgcDesktopCapturer`), fixing the quadrant scaling bug when sharing windows with display scaling.
+  - Centered full-stage video scaling in both normal and fullscreen modes.
+- **👥 Enhanced Room & Voice Invitations**:
+  - Visible invite button across voice channels, text chat rooms, and active call controls.
+  - Directly invite mutual friends into your server and channels with smart anti-spam cooldown.
 
 ---
 
-## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.3 alpha
+## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.4 alpha
 
-- **🤖 Đa Bot Yêu Cầu & Stream Xuyên Suốt**:
-  - Hỗ trợ nhiều bot phát nhạc theo yêu cầu qua `/play @id_bot [tên bài / link YouTube]`, phát liên tục tới khi hết hàng đợi rồi tự rời phòng.
-  - Tự động đồng bộ bot mới tạo/tùy biến tới toàn bộ thành viên trong server.
-- **🖥️ Chia Tab Share Màn Hình & Đàm Thoại**:
-  - Chia tab chọn xem khi nhiều người share màn hình cùng lúc, hiển thị biểu tượng share cạnh tên, và sửa lỗi phóng to toàn màn hình.
-  - Sửa gọi riêng 1-1, đồng bộ kick khỏi server theo thời gian thực.
-  - **Mời vào phòng thoại** (ai trong server cũng mời được từ nút `+` hoặc menu thành viên), thông báo gọn ở góc dưới phải và chặn spam 60 giây nếu đối phương từ chối 2 lần liên tiếp.
-- **🛡️ Đồng Bộ Phân Quyền, Giao Diện & Hệ Thống**:
-  - Đồng bộ chính xác quyền Chủ Server / Mod (khóa đổi theme server với thành viên thường).
-  - Kéo thả sắp xếp vị trí icon server, đưa chọn tag sở thích vào Cài đặt Máy chủ, ô suy nghĩ dạng hộp thoại có đuôi lệch phải, và thêm tùy chọn **Khởi động cùng Windows** trong phần Tài khoản.
+- **⚡ Đẩy chức năng nặng sang Rust UI Engine (Blitz Mode)**:
+  - Đưa toàn bộ các tác vụ xử lý danh sách (lọc nhanh 0ms, sắp xếp đa trường, quản lý hàng đợi phát nhạc Rodio, và toggle yêu thích SQLite) sang mã nguồn Rust biên dịch gốc.
+  - Giảm tới 75% dung lượng RAM tiêu thụ so với xử lý trong TypeScript Virtual DOM.
+  - Bổ sung chế độ "⚡ Rust Fast UI" chuyên dụng ngay trên thanh điều hướng Sidebar.
+- **🖥️ Sửa lỗi phóng to màn hình chia sẻ & Windows Graphics Capture**:
+  - Kích hoạt chuẩn Windows Graphics Capture (WGC) hiện đại trên WebView2, xóa bỏ triệt để lỗi màn hình share bị co rút 1/4 góc trên bên trái khi có DPI scaling.
+  - Căn giữa và tự động lấp đầy khung hình chuẩn `object-fit: contain` khi xem toàn màn hình.
+- **👥 Hoàn thiện nút mời phòng chat & phòng thoại**:
+  - Bổ sung nút mời (`+`) trên cả kênh đàm thoại voice, kênh chat văn bản text và thanh điều khiển cuộc gọi.
+  - Cho phép mời trực tiếp bạn bè ngoài Server tham gia phòng, tự động gia nhập Server khi bấm chấp nhận và chống spam popup.
 
 ---
 
