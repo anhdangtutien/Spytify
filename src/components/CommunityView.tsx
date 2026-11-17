@@ -385,29 +385,34 @@ const getMemberTags = (
     Boolean(currentUserId && userId === currentUserId) ||
     Boolean(myParticipantId && userId === myParticipantId);
 
-  // 1. Kiểm tra tag được đồng bộ realtime qua Supabase presence
-  const rtTags = realtimePresences?.[userId]?.tags || realtimePresences?.[userId]?.tag_ids;
-  if (Array.isArray(rtTags) && rtTags.length > 0) {
-    return allTags.filter(t => rtTags.includes(t.id));
-  }
-
   const memberTags = server.member_tags || {};
   let tagIds: string[] = [];
+  let hasServerTagData = false;
 
   if (isMe) {
     const candidateKeys = [currentUserId, myParticipantId, 'usr_me', userId].filter(Boolean) as string[];
     for (const k of candidateKeys) {
-      if (Array.isArray(memberTags[k]) && memberTags[k].length > 0) {
+      if (Array.isArray(memberTags[k])) {
         tagIds = memberTags[k];
+        hasServerTagData = true;
         break;
       }
     }
   } else {
     // Với người khác, chỉ lấy tag của đúng userId đó, tuyệt đối không lấy usr_me của máy mình
-    if (Array.isArray(memberTags[userId]) && memberTags[userId].length > 0) {
+    if (Array.isArray(memberTags[userId])) {
       tagIds = memberTags[userId];
-    } else if (userNameOrDisplay && Array.isArray(memberTags[userNameOrDisplay]) && memberTags[userNameOrDisplay].length > 0) {
+      hasServerTagData = true;
+    } else if (userNameOrDisplay && Array.isArray(memberTags[userNameOrDisplay])) {
       tagIds = memberTags[userNameOrDisplay];
+      hasServerTagData = true;
+    }
+  }
+
+  if (!hasServerTagData) {
+    const rtTags = realtimePresences?.[userId]?.tags || realtimePresences?.[userId]?.tag_ids;
+    if (Array.isArray(rtTags)) {
+      return allTags.filter(t => rtTags.includes(t.id));
     }
   }
 
@@ -2584,16 +2589,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
       localStorage.setItem('spytify_user_bio', trimmed);
     } catch {}
-    if (activeChannelRef.current) {
-      activeChannelRef.current.send({
-        type: 'broadcast',
-        event: 'user_presence',
-        payload: {
-          ...myPresencePayloadRef.current,
-          bio: trimmed,
-        },
-      });
-    }
     setIsBioModalOpen(false);
   };
 
@@ -4211,7 +4206,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       ...selectedServer,
       member_tags: updatedMemberTags,
     };
-    broadcastAndPersistServerUpdate(updatedSrv);
+    broadcastAndPersistServerUpdate(updatedSrv, true);
     setIsTagSelectModalOpen(false);
   };
 
@@ -5019,7 +5014,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     });
   };
 
-  const broadcastAndPersistServerUpdate = (updatedSrv: CommunityServer) => {
+  const broadcastAndPersistServerUpdate = (updatedSrv: CommunityServer, deferRealtime = false) => {
     syncServerCustomBotsToRegisteredUsers([updatedSrv]);
     setServers(prev => {
       const exists = prev.some(s => s.id === updatedSrv.id);
@@ -5029,6 +5024,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     });
     if (selectedServer.id === updatedSrv.id) {
       setSelectedServer(updatedSrv);
+    }
+    if (deferRealtime && currentUser?.id) {
+      const key = `spytify_pending_server_updates_${currentUser.id}`;
+      let pending: Record<string, CommunityServer> = {};
+      try {
+        const stored = JSON.parse(localStorage.getItem(key) || '{}');
+        if (stored && typeof stored === 'object' && !Array.isArray(stored)) pending = stored;
+      } catch (error) {
+        console.warn('Could not read deferred server updates; replacing the invalid queue:', error);
+      }
+      pending[updatedSrv.id] = updatedSrv;
+      try {
+        localStorage.setItem(key, JSON.stringify(pending));
+      } catch (error) {
+        console.warn('Could not queue the deferred server update; syncing it immediately instead:', error);
+        pushCloudServer(updatedSrv).catch(() => {});
+      }
+      return;
     }
     pushCloudServer(updatedSrv).catch(() => {});
     activeChannelRef.current?.send({
@@ -5041,6 +5054,65 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       event: 'server_updated',
       payload: updatedSrv,
     });
+  };
+
+  const flushDeferredServerUpdates = async () => {
+    if (!currentUser?.id) return;
+    const key = `spytify_pending_server_updates_${currentUser.id}`;
+    let queued: Record<string, CommunityServer> = {};
+    try {
+      const stored = JSON.parse(localStorage.getItem(key) || '{}');
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) queued = stored;
+    } catch (error) {
+      console.warn('Could not read deferred server updates; replacing the invalid queue:', error);
+    }
+
+    const successfulIds: string[] = [];
+    for (const [serverId, server] of Object.entries(queued)) {
+      if (!server || server.id !== serverId) {
+        console.warn(`Skipping invalid deferred server update for ${serverId}.`);
+        continue;
+      }
+      if (await pushCloudServer(server)) {
+        successfulIds.push(serverId);
+        if (selectedServer.id === serverId) {
+          activeChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'server_updated',
+            payload: server,
+          });
+        }
+        globalSocialChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'server_updated',
+          payload: server,
+        });
+      }
+    }
+    if (successfulIds.length === 0) return;
+
+    let latest: Record<string, CommunityServer> = {};
+    try {
+      const stored = JSON.parse(localStorage.getItem(key) || '{}');
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) latest = stored;
+    } catch (error) {
+      console.warn('Could not re-read deferred server updates after syncing:', error);
+      return;
+    }
+    successfulIds.forEach(serverId => {
+      if (JSON.stringify(latest[serverId]) === JSON.stringify(queued[serverId])) {
+        delete latest[serverId];
+      }
+    });
+    try {
+      if (Object.keys(latest).length > 0) {
+        localStorage.setItem(key, JSON.stringify(latest));
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch (error) {
+      console.warn('Could not clear synced deferred server updates:', error);
+    }
   };
 
   const handleReorderServerChannels = (fromId: string, toId: string, position: 'above' | 'below' = 'above') => {
@@ -7398,6 +7470,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     const syncCloudProfilesAndFollows = async (syncProfileChanges = false) => {
       try {
+        if (syncProfileChanges) {
+          publishDeferredProfilePresence();
+          await flushDeferredServerUpdates();
+        }
         const profileSyncStartedAt = new Date().toISOString();
         let profileSyncSince = '1970-01-01T00:00:00.000Z';
         if (syncProfileChanges) {
@@ -8062,14 +8138,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   // Keep ref to latest user presence payload for real-time responses
+  const pendingProfilePresenceRef = useRef({
+    avatar: currentUser?.avatar || null,
+    bio: myBio,
+  });
+  pendingProfilePresenceRef.current = {
+    avatar: currentUser?.avatar || null,
+    bio: myBio,
+  };
+  const publishedProfilePresenceRef = useRef(pendingProfilePresenceRef.current);
   const myPresencePayloadRef = useRef<any>(null);
   myPresencePayloadRef.current = {
     id: currentUser?.id || myParticipantIdRef.current,
     username: currentUser?.username || currentUser?.email?.split('@')[0] || 'operative',
     display_name: myServerDisplayName,
-    avatar: currentUser?.avatar || null,
+    avatar: publishedProfilePresenceRef.current.avatar,
     status: myStatus === 'invisible' ? 'offline' : myStatus,
-    bio: myBio,
+    bio: publishedProfilePresenceRef.current.bio,
     thought: myUserThought,
     custom_status: myUserThought,
     tags: resolveMemberTags('usr_me', selectedServer).map(t => t.id),
@@ -8077,7 +8162,34 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     listeningTrack: myVisibleTrack,
   };
 
-  // Broadcast presence updates whenever status, server nickname, avatar, track, thought or tags change
+  const publishDeferredProfilePresence = () => {
+    const pending = pendingProfilePresenceRef.current;
+    const published = publishedProfilePresenceRef.current;
+    if (pending.avatar === published.avatar && pending.bio === published.bio) return;
+
+    publishedProfilePresenceRef.current = { ...pending };
+    const payload = {
+      ...myPresencePayloadRef.current,
+      avatar: pending.avatar,
+      bio: pending.bio,
+    };
+    myPresencePayloadRef.current = payload;
+    activeChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'user_presence',
+      payload,
+    });
+    if (myVoiceParticipantRef.current && activeChannelRef.current) {
+      myVoiceParticipantRef.current = { ...myVoiceParticipantRef.current, avatar: pending.avatar };
+      activeChannelRef.current.send({
+        type: 'broadcast',
+        event: 'voice_presence',
+        payload: { action: 'here', participant: myVoiceParticipantRef.current },
+      });
+    }
+  };
+
+  // Broadcast live status and playback changes; profile details are refreshed on the 3-minute sync.
   useEffect(() => {
     if (activeChannelRef.current && myPresencePayloadRef.current) {
       activeChannelRef.current.send({
@@ -8090,7 +8202,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       myVoiceParticipantRef.current = {
         ...myVoiceParticipantRef.current,
         name: myServerDisplayName,
-        avatar: currentUser?.avatar || null,
+        avatar: publishedProfilePresenceRef.current.avatar,
       };
       activeChannelRef.current.send({
         type: 'broadcast',
@@ -8098,7 +8210,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         payload: { action: 'here', participant: myVoiceParticipantRef.current },
       });
     }
-  }, [myStatus, myServerDisplayName, myBio, myUserThought, currentTrack?.id, currentUser?.avatar, selectedServer.member_tags]);
+  }, [myStatus, myServerDisplayName, myUserThought, currentTrack?.id]);
 
   // ──────── SUPABASE REALTIME SYNC (MESSAGES & VOICE STATE THEO SERVER) ────────
   useEffect(() => {
@@ -8652,7 +8764,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       id: myId,
       name: myServerDisplayName,
       username: currentUser?.username || 'operative',
-      avatar: currentUser?.avatar || null,
+      avatar: publishedProfilePresenceRef.current.avatar,
       isMuted: false,
       isDeafened: false,
       isSpeaking: false,
@@ -8754,7 +8866,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           {
             userId: myId,
             userName: myServerDisplayName,
-            avatar: currentUser?.avatar || null,
+            avatar: publishedProfilePresenceRef.current.avatar,
             stream: screenStreamRef.current,
           },
           true
@@ -8810,7 +8922,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         {
           userId: myId,
           userName: myServerDisplayName,
-          avatar: currentUser?.avatar || null,
+          avatar: publishedProfilePresenceRef.current.avatar,
           stream,
         },
         true
@@ -9070,7 +9182,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             id: myId,
             username: currentUser?.username || myPresencePayloadRef.current?.username || 'operative',
             display_name: myServerDisplayName,
-            avatar: currentUser?.avatar || null,
+            avatar: publishedProfilePresenceRef.current.avatar,
             status: 'offline',
             listening: null,
             listeningTrack: null,
@@ -9093,7 +9205,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             id: myId,
             username: currentUser?.username || myPresencePayloadRef.current?.username || 'operative',
             display_name: myServerDisplayName,
-            avatar: currentUser?.avatar || null,
+            avatar: publishedProfilePresenceRef.current.avatar,
             status: myStatus,
             listening: myVisibleListening,
             listeningTrack: myVisibleTrack,

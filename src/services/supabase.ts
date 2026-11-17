@@ -898,11 +898,11 @@ export interface CloudServerInvite {
  * Syncs a custom CommunityServer definition to Supabase Cloud so invite links
  * (`spytify://station/join/...`) and invited members can load and join the server across accounts.
  */
-export async function pushCloudServer(server: any): Promise<void> {
+export async function pushCloudServer(server: any): Promise<boolean> {
   const client = getSupabaseClient();
-  if (!client || !server?.id || server.id === 'srv_none') return;
+  if (!client || !server?.id || server.id === 'srv_none') return false;
   try {
-    await client.from('spytify_direct_messages').upsert(
+    const { error } = await client.from('spytify_direct_messages').upsert(
       {
         id: `srv_reg_${server.id}`,
         room_id: SERVERS_REGISTRY_ROOM_ID,
@@ -917,7 +917,12 @@ export async function pushCloudServer(server: any): Promise<void> {
       },
       { onConflict: 'id' }
     );
-  } catch {}
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.warn('Supabase cloud server sync failed:', error);
+    return false;
+  }
 }
 
 export async function deleteCloudServer(serverId: string): Promise<void> {
