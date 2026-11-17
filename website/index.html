@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="vi" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spytify — Trình phát nhạc Hi-Fi lõi Rust & Trạm sóng cộng đồng Spy Jam</title>
+  <meta name="description" content="Spytify là trình phát nhạc siêu nhẹ viết bằng Rust và React, tích hợp trạm thoại Spy Jam, chia sẻ màn hình 90 FPS và phát nhạc đa nguồn YouTube, SoundCloud, Audius.">
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              DEFAULT: '#FF2A55',
+              dark: '#E01E45',
+              glow: 'rgba(255, 42, 85, 0.35)',
+              dim: 'rgba(255, 42, 85, 0.12)'
+            },
+            surface: {
+              DEFAULT: '#0B0D13',
+              card: '#121620',
+              border: '#1F2636',
+              hover: '#19202E'
+            }
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #07090E;
+      color: #E2E8F0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      overflow-x: hidden;
+    }
+    .neon-glow {
+      box-shadow: 0 0 35px rgba(255, 42, 85, 0.35);
+    }
+    .neon-text-glow {
+      text-shadow: 0 0 20px rgba(255, 42, 85, 0.5);
+    }
+    .glass-panel {
+      background: rgba(18, 22, 32, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-panel-hover:hover {
+      border-color: rgba(255, 42, 85, 0.4);
+      background: rgba(25, 32, 46, 0.85);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .bg-grid {
+      background-size: 40px 40px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+    }
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.08); }
+    }
+    .animate-pulse-slow {
+      animation: pulse-slow 8s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="selection:bg-brand selection:text-white">
+
+  <!-- Glow Background Spheres -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+    <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[500px] bg-brand/15 rounded-full blur-[130px] animate-pulse-slow"></div>
+    <div class="absolute top-[40%] -left-32 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[140px]"></div>
+    <div class="absolute top-[65%] -right-32 w-[550px] h-[550px] bg-brand/10 rounded-full blur-[140px]"></div>
+  </div>
+
+  <!-- HEADER / NAVBAR -->
+  <header class="sticky top-0 z-50 glass-panel border-b border-surface-border/60">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      <!-- Logo -->
+      <a href="#" class="flex items-center gap-3 group">
+        <div class="relative w-11 h-11 rounded-xl bg-brand/10 border border-brand/30 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform">
+          <img src="assets/spytify-logo.png" alt="Spytify Logo" class="w-8 h-8 object-contain">
+        </div>
+        <div>
+          <span class="text-xl font-extrabold tracking-tight text-white flex items-center gap-1.5">
+            SPYTIFY
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand/20 text-brand border border-brand/40 uppercase tracking-widest">Alpha</span>
+          </span>
+          <span class="text-xs text-slate-400 block -mt-0.5">Spy Music & Spy Jam</span>
+        </div>
+      </a>
+
+      <!-- Navigation links -->
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+        <a href="#features" class="hover:text-white transition-colors">Tính năng</a>
+        <a href="#showcase" class="hover:text-white transition-colors">Giao diện</a>
+        <a href="#compare" class="hover:text-white transition-colors">So sánh hiệu năng</a>
+        <a href="#faq" class="hover:text-white transition-colors">Hỏi đáp</a>
+      </nav>
+
+      <!-- CTA Download & GitHub -->
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/anhdangtutien/Spytify" target="_blank" rel="noopener noreferrer" 
+           class="p-2.5 rounded-xl border border-surface-border text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
+           title="Xem mã nguồn trên GitHub">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+          </svg>
+        </a>
+
+        <a href="#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white text-sm font-bold shadow-lg shadow-brand/25 transition-all">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Tải Spytify
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO SECTION -->
+  <section class="relative pt-16 pb-24 md:pt-24 md:pb-32 overflow-hidden bg-grid">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+      
+      <!-- Badge version -->
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-panel border border-brand/30 text-xs font-semibold text-brand mb-8 shadow-sm">
+        <span class="w-2 h-2 rounded-full bg-brand animate-ping"></span>
+        <span id="hero-tag-text">Phiên bản mới: v1.0.6 alpha</span>
+        <span class="text-slate-500">•</span>
+        <span class="text-slate-300">Lõi Rust Native & Spy Jam 90 FPS</span>
+      </div>
+
+      <!-- Main Headline -->
+      <h1 class="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-white tracking-tight leading-[1.1] max-w-4xl mx-auto">
+        Trình phát nhạc <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand via-rose-400 to-amber-300 neon-text-glow">Hi-Fi siêu nhẹ</span> & Trạm sóng <span class="text-white">Spy Jam</span>
+      </h1>
+
+      <p class="mt-6 text-lg sm:text-xl text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
+        Giải phóng bộ nhớ máy tính. Tận hưởng âm thanh nguyên bản với lõi Rust, tải nhạc đa nguồn, gọi thoại voice chat và chia sẻ màn hình 90 FPS mượt mà cùng bạn bè.
+      </p>
+
+      <!-- Primary Action Buttons -->
+      <div id="download" class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-lg mx-auto">
+        <!-- Windows Direct Download Button -->
+        <a id="btn-download-primary" 
+           href="https://github.com/anhdangtutien/Spytify/releases/latest/download/Spytify_x64-setup.exe" 
+           class="w-full sm:w-auto px-8 py-4 rounded-2xl bg-brand hover:bg-brand-dark text-white font-bold text-base flex items-center justify-center gap-3 shadow-xl neon-glow transition-all hover:scale-[1.02] active:scale-[0.98]">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.901-1.799"/>
+          </svg>
+          <div class="text-left">
+            <div class="leading-none text-xs text-rose-100 font-medium">Tải xuống miễn phí</div>
+            <div class="leading-tight text-base font-extrabold">Cài đặt cho Windows</div>
+          </div>
+          <span class="text-xs px-2 py-0.5 rounded bg-black/30 text-rose-200 border border-white/10 font-mono ml-1" id="file-size-badge">~15 MB</span>
+        </a>
+
+        <!-- macOS & Other Platforms Dropdown / Link -->
+        <a id="btn-download-mac"
+           href="https://github.com/anhdangtutien/Spytify/releases/latest" 
+           class="w-full sm:w-auto px-6 py-4 rounded-2xl glass-panel glass-panel-hover text-white font-semibold text-sm flex items-center justify-center gap-2.5 transition-all">
+          <svg class="w-5 h-5 text-slate-300" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.61-.75 1.04-1.8 0.92-2.85-.9.04-2 .6-2.65 1.35-.58.66-1.09 1.73-.96 2.76.99.08 2.06-.51 2.69-1.26z"/>
+          </svg>
+          <span>Tải cho macOS (.dmg)</span>
+        </a>
+      </div>
+
+      <p class="mt-3 text-xs text-slate-500 font-mono">
+        Hỗ trợ Windows 10, Windows 11 (64-bit) & macOS Universal • Không quảng cáo • Mã nguồn mở
+      </p>
+
+      <!-- FEATURED APP SCREENSHOT / HERO MOCKUP -->
+      <div class="mt-14 relative max-w-5xl mx-auto">
+        <!-- Ambient Back Glow -->
+        <div class="absolute inset-0 bg-gradient-to-t from-brand/20 to-purple-500/20 rounded-3xl blur-2xl -z-10 transform scale-95 opacity-70"></div>
+        
+        <!-- Window Frame -->
+        <div class="glass-panel rounded-2xl md:rounded-3xl p-2 sm:p-3 shadow-2xl border border-white/10 overflow-hidden">
+          <div class="bg-[#0D1017] rounded-xl md:rounded-2xl border border-white/5 overflow-hidden">
+            
+            <!-- Window Topbar with Mac-like dots -->
+            <div class="h-9 bg-[#141824] px-4 flex items-center justify-between border-b border-white/5 select-none">
+              <div class="flex items-center gap-2">
+                <div class="w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]"></div>
+                <div class="w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29]"></div>
+                <span class="ml-3 text-xs font-mono text-slate-400 font-semibold tracking-wider flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-brand"></span>
+                  Spytify v1.0.6 alpha — Cyber HUD
+                </span>
+              </div>
+              <div class="text-[11px] font-mono text-slate-500 hidden sm:block">
+                ⚡ Rust Audio Core • WebRTC 90 FPS • Local-First SQLite
+              </div>
+            </div>
+
+            <!-- Dynamic Interactive Mockup Showcase -->
+            <div class="relative aspect-[16/10] bg-[#090B10] flex flex-col justify-between overflow-hidden group">
+              
+              <!-- Background Ambient Wave Effect -->
+              <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-brand/10 via-[#090B10] to-[#090B10]"></div>
+              
+              <!-- Inside Mockup: Main Body -->
+              <div class="relative z-10 flex-1 grid grid-cols-12 p-3 sm:p-5 gap-3 sm:gap-4 overflow-hidden">
+                
+                <!-- Mockup Sidebar -->
+                <div class="col-span-3 hidden sm:flex flex-col justify-between bg-[#121622]/90 rounded-xl p-3 border border-white/5">
+                  <div class="space-y-4">
+                    <div class="flex items-center gap-2.5 px-2">
+                      <img src="assets/spytify-logo.png" class="w-6 h-6 object-contain">
+                      <span class="text-xs font-black text-white tracking-wider">SPYTIFY</span>
+                    </div>
+
+                    <div class="space-y-1 text-xs font-medium text-slate-400">
+                      <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-brand/15 text-brand font-semibold border border-brand/20">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                        Khám phá nhạc
+                      </div>
+                      <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:text-white">
+                        <img src="assets/spy-jam-icon.png" class="w-3.5 h-3.5 object-contain opacity-70">
+                        Spy Jam (Server)
+                      </div>
+                      <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:text-white">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                        Yêu thích
+                      </div>
+                      <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:text-white">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                        Album riêng
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="p-2.5 rounded-lg bg-surface-card border border-white/5 text-[11px] text-slate-400">
+                    <div class="flex items-center justify-between text-slate-300 font-semibold mb-1">
+                      <span>RAM sử dụng</span>
+                      <span class="text-brand font-mono">68 MB</span>
+                    </div>
+                    <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div class="w-[20%] h-full bg-brand rounded-full"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Mockup Main Area: Music + Spy Jam Hybrid Preview -->
+                <div class="col-span-12 sm:col-span-9 flex flex-col justify-between bg-[#121622]/60 rounded-xl p-3 sm:p-5 border border-white/5 overflow-hidden">
+                  
+                  <!-- Top Search / HUD Bar -->
+                  <div class="flex items-center justify-between gap-3 mb-4">
+                    <div class="flex-1 bg-[#090C12] border border-white/10 rounded-xl px-3 py-1.5 flex items-center gap-2 text-xs text-slate-400">
+                      <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                      <span>Tìm kiếm trên YouTube, SoundCloud, Audius, Nhạc máy tính...</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-semibold flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        90 FPS LIVE
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Central Banner: Track / Room Visualizer -->
+                  <div class="flex-1 rounded-xl bg-gradient-to-br from-[#1C2233] to-[#121622] p-4 sm:p-6 border border-white/10 flex flex-col justify-center relative overflow-hidden">
+                    <div class="absolute -right-10 -bottom-10 w-48 h-48 bg-brand/20 rounded-full blur-3xl"></div>
+                    
+                    <div class="flex items-center gap-4 sm:gap-6 relative z-10">
+                      <div class="w-16 h-16 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-tr from-brand to-rose-400 shadow-xl flex items-center justify-center flex-shrink-0 relative overflow-hidden group-hover:rotate-2 transition-transform">
+                        <svg class="w-8 h-8 sm:w-12 sm:h-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                      </div>
+                      <div class="text-left overflow-hidden">
+                        <span class="text-[10px] font-mono tracking-widest text-brand font-bold uppercase">Đang phát • Hi-Res 320kbps</span>
+                        <h3 class="text-base sm:text-2xl font-extrabold text-white truncate">Cyber City Night Drive</h3>
+                        <p class="text-xs sm:text-sm text-slate-300 truncate">Synthwave Collective • Hi-Fi Rust Decoded</p>
+                        <div class="mt-2 flex items-center gap-2 text-[11px] text-slate-400 font-mono">
+                          <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10">Stereo 48kHz</span>
+                          <span class="px-2 py-0.5 rounded bg-brand/10 text-brand border border-brand/20">Spy Jam Syncing (5 Bạn)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Animated Visualizer wave bars -->
+                    <div class="mt-6 flex items-end justify-between gap-1 h-8 sm:h-12 w-full pt-2">
+                      <div class="w-full bg-brand/40 hover:bg-brand h-[40%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/60 hover:bg-brand h-[75%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand h-[90%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/80 hover:bg-brand h-[60%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/40 hover:bg-brand h-[30%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand h-[85%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/70 hover:bg-brand h-[100%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/50 hover:bg-brand h-[50%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand h-[70%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/90 hover:bg-brand h-[95%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/40 hover:bg-brand h-[35%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/75 hover:bg-brand h-[80%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand h-[65%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/60 hover:bg-brand h-[45%] rounded-t-sm transition-all"></div>
+                      <div class="w-full bg-brand/90 hover:bg-brand h-[88%] rounded-t-sm transition-all"></div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              <!-- Inside Mockup: Bottom Player Bar -->
+              <div class="h-14 sm:h-16 bg-[#101420] border-t border-white/5 px-4 sm:px-6 flex items-center justify-between relative z-10">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white font-black text-xs">
+                    ▶
+                  </div>
+                  <div class="hidden sm:block text-left">
+                    <div class="text-xs font-bold text-white leading-tight">Cyber City Night Drive</div>
+                    <div class="text-[10px] text-slate-400 font-mono">02:45 / 04:12</div>
+                  </div>
+                </div>
+
+                <!-- Timeline Bar -->
+                <div class="flex-1 max-w-md mx-4 hidden md:block">
+                  <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden relative cursor-pointer">
+                    <div class="w-[65%] h-full bg-brand rounded-full"></div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-brand/10 text-brand border border-brand/20">
+                    Rodio 0.20 Engine
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SCREENSHOT SHOWCASE & TABS (FEATURE HÌNH ẢNH CHO NGƯỜI DÙNG) -->
+  <section id="showcase" class="py-20 md:py-28 relative border-t border-surface-border">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="text-center max-w-3xl mx-auto mb-14">
+        <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Thư viện giao diện</h2>
+        <p class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+          Thiết kế <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand to-rose-400">Cyber HUD</span> đỉnh cao
+        </p>
+        <p class="mt-4 text-slate-400 text-base sm:text-lg">
+          Trải nghiệm nghe nhạc và kết nối bạn bè với giao diện công nghệ tối ưu, tùy biến màu sắc và bố cục thông minh.
+        </p>
+      </div>
+
+      <!-- Feature Tabs Selector -->
+      <div class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-10">
+        <button onclick="switchTab('player')" id="tab-btn-player" class="tab-btn active px-5 py-2.5 rounded-xl text-sm font-bold border transition-all bg-brand text-white border-brand shadow-lg shadow-brand/20">
+          🎵 Trình phát nhạc Hi-Fi
+        </button>
+        <button onclick="switchTab('jam')" id="tab-btn-jam" class="tab-btn px-5 py-2.5 rounded-xl text-sm font-bold border transition-all bg-surface-card text-slate-300 border-surface-border hover:border-slate-500">
+          🎙️ Trạm sóng Spy Jam & Voice
+        </button>
+        <button onclick="switchTab('screenshare')" id="tab-btn-screenshare" class="tab-btn px-5 py-2.5 rounded-xl text-sm font-bold border transition-all bg-surface-card text-slate-300 border-surface-border hover:border-slate-500">
+          📺 Chia sẻ màn hình 90 FPS
+        </button>
+        <button onclick="switchTab('library')" id="tab-btn-library" class="tab-btn px-5 py-2.5 rounded-xl text-sm font-bold border transition-all bg-surface-card text-slate-300 border-surface-border hover:border-slate-500">
+          💾 Quản lý Album & Cloud Sync
+        </button>
+      </div>
+
+      <!-- Tab Content Panels -->
+      <div class="relative glass-panel rounded-3xl p-4 sm:p-8 border border-white/10 shadow-2xl overflow-hidden">
+        
+        <!-- PANEL 1: PLAYER -->
+        <div id="panel-player" class="tab-panel grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-5 text-left">
+            <span class="px-3 py-1 rounded-full bg-brand/10 border border-brand/30 text-brand text-xs font-mono font-semibold">
+              HI-RES AUDIO ENGINE
+            </span>
+            <h3 class="text-2xl sm:text-3xl font-extrabold text-white">Âm thanh trung thực không độ trễ</h3>
+            <p class="text-slate-300 leading-relaxed text-sm sm:text-base">
+              Spytify loại bỏ toàn bộ gánh nặng của trình duyệt bằng cách giải mã luồng âm thanh thông qua module <b>Rust native (Rodio & Symphonia)</b>. Tận hưởng chất lượng nhạc lossy và lossless mượt mà nhất.
+            </p>
+            <ul class="space-y-3 text-sm text-slate-300">
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Tìm kiếm và phát trực tiếp từ YouTube, SoundCloud, Audius</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Tải nhạc ngoại tuyến với đầy đủ ảnh bìa và lời bài hát</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Hiệu ứng Audio Visualizer trực quan theo thời gian thực</span>
+              </li>
+            </ul>
+          </div>
+          <div class="lg:col-span-7">
+            <div class="rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#090C12] p-4 group cursor-pointer hover:border-brand/40 transition-colors" onclick="openLightbox('assets/spytify-logo.png', 'Giao diện Trình phát nhạc Spytify')">
+              <div class="aspect-video bg-gradient-to-br from-[#131926] to-[#0A0D14] rounded-xl flex flex-col items-center justify-center p-6 text-center border border-white/5 relative overflow-hidden">
+                <img src="assets/spytify-logo.png" class="w-24 h-24 object-contain mb-4 filter drop-shadow-[0_0_20px_rgba(255,42,85,0.4)]">
+                <span class="text-lg font-bold text-white">Giao diện Trình phát nhạc Hi-Fi</span>
+                <span class="text-xs text-slate-400 mt-1 font-mono">Bấm để xem ảnh phóng to</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 2: SPY JAM & VOICE -->
+        <div id="panel-jam" class="tab-panel hidden grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-5 text-left">
+            <span class="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-xs font-mono font-semibold">
+              COMMUNITY VOICE HUB
+            </span>
+            <h3 class="text-2xl sm:text-3xl font-extrabold text-white">Trạm sóng Spy Jam & Kênh thoại</h3>
+            <p class="text-slate-300 leading-relaxed text-sm sm:text-base">
+              Không cần mở thêm Discord nặng nề. Tích hợp sẵn phòng đàm thoại chất lượng cao, máy chủ cộng đồng, bot nhạc Rythm nghe chung và nhắn tin thời gian thực.
+            </p>
+            <ul class="space-y-3 text-sm text-slate-300">
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Âm thanh phòng thoại trong trẻo qua giao thức WebRTC</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Bot âm nhạc Rythm / DJ phát nhạc đồng bộ cho cả phòng</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Thông báo nhắc @user, đính kèm nhạc trực tiếp vào tin nhắn</span>
+              </li>
+            </ul>
+          </div>
+          <div class="lg:col-span-7">
+            <div class="rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#090C12] p-4 group cursor-pointer hover:border-brand/40 transition-colors">
+              <div class="aspect-video bg-gradient-to-br from-[#1E1729] to-[#0A0D14] rounded-xl flex flex-col items-center justify-center p-6 text-center border border-white/5 relative overflow-hidden">
+                <img src="assets/spy-jam-icon.png" class="w-20 h-20 object-contain mb-4 filter drop-shadow-[0_0_20px_rgba(168,85,247,0.4)]">
+                <span class="text-lg font-bold text-white">Trạm sóng thoại Spy Jam Hub</span>
+                <span class="text-xs text-slate-400 mt-1 font-mono">Đàm thoại & Nghe nhạc chung cùng đồng đội</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 3: SCREEN SHARE 90 FPS -->
+        <div id="panel-screenshare" class="tab-panel hidden grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-5 text-left">
+            <span class="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-semibold">
+              ULTRA-SMOOTH STREAMING
+            </span>
+            <h3 class="text-2xl sm:text-3xl font-extrabold text-white">Chia sẻ màn hình 30 / 60 / 90 FPS</h3>
+            <p class="text-slate-300 leading-relaxed text-sm sm:text-base">
+              Trải nghiệm stream game và làm việc nhóm siêu mượt. Tùy chọn khung hình lên đến <b>90 FPS</b> với độ trễ siêu thấp, kèm thanh điều khiển nổi thông minh.
+            </p>
+            <ul class="space-y-3 text-sm text-slate-300">
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Hỗ trợ chia sẻ từng cửa sổ hoặc toàn bộ màn hình độ nét cao</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Khắc phục hoàn toàn lỗi đen màn hình và cắt góc trên Windows</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Xem nhiều màn hình song song với các tab thu nhỏ tiện lợi</span>
+              </li>
+            </ul>
+          </div>
+          <div class="lg:col-span-7">
+            <div class="rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#090C12] p-4 group cursor-pointer hover:border-brand/40 transition-colors">
+              <div class="aspect-video bg-gradient-to-br from-[#0F231D] to-[#0A0D14] rounded-xl flex flex-col items-center justify-center p-6 text-center border border-white/5 relative overflow-hidden">
+                <div class="w-16 h-16 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-2xl mb-4 border border-emerald-500/40">
+                  90
+                </div>
+                <span class="text-lg font-bold text-white">Stream Game & Màn hình 90 FPS</span>
+                <span class="text-xs text-slate-400 mt-1 font-mono">Độ trễ mili-giây qua WebRTC P2P</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 4: LIBRARY & SYNC -->
+        <div id="panel-library" class="tab-panel hidden grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-5 space-y-5 text-left">
+            <span class="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-semibold">
+              LOCAL-FIRST & CLOUD SYNC
+            </span>
+            <h3 class="text-2xl sm:text-3xl font-extrabold text-white">Quyền riêng tư tuyệt đối</h3>
+            <p class="text-slate-300 leading-relaxed text-sm sm:text-base">
+              Dữ liệu của bạn được lưu an toàn trong file <b>SQLite cục bộ</b> trên máy. Có thể kích hoạt đồng bộ hóa đám mây Supabase Cloud khi bạn cần chuyển thiết bị.
+            </p>
+            <ul class="space-y-3 text-sm text-slate-300">
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Tạo không giới hạn danh sách phát và album nhạc theo tài khoản</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Hỗ trợ tự kết nối cơ sở dữ liệu Supabase riêng dành cho IT</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs">✓</span>
+                <span>Mã hóa mật khẩu bảo mật chuẩn SHA-256 + Salt</span>
+              </li>
+            </ul>
+          </div>
+          <div class="lg:col-span-7">
+            <div class="rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#090C12] p-4 group cursor-pointer hover:border-brand/40 transition-colors">
+              <div class="aspect-video bg-gradient-to-br from-[#0D1F2D] to-[#0A0D14] rounded-xl flex flex-col items-center justify-center p-6 text-center border border-white/5 relative overflow-hidden">
+                <div class="w-16 h-16 rounded-2xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-black text-2xl mb-4 border border-cyan-500/40">
+                  SQL
+                </div>
+                <span class="text-lg font-bold text-white">Local-First SQLite & Supabase Vault</span>
+                <span class="text-xs text-slate-400 mt-1 font-mono">Bảo mật dữ liệu 2 lớp • Không theo dõi người dùng</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- BENCHMARK / COMPARISON TABLE -->
+  <section id="compare" class="py-20 bg-surface/50 border-t border-surface-border">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="text-center mb-14">
+        <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Hiệu năng thực tế</h2>
+        <p class="text-3xl sm:text-4xl font-extrabold text-white">Tại sao nên chọn Spytify?</p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse glass-panel rounded-2xl overflow-hidden text-sm">
+          <thead>
+            <tr class="border-b border-white/10 bg-white/5 text-slate-300 font-mono text-xs uppercase">
+              <th class="py-4 px-6">Tiêu chí so sánh</th>
+              <th class="py-4 px-6 text-brand font-bold">Spytify (Rust + Tauri)</th>
+              <th class="py-4 px-6">Spotify (CEF / C++)</th>
+              <th class="py-4 px-6">Discord (Electron)</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5 text-slate-300">
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Dung lượng RAM khi chạy</td>
+              <td class="py-4 px-6 text-brand font-bold font-mono">~60 - 100 MB 🚀</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~300 - 500 MB</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~350 - 600 MB</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Kích thước file cài đặt</td>
+              <td class="py-4 px-6 text-brand font-bold font-mono">Chỉ ~15 MB</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~90 MB</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~110 MB</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Tốc độ mở ứng dụng</td>
+              <td class="py-4 px-6 text-brand font-bold">Tức thì (< 0.5s)</td>
+              <td class="py-4 px-6 text-slate-400">2 - 4 giây</td>
+              <td class="py-4 px-6 text-slate-400">3 - 6 giây</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Tải nhạc ngoại tuyến</td>
+              <td class="py-4 px-6 text-emerald-400 font-bold">Miễn phí hoàn toàn</td>
+              <td class="py-4 px-6 text-slate-400">Yêu cầu gói Premium</td>
+              <td class="py-4 px-6 text-slate-400">Không hỗ trợ</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Gọi thoại & Screen share</td>
+              <td class="py-4 px-6 text-emerald-400 font-bold">Lên đến 90 FPS</td>
+              <td class="py-4 px-6 text-slate-400">Không có</td>
+              <td class="py-4 px-6 text-slate-400">Giới hạn 30fps (Cần Nitro)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Quảng cáo làm phiền</td>
+              <td class="py-4 px-6 text-emerald-400 font-bold">100% Không quảng cáo</td>
+              <td class="py-4 px-6 text-slate-400">Có quảng cáo âm thanh</td>
+              <td class="py-4 px-6 text-slate-400">Không có</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- INSTALLATION GUIDE & FAQ -->
+  <section id="faq" class="py-20 border-t border-surface-border">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      
+      <div class="text-center mb-14">
+        <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Hướng dẫn & Giải đáp</h2>
+        <p class="text-3xl sm:text-4xl font-extrabold text-white">Câu hỏi thường gặp</p>
+      </div>
+
+      <div class="space-y-4">
+        
+        <!-- FAQ 1 -->
+        <div class="glass-panel rounded-2xl p-6 border border-white/5">
+          <h3 class="text-base font-bold text-white flex items-center justify-between">
+            <span>🛡️ Windows Defender báo "Windows protected your PC" khi cài đặt?</span>
+          </h3>
+          <p class="mt-3 text-sm text-slate-300 leading-relaxed">
+            Đây là cảnh báo tự động của <b>Windows SmartScreen</b> đối với các phần mềm mã nguồn mở mới phát hành chưa mua chứng chỉ số doanh nghiệp (Code Signing Certificate) từ Microsoft.
+            <br><br>
+            <b>Cách mở:</b> Bấm vào chữ <span class="text-amber-300 font-semibold underline">"More info" (Xem thêm)</span> ➔ Chọn <span class="text-emerald-400 font-semibold underline">"Run anyway" (Vẫn chạy)</span>. Ứng dụng hoàn toàn sạch 100% và mã nguồn mở công khai trên GitHub.
+          </p>
+        </div>
+
+        <!-- FAQ 2 -->
+        <div class="glass-panel rounded-2xl p-6 border border-white/5">
+          <h3 class="text-base font-bold text-white">
+            🎧 Nhạc tải về từ Spytify được lưu ở đâu?
+          </h3>
+          <p class="mt-3 text-sm text-slate-300 leading-relaxed">
+            Mặc định nhạc tải về lưu tại thư mục <code>Music/Spytify</code> trên máy của bạn. Bạn có thể thay đổi đường dẫn lưu trữ bất kỳ lúc nào trong mục <b>Cài đặt ➔ Tải nhạc</b>.
+          </p>
+        </div>
+
+        <!-- FAQ 3 -->
+        <div class="glass-panel rounded-2xl p-6 border border-white/5">
+          <h3 class="text-base font-bold text-white">
+            🌐 Spy Jam có yêu cầu mở cổng Router (Port Forwarding) không?
+          </h3>
+          <p class="mt-3 text-sm text-slate-300 leading-relaxed">
+            <b>Không cần.</b> Spy Jam sử dụng hệ thống máy chủ STUN/TURN tiêu chuẩn của WebRTC, kết nối mượt mà giữa các bạn bè qua mọi loại mạng wifi hoặc 4G mà không cần cấu hình mạng phức tạp.
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- FINAL CTA BANNER -->
+  <section class="py-20 relative overflow-hidden">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="glass-panel rounded-3xl p-8 sm:p-14 text-center relative border border-brand/30 neon-glow">
+        <div class="absolute inset-0 bg-brand/10 -z-10 rounded-3xl"></div>
+        <h2 class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+          Sẵn sàng nâng cấp trải nghiệm âm nhạc?
+        </h2>
+        <p class="mt-4 text-slate-300 text-base sm:text-lg max-w-xl mx-auto">
+          Tải Spytify ngay hôm nay. Hoàn toàn miễn phí, không quảng cáo, mở nguồn mở 100%.
+        </p>
+
+        <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+          <a href="https://github.com/anhdangtutien/Spytify/releases/latest/download/Spytify_x64-setup.exe" 
+             class="px-8 py-4 rounded-2xl bg-brand hover:bg-brand-dark text-white font-bold text-base shadow-xl neon-glow transition-transform hover:scale-105 active:scale-95 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Tải Spytify cho Windows (.exe)
+          </a>
+          <a href="https://github.com/anhdangtutien/Spytify" target="_blank"
+             class="px-6 py-4 rounded-2xl glass-panel text-white font-semibold text-base hover:bg-white/10 transition-colors flex items-center gap-2">
+            ⭐ Star trên GitHub
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="border-t border-surface-border py-12 text-slate-500 text-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <img src="assets/spytify-logo.png" class="w-6 h-6 object-contain opacity-70">
+        <span>© 2026 Spytify Team & anhdangtutien. Phát hành theo giấy phép MIT.</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="https://github.com/anhdangtutien/Spytify/releases" target="_blank" class="hover:text-slate-300">Tất cả phiên bản</a>
+        <a href="https://github.com/anhdangtutien/Spytify/issues" target="_blank" class="hover:text-slate-300">Báo lỗi</a>
+        <a href="https://github.com/anhdangtutien/Spytify/blob/main/LICENSE" target="_blank" class="hover:text-slate-300">Giấy phép MIT</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- LIGHTBOX MODAL CHO HÌNH ẢNH -->
+  <div id="lightbox" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4" onclick="closeLightbox()">
+    <div class="relative max-w-5xl w-full bg-[#121620] p-2 rounded-2xl border border-white/10" onclick="event.stopPropagation()">
+      <button onclick="closeLightbox()" class="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 text-white font-bold flex items-center justify-center hover:bg-brand transition-colors">
+        ✕
+      </button>
+      <img id="lightbox-img" src="" class="w-full h-auto max-h-[80vh] object-contain rounded-xl">
+      <div id="lightbox-caption" class="text-center text-sm text-slate-300 py-3 font-medium"></div>
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT: TAB SWITCHER & GITHUB RELEASES AUTO-FETCH -->
+  <script>
+    // Tab switcher
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('bg-brand', 'text-white', 'border-brand', 'shadow-lg', 'shadow-brand/20');
+        b.classList.add('bg-surface-card', 'text-slate-300', 'border-surface-border');
+      });
+
+      const activePanel = document.getElementById('panel-' + tabId);
+      const activeBtn = document.getElementById('tab-btn-' + tabId);
+      if (activePanel) activePanel.classList.remove('hidden');
+      if (activeBtn) {
+        activeBtn.classList.remove('bg-surface-card', 'text-slate-300', 'border-surface-border');
+        activeBtn.classList.add('bg-brand', 'text-white', 'border-brand', 'shadow-lg', 'shadow-brand/20');
+      }
+    }
+
+    // Lightbox modal
+    function openLightbox(src, caption) {
+      const lb = document.getElementById('lightbox');
+      document.getElementById('lightbox-img').src = src;
+      document.getElementById('lightbox-caption').innerText = caption;
+      lb.classList.remove('hidden');
+    }
+    function closeLightbox() {
+      document.getElementById('lightbox').classList.add('hidden');
+    }
+
+    // Tự động lấy bản Release mới nhất từ GitHub API để người dùng tải trực tiếp
+    async function fetchLatestRelease() {
+      try {
+        const repo = 'anhdangtutien/Spytify';
+        const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.tag_name) {
+          const heroTag = document.getElementById('hero-tag-text');
+          if (heroTag) heroTag.innerText = `Phiên bản mới: ${data.name || data.tag_name}`;
+        }
+
+        // Tìm file Windows setup .exe hoặc .msi trong danh sách assets
+        if (data.assets && data.assets.length > 0) {
+          const winExe = data.assets.find(a => a.name.endsWith('.exe'));
+          const macDmg = data.assets.find(a => a.name.endsWith('.dmg'));
+
+          if (winExe) {
+            const btnWin = document.getElementById('btn-download-primary');
+            if (btnWin) btnWin.href = winExe.browser_download_url;
+
+            const sizeBadge = document.getElementById('file-size-badge');
+            if (sizeBadge && winExe.size) {
+              const sizeMB = (winExe.size / (1024 * 1024)).toFixed(1);
+              sizeBadge.innerText = `${sizeMB} MB`;
+            }
+          }
+
+          if (macDmg) {
+            const btnMac = document.getElementById('btn-download-mac');
+            if (btnMac) btnMac.href = macDmg.browser_download_url;
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch latest release from GitHub API:', err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', fetchLatestRelease);
+  </script>
+</body>
+</html>
