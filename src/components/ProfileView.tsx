@@ -25,6 +25,7 @@ interface ProfileViewProps {
   onUpdateAccentColor: (color: string) => void;
   onToggleThemeMode: () => void;
   onUpdateAvatar: (avatarBase64: string) => void;
+  onUpdateBio: (bio: string) => void;
   onLogout: () => void;
   onOpenAuth: () => void;
   onPlayTrack: (track: Track) => void;
@@ -92,6 +93,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateAccentColor,
   onToggleThemeMode,
   onUpdateAvatar,
+  onUpdateBio,
   onLogout,
   onOpenAuth,
   onPlayTrack,
@@ -836,6 +838,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               localStorage.setItem(`spytify_user_bio_${currentUser.id}`, userBio.trim());
                             }
                           } catch {}
+                          onUpdateBio(userBio.trim());
                           setIsEditingBio(false);
                         }}
                         className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-mono font-bold cursor-pointer transition-colors"

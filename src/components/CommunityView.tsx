@@ -2553,6 +2553,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [isBioModalOpen, setIsBioModalOpen] = useState(false);
   const [bioDraft, setBioDraft] = useState('');
 
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    if (typeof currentUser.bio === 'string') {
+      setMyBio(currentUser.bio);
+      return;
+    }
+    try {
+      const saved =
+        localStorage.getItem(`spytify_user_bio_${currentUser.id}`) ||
+        localStorage.getItem('spytify_user_bio');
+      if (saved) setMyBio(saved);
+    } catch {}
+  }, [currentUser?.id, currentUser?.bio]);
+
   const handleOpenBioModal = () => {
     setBioDraft(myBio);
     setIsStatusMenuOpen(false);
@@ -7059,14 +7073,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const jumpToPresent = () => {
     shouldAutoScrollMessagesRef.current = true;
+    isChatAtBottomRef.current = true;
     setIsChatScrolledFromBottom(false);
     markChannelAsRead(selectedChannel.id);
-    const container = chatMessagesContainerRef.current;
-    if (container) {
-      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-    } else {
-      scrollToBottom();
-    }
+
+    const scrollToPresent = () => {
+      const container = chatMessagesContainerRef.current;
+      if (!container) return;
+      container.scrollTop = container.scrollHeight;
+      isChatAtBottomRef.current = true;
+      shouldAutoScrollMessagesRef.current = true;
+      setIsChatScrolledFromBottom(false);
+    };
+
+    scrollToPresent();
+    requestAnimationFrame(() => requestAnimationFrame(scrollToPresent));
   };
 
   useEffect(() => {
@@ -13107,11 +13128,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             )}
 
             {/* Messages Stream */}
-            <div
-              ref={chatMessagesContainerRef}
-              onScroll={handleChatMessagesScroll}
-              className={`relative flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar ${isLight ? 'bg-[#ffffff]' : 'bg-[#0a0a0f]'}`}
-            >
+            <div className="relative min-h-0 flex-1">
+              <div
+                ref={chatMessagesContainerRef}
+                onScroll={handleChatMessagesScroll}
+                className={`absolute inset-0 overflow-y-auto p-4 space-y-3.5 custom-scrollbar ${isLight ? 'bg-[#ffffff]' : 'bg-[#0a0a0f]'}`}
+              >
               {selectedChannelUnreadCount > 0 && (
                 <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-2 flex min-h-9 items-center justify-between gap-3 bg-indigo-500 px-3 py-1.5 text-[11px] font-medium text-white shadow-md">
                   <span className="truncate">
@@ -13321,7 +13343,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </React.Fragment>
                   );
                 })}
-              <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} />
+              </div>
               {isChatScrolledFromBottom && (
                 <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 justify-center">
                   <div className={`pointer-events-auto flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-[10px] shadow-xl backdrop-blur-md ${

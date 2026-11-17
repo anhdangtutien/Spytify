@@ -420,6 +420,10 @@ export default function App() {
     }
   };
 
+  const handleUpdateBio = (bio: string) => {
+    setCurrentUser(prev => prev ? { ...prev, bio } : null);
+  };
+
   const getAlbumsStorageKey = (userId?: string | null) =>
     userId ? `spytify_user_albums_${userId}` : 'spytify_user_albums_guest';
   const loadAlbumsForUser = (userId?: string | null): UserAlbum[] => {
@@ -3663,6 +3667,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onUpdateAccentColor={handleUpdateAccentColor}
                 onToggleThemeMode={handleToggleThemeMode}
                 onUpdateAvatar={handleUpdateAvatar}
+                onUpdateBio={handleUpdateBio}
                 onLogout={handleLogout}
                 onOpenAuth={() => setIsAuthModalOpen(true)}
                 onPlayTrack={handlePlayTrack}

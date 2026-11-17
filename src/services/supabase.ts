@@ -185,10 +185,19 @@ CREATE TABLE IF NOT EXISTS public.spytify_direct_messages (
     sender_avatar TEXT,
     content TEXT NOT NULL,
     track_embed JSONB,
+    image_url TEXT,
     created_at TEXT,
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
+ALTER TABLE public.spytify_direct_messages ADD COLUMN IF NOT EXISTS image_url TEXT;
 CREATE INDEX IF NOT EXISTS idx_spytify_dm_room_sent ON public.spytify_direct_messages(room_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_spytify_dm_receiver_sent ON public.spytify_direct_messages(receiver_id, sent_at DESC);
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_profiles TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_albums TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_favorites TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_history TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_direct_messages TO anon, authenticated;
 ALTER TABLE public.spytify_direct_messages ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages;
 CREATE POLICY "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages FOR ALL USING (true) WITH CHECK (true);
@@ -198,6 +207,8 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit)
 VALUES ('spytify-chat-files', 'spytify-chat-files', false, 1048576)
 ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = 1048576;
 
+GRANT USAGE ON SCHEMA storage TO anon, authenticated;
+GRANT SELECT, INSERT ON storage.objects TO anon, authenticated;
 DROP POLICY IF EXISTS "Spytify chat files read" ON storage.objects;
 CREATE POLICY "Spytify chat files read" ON storage.objects
 FOR SELECT TO anon, authenticated
