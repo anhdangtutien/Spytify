@@ -23,6 +23,7 @@ import {
   downloadChatFile,
   MAX_CHAT_FILE_SIZE,
   fetchAllCloudProfiles,
+  fetchCloudProfileUpdatesSince,
   fetchCloudFollowGraph,
   pushCloudFollow,
   removeCloudFollow,
@@ -7356,6 +7357,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     if (!currentUser?.id) return;
 
     let isMounted = true;
+    const profileSyncCursorKey = `spytify_profile_sync_at_${currentUser.id}`;
 
     const syncIncomingCloudDms = async (isFirstSync = false) => {
       try {
@@ -7394,16 +7396,32 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       } catch {}
     };
 
-    const syncCloudProfilesAndFollows = async () => {
+    const syncCloudProfilesAndFollows = async (syncProfileChanges = false) => {
       try {
-        const [cloudProfiles, followGraph, serverInvites, serverAudit] = await Promise.all([
+        const profileSyncStartedAt = new Date().toISOString();
+        let profileSyncSince = '1970-01-01T00:00:00.000Z';
+        if (syncProfileChanges) {
+          try {
+            profileSyncSince = localStorage.getItem(profileSyncCursorKey) || profileSyncSince;
+          } catch {}
+        }
+
+        const [cloudProfiles, profileUpdates, followGraph, serverInvites, serverAudit] = await Promise.all([
           fetchAllCloudProfiles(),
+          syncProfileChanges
+            ? fetchCloudProfileUpdatesSince(profileSyncSince)
+            : Promise.resolve([]),
           fetchCloudFollowGraph(currentUser.id),
           fetchCloudServerInvites(currentUser.id),
           fetchCloudServerMembershipAudit(currentUser.id),
         ]);
 
         if (!isMounted) return;
+        if (syncProfileChanges) {
+          try {
+            localStorage.setItem(profileSyncCursorKey, profileSyncStartedAt);
+          } catch {}
+        }
 
         // 0. Đồng bộ lời mời vào Server (incoming / outgoing) & các Server của user từ Cloud
         setIncomingServerInvites(serverInvites.incoming);
@@ -7521,7 +7539,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         });
 
         // 3. Đồng bộ avatar và tên hiển thị của tất cả người dùng từ bảng spytify_profiles trên đám mây
-        if (cloudProfiles.length > 0) {
+        if (cloudProfiles.length > 0 || profileUpdates.length > 0) {
           setRegisteredUsers(prev => {
             const byId = new Map<string, CommunityUserProfile>();
             prev.forEach(u => {
@@ -7548,6 +7566,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   username: cp.username || existing.username,
                   display_name: cp.display_name || existing.display_name,
                   avatar: cp.avatar || existing.avatar || null,
+                  bio: cp.bio ?? existing.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
                   followsCurrentUser: Boolean(nextFollowersMap[cp.id]),
                 });
               } else {
@@ -7558,7 +7577,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   avatar: cp.avatar || null,
                   role: 'AGENT',
                   status: 'offline',
-                  bio: 'Thành viên Spytify từ hệ thống cộng đồng.',
+                  bio: cp.bio || 'Thành viên Spytify từ hệ thống cộng đồng.',
                   listening: null,
                   listeningTrack: null,
                   isHost: false,
@@ -7568,11 +7587,51 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               }
             });
 
+            profileUpdates.forEach(profile => {
+              if (!profile.id || profile.id === currentUser.id || profile.id.startsWith('usr_custom_')) return;
+              const existing = byId.get(profile.id);
+              byId.set(profile.id, {
+                ...(existing || {
+                  id: profile.id,
+                  username: profile.username,
+                  display_name: profile.display_name,
+                  role: 'AGENT' as const,
+                  status: 'offline' as const,
+                  listening: null,
+                  listeningTrack: null,
+                  isHost: false,
+                  followsCurrentUser: Boolean(nextFollowersMap[profile.id]),
+                  joinedAt: new Date().toISOString().split('T')[0],
+                }),
+                username: profile.username || existing?.username || 'operative',
+                display_name: profile.display_name || existing?.display_name || profile.username,
+                avatar: profile.avatar,
+                bio: profile.bio ?? existing?.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
+              });
+            });
+
             const nextList = Array.from(byId.values());
             try {
               localStorage.setItem('spytify_registered_users', JSON.stringify(nextList));
             } catch {}
             return nextList;
+          });
+        }
+
+        if (profileUpdates.length > 0) {
+          setRealtimeUserPresences(prev => {
+            let next = prev;
+            profileUpdates.forEach(profile => {
+              const existing = prev[profile.id];
+              if (!existing) return;
+              if (next === prev) next = { ...prev };
+              next[profile.id] = {
+                ...existing,
+                avatar: profile.avatar,
+                bio: profile.bio ?? existing.bio ?? null,
+              };
+            });
+            return next;
           });
         }
       } catch (err) {
@@ -7586,8 +7645,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       syncIncomingCloudDms(false);
     }, 60_000);
     const cloudSyncTimer = setInterval(() => {
-      syncCloudProfilesAndFollows();
-    }, 5 * 60_000);
+      syncCloudProfilesAndFollows(true);
+    }, 3 * 60_000);
 
     const client = getSupabaseClient();
     if (!client) {

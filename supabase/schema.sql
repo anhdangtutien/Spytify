@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.spytify_profiles (
     salt TEXT,
     google_id TEXT,
     avatar TEXT,
+    bio TEXT,
     accent_color TEXT DEFAULT '#FF2A55',
     theme_mode TEXT DEFAULT 'dark',
     language TEXT DEFAULT 'vi',
@@ -27,6 +28,7 @@ ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS salt TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS google_id TEXT;
+ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS bio TEXT;
 
 CREATE TABLE IF NOT EXISTS public.spytify_albums (
     id TEXT PRIMARY KEY,

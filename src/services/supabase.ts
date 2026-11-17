@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS public.spytify_profiles (
     salt TEXT,
     google_id TEXT,
     avatar TEXT,
+    bio TEXT,
     accent_color TEXT DEFAULT '#FF2A55',
     theme_mode TEXT DEFAULT 'dark',
     language TEXT DEFAULT 'vi',
@@ -123,6 +124,7 @@ ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS salt TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS google_id TEXT;
+ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS bio TEXT;
 
 CREATE TABLE IF NOT EXISTS public.spytify_albums (
     id TEXT PRIMARY KEY,
@@ -314,6 +316,7 @@ export interface CloudUserData {
   displayName?: string;
   email?: string;
   avatar?: string;
+  bio?: string;
   accentColor?: string;
   themeMode?: 'dark' | 'light';
   language?: string;
@@ -340,6 +343,7 @@ export async function cloudRegisterUser(
       password_hash: passwordHash,
       salt: salt,
       avatar: user.avatar || null,
+      ...(user.bio !== undefined ? { bio: user.bio } : {}),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' });
 
@@ -422,11 +426,13 @@ export async function cloudSyncPush(userId: string, data: Partial<CloudUserData>
     if (data.displayName) profilePayload.display_name = data.displayName;
     if (data.email) profilePayload.email = data.email;
     if (data.avatar !== undefined) profilePayload.avatar = data.avatar;
+    if (data.bio !== undefined) profilePayload.bio = data.bio;
     if (data.accentColor) profilePayload.accent_color = data.accentColor;
     if (data.themeMode) profilePayload.theme_mode = data.themeMode;
 
     if (Object.keys(profilePayload).length > 2) {
-      await client.from('spytify_profiles').upsert(profilePayload, { onConflict: 'id' });
+      const { error } = await client.from('spytify_profiles').upsert(profilePayload, { onConflict: 'id' });
+      if (error) throw error;
     }
 
     // 2. Sync Albums
@@ -525,6 +531,7 @@ export async function cloudSyncPull(userId: string): Promise<CloudUserData | nul
 
     if (profileRes.data) {
       result.avatar = profileRes.data.avatar || undefined;
+      result.bio = profileRes.data.bio ?? undefined;
       result.accentColor = profileRes.data.accent_color || undefined;
       result.themeMode = profileRes.data.theme_mode || undefined;
       result.language = profileRes.data.language || undefined;
@@ -720,6 +727,11 @@ export interface CloudPublicProfile {
   username: string;
   display_name: string;
   avatar: string | null;
+  bio: string | null;
+}
+
+export interface CloudProfileUpdate extends CloudPublicProfile {
+  updated_at: string;
 }
 
 /**
@@ -731,7 +743,7 @@ export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
   try {
     const { data, error } = await client
       .from('spytify_profiles')
-      .select('id, username, display_name')
+      .select('id, username, display_name, bio')
       .limit(200);
     if (error || !data) return [];
     return data.map((row: any) => ({
@@ -739,10 +751,31 @@ export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
       username: row.username || 'operative',
       display_name: row.display_name || row.username || 'Operative',
       avatar: null,
+      bio: row.bio || null,
     }));
   } catch {
     return [];
   }
+}
+
+export async function fetchCloudProfileUpdatesSince(since: string): Promise<CloudProfileUpdate[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from('spytify_profiles')
+    .select('id, username, display_name, avatar, bio, updated_at')
+    .gt('updated_at', since)
+    .order('updated_at', { ascending: true })
+    .limit(1000);
+  if (error) throw new Error(`Không thể đồng bộ cập nhật hồ sơ: ${error.message}`);
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    username: row.username || 'operative',
+    display_name: row.display_name || row.username || 'Operative',
+    avatar: row.avatar || null,
+    bio: row.bio ?? null,
+    updated_at: row.updated_at,
+  }));
 }
 
 export interface CloudFollowEdge {

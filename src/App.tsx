@@ -422,6 +422,13 @@ export default function App() {
 
   const handleUpdateBio = (bio: string) => {
     setCurrentUser(prev => prev ? { ...prev, bio } : null);
+    if (currentUser && isSupabaseConfigured()) {
+      cloudSyncPush(currentUser.id, { bio })
+        .then(synced => {
+          if (!synced) console.warn('Failed to sync profile bio to Supabase.');
+        })
+        .catch(error => console.warn('Failed to sync profile bio to Supabase:', error));
+    }
   };
 
   const getAlbumsStorageKey = (userId?: string | null) =>
@@ -1453,6 +1460,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }).catch(() => {});
 
               cloudSyncPull(user.id).then(cloudData => {
+                if (typeof cloudData?.bio === 'string') {
+                  localStorage.setItem(`spytify_user_bio_${user.id}`, cloudData.bio);
+                  localStorage.setItem('spytify_user_bio', cloudData.bio);
+                  if (currentUserRef.current?.id === user.id) {
+                    setCurrentUser(prev => prev ? { ...prev, bio: cloudData.bio } : null);
+                  }
+                }
                 if (cloudData?.albums?.length) {
                   const localAlbums = loadAlbumsForUser(user.id);
                   const existingIds = new Set(localAlbums.map(album => album.id));
@@ -1519,6 +1533,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       cloudSyncPull(user.id).then(cloudData => {
         if (cloudData) {
+          if (typeof cloudData.bio === 'string') {
+            localStorage.setItem(`spytify_user_bio_${user.id}`, cloudData.bio);
+            localStorage.setItem('spytify_user_bio', cloudData.bio);
+            if (currentUserRef.current?.id === user.id) {
+              setCurrentUser(prev => prev ? { ...prev, bio: cloudData.bio } : null);
+            }
+          }
           if (cloudData.albums && cloudData.albums.length > 0) {
             const localAlbums = loadAlbumsForUser(user.id);
             const existingIds = new Set(localAlbums.map(album => album.id));
