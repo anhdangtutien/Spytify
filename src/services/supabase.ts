@@ -336,6 +336,13 @@ export async function cloudRegisterUser(
   if (!client || !user) return false;
 
   try {
+    const { data: existingProfile, error: existingProfileError } = await client
+      .from('spytify_profiles')
+      .select('avatar, bio')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (existingProfileError) throw existingProfileError;
+
     const { error } = await client.from('spytify_profiles').upsert({
       id: user.id,
       username: user.username,
@@ -343,8 +350,12 @@ export async function cloudRegisterUser(
       email: email || null,
       password_hash: passwordHash,
       salt: salt,
-      avatar: user.avatar || null,
-      ...(user.bio !== undefined ? { bio: user.bio } : {}),
+      avatar: existingProfile ? existingProfile.avatar : user.avatar || null,
+      ...(existingProfile
+        ? { bio: existingProfile.bio }
+        : user.bio !== undefined
+          ? { bio: user.bio }
+          : {}),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' });
 
@@ -650,22 +661,28 @@ export async function fetchCloudDirectMessages(roomId: string): Promise<CloudDir
 /**
  * Fetches recent incoming 1-on-1 direct messages sent to receiverId so we can detect unread messages
  */
-export async function fetchIncomingCloudDirectMessages(receiverId: string): Promise<CloudDirectMessageRow[]> {
+export async function fetchIncomingCloudDirectMessages(
+  receiverId: string,
+  since?: string
+): Promise<CloudDirectMessageRow[]> {
   const client = getSupabaseClient();
   if (!client || !receiverId) return [];
   try {
-    const { data, error } = await client
+    let query = client
       .from('spytify_direct_messages')
       .select('id, room_id, sender_id, receiver_id, sender_username, sender_display_name, content, track_embed, created_at, sent_at')
       .eq('receiver_id', receiverId)
       .like('room_id', 'dm_%')
-      .neq('sender_id', receiverId)
-      .order('sent_at', { ascending: false })
-      .limit(MAX_CHAT_MESSAGES_LIMIT);
+      .neq('sender_id', receiverId);
+    if (since) {
+      query = query.gt('sent_at', since).order('sent_at', { ascending: true });
+    } else {
+      query = query.order('sent_at', { ascending: false });
+    }
+    const { data, error } = await query.limit(MAX_CHAT_MESSAGES_LIMIT);
     if (error || !data) return [];
-    return (data as CloudDirectMessageRow[])
-      .reverse()
-      .map(decodeCloudMessage);
+    const rows = data as CloudDirectMessageRow[];
+    return (since ? rows : rows.reverse()).map(decodeCloudMessage);
   } catch {
     return [];
   }
@@ -760,6 +777,26 @@ export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
   } catch {
     return [];
   }
+}
+
+export async function fetchCloudProfilesByIds(userIds: string[]): Promise<CloudPublicProfile[]> {
+  const client = getSupabaseClient();
+  const ids = Array.from(new Set(userIds.filter(id => id && !id.startsWith('usr_custom_') && id !== 'usr_me')));
+  if (!client || ids.length === 0) return [];
+
+  const { data, error } = await client
+    .from('spytify_profiles')
+    .select('id, username, display_name, avatar, bio, thought')
+    .in('id', ids);
+  if (error) throw new Error(`Không thể tải hồ sơ thành viên: ${error.message}`);
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    username: row.username || 'operative',
+    display_name: row.display_name || row.username || 'Operative',
+    avatar: row.avatar || null,
+    bio: row.bio ?? null,
+    thought: row.thought ?? null,
+  }));
 }
 
 export async function fetchCloudProfileUpdatesSince(since: string): Promise<CloudProfileUpdate[]> {
@@ -961,20 +998,31 @@ export async function fetchCloudServerById(serverId: string): Promise<any | null
 export interface CloudServerMembershipAudit {
   activeServers: any[];
   removedServerIds: string[];
+  syncCursor?: string;
 }
 
-export async function fetchCloudServerMembershipAudit(userId: string): Promise<CloudServerMembershipAudit> {
+export async function fetchCloudServerMembershipAudit(
+  userId: string,
+  since?: string
+): Promise<CloudServerMembershipAudit> {
   const client = getSupabaseClient();
   if (!client || !userId) return { activeServers: [], removedServerIds: [] };
   try {
-    const { data, error } = await client
+    let query = client
       .from('spytify_direct_messages')
-      .select('content')
+      .select('content, sent_at')
       .eq('room_id', SERVERS_REGISTRY_ROOM_ID);
-    if (error || !data) return { activeServers: [], removedServerIds: [] };
+    if (since) query = query.gt('sent_at', since);
+    const { data, error } = await query.order('sent_at', { ascending: true });
+    if (error || !data) {
+      console.warn('Supabase server registry sync failed:', error);
+      return { activeServers: [], removedServerIds: [] };
+    }
     const activeServers: any[] = [];
     const removedServerIds: string[] = [];
+    let syncCursor: string | undefined;
     for (const row of data) {
+      if (row?.sent_at && (!syncCursor || row.sent_at > syncCursor)) syncCursor = row.sent_at;
       if (!row?.content) continue;
       try {
         const srv = JSON.parse(row.content);
@@ -994,8 +1042,9 @@ export async function fetchCloudServerMembershipAudit(userId: string): Promise<C
         }
       } catch {}
     }
-    return { activeServers, removedServerIds };
-  } catch {
+    return { activeServers, removedServerIds, syncCursor };
+  } catch (error) {
+    console.warn('Supabase server registry sync failed:', error);
     return { activeServers: [], removedServerIds: [] };
   }
 }

@@ -23,6 +23,7 @@ import {
   downloadChatFile,
   MAX_CHAT_FILE_SIZE,
   fetchAllCloudProfiles,
+  fetchCloudProfilesByIds,
   fetchCloudProfileUpdatesSince,
   fetchCloudFollowGraph,
   pushCloudFollow,
@@ -53,6 +54,7 @@ interface CommunityViewProps {
   onPlayTrack: (track: Track, customQueue?: Track[]) => void;
   onPauseTrack?: () => void;
   onOpenAuth?: () => void;
+  onUpdateBio?: (bio: string) => void;
   accentColor?: string;
   language?: LanguageCode;
   themeMode?: 'dark' | 'light';
@@ -977,6 +979,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   onPlayTrack,
   onPauseTrack,
   onOpenAuth,
+  onUpdateBio,
   accentColor = '#FF2A55',
   language = 'vi',
   themeMode = 'dark',
@@ -2589,6 +2592,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
       localStorage.setItem('spytify_user_bio', trimmed);
     } catch {}
+    onUpdateBio?.(trimmed);
     setIsBioModalOpen(false);
   };
 
@@ -7430,42 +7434,78 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     let isMounted = true;
     const profileSyncCursorKey = `spytify_profile_sync_at_${currentUser.id}`;
+    const dmSyncCursorKey = `spytify_dm_sync_at_${currentUser.id}`;
+    const serverAuditCursorKey = `spytify_server_audit_at_${currentUser.id}`;
 
     const syncIncomingCloudDms = async (isFirstSync = false) => {
       try {
-        const incomingRows = await fetchIncomingCloudDirectMessages(currentUser.id);
-        if (!isMounted || !incomingRows.length) return;
+        const dmSyncSince = localStorage.getItem(dmSyncCursorKey) || undefined;
+        const incomingRows = await fetchIncomingCloudDirectMessages(currentUser.id, dmSyncSince);
+        if (!isMounted) return;
         const initFlagKey = `spytify_seen_dm_init_${currentUser.id}`;
         const isAlreadyInitialized = Boolean(localStorage.getItem(initFlagKey));
-        if (!isAlreadyInitialized) {
-          // Lần đầu tiên khởi tạo bộ đếm trên thiết bị: đánh dấu các tin nhắn cũ trong quá khứ là đã biết
-          incomingRows.forEach(r => {
-            if (r.id) seenMessageIdsRef.current.add(r.id);
-          });
-          persistSeenMessageIds();
-          try {
-            localStorage.setItem(initFlagKey, '1');
-          } catch {}
+        if (!incomingRows.length) {
+          if (isFirstSync && !dmSyncSince) {
+            try {
+              localStorage.setItem(initFlagKey, '1');
+            } catch {}
+          }
           return;
         }
 
-        incomingRows.forEach(r => {
-          if (!r.id || r.sender_id === currentUser.id) return;
-          const dmMsg: CommunityMessage = {
-            id: r.id,
-            server_id: 'dm_private',
-            channel_id: r.room_id,
-            user_id: r.sender_id,
-            username: r.sender_username || 'operative',
-            display_name: r.sender_display_name || r.sender_username || 'Operative',
-            avatar: r.sender_avatar || null,
-            content: r.content,
-            track_embed: r.track_embed || null,
-            created_at: r.created_at || '',
-          };
-          handleIncomingDmMessage(dmMsg, r.sender_id, r.room_id, !isFirstSync);
-        });
-      } catch {}
+        if (!isAlreadyInitialized) {
+          if (isFirstSync) {
+            incomingRows.forEach(r => {
+              if (r.id) seenMessageIdsRef.current.add(r.id);
+            });
+            persistSeenMessageIds();
+          } else {
+            incomingRows.forEach(r => {
+              if (!r.id || r.sender_id === currentUser.id) return;
+              const dmMsg: CommunityMessage = {
+                id: r.id,
+                server_id: 'dm_private',
+                channel_id: r.room_id,
+                user_id: r.sender_id,
+                username: r.sender_username || 'operative',
+                display_name: r.sender_display_name || r.sender_username || 'Operative',
+                avatar: r.sender_avatar || null,
+                content: r.content,
+                track_embed: r.track_embed || null,
+                created_at: r.created_at || '',
+              };
+              handleIncomingDmMessage(dmMsg, r.sender_id, r.room_id, true);
+            });
+          }
+          try {
+            localStorage.setItem(initFlagKey, '1');
+          } catch {}
+        } else {
+          incomingRows.forEach(r => {
+            if (!r.id || r.sender_id === currentUser.id) return;
+            const dmMsg: CommunityMessage = {
+              id: r.id,
+              server_id: 'dm_private',
+              channel_id: r.room_id,
+              user_id: r.sender_id,
+              username: r.sender_username || 'operative',
+              display_name: r.sender_display_name || r.sender_username || 'Operative',
+              avatar: r.sender_avatar || null,
+              content: r.content,
+              track_embed: r.track_embed || null,
+              created_at: r.created_at || '',
+            };
+            handleIncomingDmMessage(dmMsg, r.sender_id, r.room_id, !isFirstSync);
+          });
+        }
+        const latestSentAt = incomingRows.reduce(
+          (latest, row) => (row.sent_at && row.sent_at > latest ? row.sent_at : latest),
+          dmSyncSince || ''
+        );
+        if (latestSentAt) localStorage.setItem(dmSyncCursorKey, latestSentAt);
+      } catch (error) {
+        console.warn('Cloud incoming direct-message sync failed:', error);
+      }
     };
 
     const syncCloudProfilesAndFollows = async (syncProfileChanges = false) => {
@@ -7481,6 +7521,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             profileSyncSince = localStorage.getItem(profileSyncCursorKey) || profileSyncSince;
           } catch {}
         }
+        let serverAuditSince: string | undefined;
+        try {
+          serverAuditSince = localStorage.getItem(serverAuditCursorKey) || undefined;
+        } catch {}
 
         const [cloudProfiles, profileUpdates, followGraph, serverInvites, serverAudit] = await Promise.all([
           !syncProfileChanges ? fetchAllCloudProfiles() : Promise.resolve([]),
@@ -7489,13 +7533,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             : Promise.resolve([]),
           fetchCloudFollowGraph(currentUser.id),
           fetchCloudServerInvites(currentUser.id),
-          fetchCloudServerMembershipAudit(currentUser.id),
+          fetchCloudServerMembershipAudit(currentUser.id, serverAuditSince),
         ]);
 
         if (!isMounted) return;
         if (syncProfileChanges) {
           try {
             localStorage.setItem(profileSyncCursorKey, profileSyncStartedAt);
+          } catch {}
+        }
+        if (serverAudit.syncCursor) {
+          try {
+            localStorage.setItem(serverAuditCursorKey, serverAudit.syncCursor);
           } catch {}
         }
 
@@ -8054,6 +8103,109 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       globalSocialChannelRef.current = null;
     };
   }, [currentUser?.id]);
+
+  const cloudMemberIdsKey = Array.from(new Set(
+    (selectedServer.member_ids || []).filter(id => id && id !== currentUser?.id && id !== 'usr_me' && !id.startsWith('usr_custom_'))
+  )).join('\u0000');
+
+  useEffect(() => {
+    if (!currentUser?.id || !cloudMemberIdsKey) return;
+    let active = true;
+    const memberIds = cloudMemberIdsKey.split('\u0000');
+
+    fetchCloudProfilesByIds(memberIds).then(profiles => {
+      if (!active || profiles.length === 0) return;
+
+      setRegisteredUsers(prev => {
+        const byId = new Map(prev.map(user => [user.id, user]));
+        profiles.forEach(profile => {
+          if (!profile.id || profile.id === currentUser.id) return;
+          const existing = byId.get(profile.id);
+          byId.set(profile.id, {
+            ...(existing || {
+              id: profile.id,
+              username: profile.username,
+              display_name: profile.display_name,
+              role: 'AGENT' as const,
+              status: 'offline' as const,
+              listening: null,
+              listeningTrack: null,
+              isHost: false,
+              followsCurrentUser: false,
+              joinedAt: new Date().toISOString().split('T')[0],
+            }),
+            username: profile.username || existing?.username || 'operative',
+            display_name: profile.display_name || existing?.display_name || profile.username,
+            avatar: profile.avatar,
+            bio: profile.bio ?? existing?.bio ?? 'Thành viên cộng đồng Spytify.',
+          });
+        });
+        const next = Array.from(byId.values());
+        try {
+          localStorage.setItem('spytify_registered_users', JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+
+      setRealtimeUserPresences(prev => {
+        let next = prev;
+        profiles.forEach(profile => {
+          const username = profile.username.toLowerCase();
+          Object.entries(prev).forEach(([key, presence]) => {
+            if (
+              key !== profile.id &&
+              presence.id !== profile.id &&
+              (!username || presence.username.toLowerCase() !== username)
+            ) {
+              return;
+            }
+            if (next === prev) next = { ...prev };
+            next[key] = {
+              ...presence,
+              id: profile.id,
+              username: profile.username || presence.username,
+              display_name: profile.display_name || presence.display_name,
+              avatar: profile.avatar,
+              bio: profile.bio,
+            };
+          });
+        });
+        return next;
+      });
+    }).catch(error => {
+      console.warn('Cloud server-member profile sync failed:', error);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [currentUser?.id, selectedServer.id, cloudMemberIdsKey]);
+
+  useEffect(() => {
+    setHoveredProfile(prev => {
+      if (!prev) return prev;
+      const username = prev.member.username?.toLowerCase();
+      const profile = registeredUsers.find(user => user.id === prev.member.id) ||
+        (username ? registeredUsers.find(user => user.username.toLowerCase() === username) : undefined);
+      const presence = realtimeUserPresences[prev.member.id] ||
+        Object.values(realtimeUserPresences).find(user =>
+          user.id === prev.member.id || Boolean(username && user.username.toLowerCase() === username)
+        );
+      const bio = profile?.bio ?? presence?.bio;
+      const avatar = profile?.avatar ?? presence?.avatar;
+      if (
+        (bio === undefined || bio === null || bio === prev.bio) &&
+        (avatar === undefined || avatar === null || avatar === prev.member.avatar)
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        bio: bio ?? prev.bio,
+        member: { ...prev.member, avatar: avatar ?? prev.member.avatar },
+      };
+    });
+  }, [registeredUsers, realtimeUserPresences]);
 
   // Đồng bộ avatar mới nhất cho activeDmFriend và selectedProfileUser khi registeredUsers cập nhật
   useEffect(() => {

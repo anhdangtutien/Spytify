@@ -1450,10 +1450,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               invoke<Track[]>('db_get_favorites', { userId: user.id }).then(localFavs => {
                 const localAlbums = loadAlbumsForUser(user.id);
                 cloudSyncPush(user.id, {
-                  username: user.username,
-                  displayName: user.display_name,
-                  email: user.email || undefined,
-                  avatar: user.avatar || undefined,
                   favorites: localFavs,
                   albums: localAlbums,
                 }).catch(() => {});
@@ -3606,6 +3602,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               onPlayTrack={handlePlayTrack}
               onPauseTrack={handlePauseTrack}
               onOpenAuth={() => setIsAuthModalOpen(true)}
+              onUpdateBio={handleUpdateBio}
               screenShareFps={screenShareFps}
               onScreenShareFpsChange={handleUpdateScreenShareFps}
               accentColor={activeAccentColor}
