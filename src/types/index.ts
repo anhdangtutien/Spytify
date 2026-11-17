@@ -127,6 +127,7 @@ export interface VoiceParticipant {
   listening?: string | null;
   listeningTrack?: Track | null;
   isScreenSharing?: boolean;
+  isCameraOn?: boolean;
   custom_status?: string;
   serverId?: string;
   channelId?: string;
@@ -169,6 +170,7 @@ export interface CommunityServer {
   allow_member_invites?: boolean;
   pending_invites?: CommunityPendingInvite[];
   custom_bots?: CommunityUserProfile[];
+  message_limit?: number;
 }
 
 export interface RequestBotTrack {

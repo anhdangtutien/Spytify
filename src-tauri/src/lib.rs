@@ -860,6 +860,145 @@ fn db_get_stats(
     db.get_stats(&user_id)
 }
 
+#[tauri::command]
+fn db_save_chat_image(
+    id: String,
+    url_or_key: String,
+    base64_data: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<(), String> {
+    db.save_chat_image(&id, &url_or_key, &base64_data)
+}
+
+#[tauri::command]
+fn db_get_chat_image(
+    id_or_url: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<Option<String>, String> {
+    db.get_chat_image(&id_or_url)
+}
+
+#[tauri::command]
+fn db_save_server_chat_message(
+    id: String,
+    server_id: String,
+    channel_id: String,
+    created_order: i64,
+    message_json: String,
+    max_messages: usize,
+    db: State<'_, DatabaseManager>,
+) -> Result<(), String> {
+    db.save_server_chat_message(
+        &id,
+        &server_id,
+        &channel_id,
+        created_order,
+        &message_json,
+        max_messages,
+    )
+}
+
+#[tauri::command]
+fn db_get_server_chat_messages(
+    server_id: String,
+    max_messages: usize,
+    db: State<'_, DatabaseManager>,
+) -> Result<Vec<String>, String> {
+    db.get_server_chat_messages(&server_id, max_messages)
+}
+
+#[tauri::command]
+fn db_delete_server_chat_message(
+    id: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<(), String> {
+    db.delete_server_chat_message(&id)
+}
+
+#[cfg(target_os = "windows")]
+fn hide_screen_capture_bar() {
+    use std::ffi::c_void;
+    type BOOL = i32;
+    type HWND = *mut c_void;
+    type LPARAM = isize;
+    type WNDENUMPROC = unsafe extern "system" fn(HWND, LPARAM) -> BOOL;
+
+    extern "system" {
+        fn EnumWindows(lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
+        fn EnumChildWindows(hWndParent: HWND, lpEnumFunc: WNDENUMPROC, lParam: LPARAM) -> BOOL;
+        fn GetWindowTextW(hWnd: HWND, lpString: *mut u16, nMaxCount: i32) -> i32;
+        fn GetClassNameW(hWnd: HWND, lpClassName: *mut u16, nMaxCount: i32) -> i32;
+        fn ShowWindow(hWnd: HWND, nCmdShow: i32) -> BOOL;
+        fn SetWindowPos(
+            hWnd: HWND,
+            hWndInsertAfter: HWND,
+            X: i32,
+            Y: i32,
+            cx: i32,
+            cy: i32,
+            uFlags: u32,
+        ) -> BOOL;
+    }
+
+    const SW_HIDE: i32 = 0;
+    const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_HIDEWINDOW: u32 = 0x0080;
+
+    unsafe extern "system" fn enum_windows_callback(hwnd: HWND, _: LPARAM) -> BOOL {
+        let mut class_buf = [0u16; 256];
+        let class_len = GetClassNameW(hwnd, class_buf.as_mut_ptr(), 256);
+        let class_name = String::from_utf16_lossy(&class_buf[..class_len as usize]);
+
+        let mut title_buf = [0u16; 512];
+        let title_len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), 512);
+        let title = String::from_utf16_lossy(&title_buf[..title_len as usize]).to_lowercase();
+
+        let is_target = class_name.contains("ScreenCaptureNotificationUI")
+            || ((title.contains("tauri.localhost") || title.contains("localhost:1420"))
+                && title.contains("sharing"));
+
+        if is_target {
+            ShowWindow(hwnd, SW_HIDE);
+            SetWindowPos(hwnd, std::ptr::null_mut(), -9999, -9999, 0, 0, SWP_HIDEWINDOW | SWP_NOSIZE | SWP_NOZORDER);
+        }
+
+        unsafe extern "system" fn enum_child_callback(child: HWND, _: LPARAM) -> BOOL {
+            let mut title_buf = [0u16; 512];
+            let title_len = GetWindowTextW(child, title_buf.as_mut_ptr(), 512);
+            let title = String::from_utf16_lossy(&title_buf[..title_len as usize]).to_lowercase();
+            let is_target = title.contains("sharing")
+                && (title.contains("tauri.localhost") || title.contains("localhost:1420"));
+            if is_target {
+                ShowWindow(child, SW_HIDE);
+                SetWindowPos(child, std::ptr::null_mut(), -9999, -9999, 0, 0, SWP_HIDEWINDOW | SWP_NOSIZE | SWP_NOZORDER);
+            }
+            1
+        }
+        EnumChildWindows(hwnd, enum_child_callback, 0);
+
+        1
+    }
+
+    unsafe {
+        EnumWindows(enum_windows_callback, 0);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_screen_capture_bar() {}
+
+#[tauri::command]
+async fn hide_screen_share_notification() -> Result<(), String> {
+    tokio::spawn(async {
+        for _ in 0..40 {
+            hide_screen_capture_bar();
+            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        }
+    });
+    Ok(())
+}
+
 // ─── ON-DEVICE AI COMMANDS ───────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1509,15 +1648,13 @@ pub fn run() {
         .on_window_event(|window, event| {
             match event {
                 WindowEvent::CloseRequested { api, .. } => {
-                    let _ = window.emit("app-close-requested", ());
                     if CLOSE_TO_TRAY.load(Ordering::SeqCst) {
-                        // Hide window to tray on close to allow background audio playback
                         api.prevent_close();
                         let _ = window.hide();
                         let _ = window.emit("app-window-state", "hidden");
                         trim_process_memory();
                     } else {
-                        // User disabled tray: allow frontend to send leave packets before exit
+                        let _ = window.emit("app-close-requested", ());
                         api.prevent_close();
                         if !IS_EXITING.swap(true, Ordering::SeqCst) {
                             tauri::async_runtime::spawn(async move {
@@ -1597,7 +1734,13 @@ pub fn run() {
             check_for_updates,
             download_and_install_update,
             get_launch_on_startup,
-            set_launch_on_startup
+            set_launch_on_startup,
+            db_save_chat_image,
+            db_get_chat_image,
+            db_save_server_chat_message,
+            db_get_server_chat_messages,
+            db_delete_server_chat_message,
+            hide_screen_share_notification
         ])
         .run(tauri::generate_context!())
         .expect("error while running soundify application");

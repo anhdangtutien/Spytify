@@ -1,13 +1,13 @@
 ﻿import React, { useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { User, UserStats, HistoryItem, Track } from '../types';
+import { User, UserStats, HistoryItem, Track, UserAlbum } from '../types';
 import { 
   User as UserIcon, LogOut, Clock, Heart, Headphones, 
   Music, RefreshCw, Disc, Palette, Camera, Upload, Trash2, 
   Check, Sparkles, Shield, Sun, Moon, Download, Database, HardDriveDownload,
   Cloud, CloudLightning, Key, ChevronDown, ChevronUp, Globe, Languages,
-  Folder, FolderOpen, FolderDown, Copy, CheckCheck, ExternalLink, Zap, Power,
+  Folder, FolderOpen, FolderDown, Copy, CheckCheck, ExternalLink, Zap, Power, Monitor,
   Mic, Volume2, Sliders, RotateCcw, Volume1, Search, Edit3, ChevronRight,
   ShieldCheck, CheckCircle2, UserCheck, AlertCircle, Info, Lock
 } from 'lucide-react';
@@ -34,6 +34,9 @@ interface ProfileViewProps {
   onChangeDownloadFolder?: () => void;
   onOpenDownloadFolder?: () => void;
   onOpenUpdateModal?: (info: UpdateInfo) => void;
+  onUpdateAlbums: (albums: UserAlbum[]) => void;
+  screenShareFps: 30 | 60 | 90;
+  onScreenShareFpsChange: (fps: 30 | 60 | 90) => void;
 }
 
 // 8 Curated Spy / Classified Theme Colors
@@ -98,12 +101,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onChangeDownloadFolder,
   onOpenDownloadFolder,
   onOpenUpdateModal,
+  onUpdateAlbums,
+  screenShareFps,
+  onScreenShareFpsChange,
 }) => {
   const [stats, setStats] = useState<UserStats>({ total_played: 0, favorite_count: 0, top_artist: null });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
+  const albumsStorageKey = currentUser
+    ? `spytify_user_albums_${currentUser.id}`
+    : 'spytify_user_albums_guest';
 
   // Close to Tray, Launch on Startup & Updater state
   const [closeToTray, setCloseToTray] = useState<boolean>(() => {
@@ -123,9 +132,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [updateStatusMsg, setUpdateStatusMsg] = useState<string | null>(null);
   const [userBio, setUserBio] = useState(() => {
     try {
-      return localStorage.getItem('spytify_user_bio') || 'Đang khám phá âm nhạc trên Spytify.';
+      return localStorage.getItem('spytify_user_bio') || getTranslation(language, 'settings.defaultBio');
     } catch {
-      return 'Đang khám phá âm nhạc trên Spytify.';
+      return getTranslation(language, 'settings.defaultBio');
     }
   });
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -152,10 +161,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         localStorage.setItem('spytify_launch_on_startup', actual ? 'true' : 'false');
       } catch {}
       setLaunchStartupMsg(
-        actual ? 'Đã bật khởi động cùng Windows!' : 'Đã tắt khởi động cùng Windows.'
+        actual
+          ? getTranslation(language, 'settings.launchEnabledToast')
+          : getTranslation(language, 'settings.launchDisabledToast')
       );
     } catch (e: any) {
-      setLaunchStartupMsg(typeof e === 'string' ? e : e?.message || 'Không thể thay đổi cài đặt khởi động Windows.');
+      setLaunchStartupMsg(
+        typeof e === 'string' || e?.message
+          ? String(typeof e === 'string' ? e : e.message)
+          : getTranslation(language, 'settings.startupChangeError')
+      );
     } finally {
       setIsTogglingStartup(false);
     }
@@ -181,15 +196,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           onOpenUpdateModal(res.info);
         }
       } else if (res && res.error) {
-        setUpdateStatusMsg('Lỗi kiểm tra: ' + res.error);
+        setUpdateStatusMsg(getTranslation(language, 'settings.updateError', { error: res.error }));
         setTimeout(() => setUpdateStatusMsg(null), 6000);
       } else {
         const ver = res?.info?.version || `v${CURRENT_VERSION}`;
-        setUpdateStatusMsg(`Bạn đang dùng bản mới nhất (${ver})!`);
+        setUpdateStatusMsg(getTranslation(language, 'settings.latestVersion', { version: ver }));
         setTimeout(() => setUpdateStatusMsg(null), 4000);
       }
     } catch (e: any) {
-      setUpdateStatusMsg('Không thể kiểm tra cập nhật: ' + (e?.message || e));
+      setUpdateStatusMsg(
+        getTranslation(language, 'settings.updateCheckError', { error: e?.message || String(e) })
+      );
       setTimeout(() => setUpdateStatusMsg(null), 5000);
     } finally {
       setIsCheckingUpdate(false);
@@ -322,7 +339,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const handleCopySql = () => {
     navigator.clipboard.writeText(SUPABASE_SCHEMA_SQL);
     setCopiedSql(true);
-    setCloudStatusMsg('✅ Đã sao chép toàn bộ mã SQL khởi tạo vào Clipboard!');
+    setCloudStatusMsg(getTranslation(language, 'settings.cloudSqlCopied'));
     setTimeout(() => {
       setCopiedSql(false);
       setCloudStatusMsg(null);
@@ -344,37 +361,47 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     e.preventDefault();
     saveStoredSupabaseConfig(supabaseConfig.url, supabaseConfig.anonKey);
     setSupabaseConfig(getCustomSupabaseConfig());
-    setCloudStatusMsg(supabaseConfig.url ? 'Đã lưu cấu hình cơ sở dữ liệu riêng!' : 'Đã chuyển về sử dụng Cloud mặc định!');
+    setCloudStatusMsg(
+      getTranslation(language, supabaseConfig.url ? 'settings.cloudConfigSaved' : 'settings.cloudDefaultRestored')
+    );
     setTimeout(() => setCloudStatusMsg(null), 3000);
   };
 
   const handleResetToDefaultSupabase = () => {
     resetToDefaultSupabase();
     setSupabaseConfig(getCustomSupabaseConfig());
-    setCloudStatusMsg('Đã đặt lại về Cloud mặc định của Spytify!');
+    setCloudStatusMsg(getTranslation(language, 'settings.cloudDefaultRestored'));
     setTimeout(() => setCloudStatusMsg(null), 3000);
   };
 
   const handleTriggerCloudSync = async () => {
     if (!currentUser) {
-      alert('Vui lòng đăng nhập tài khoản trước khi đồng bộ Cloud.');
+      alert(getTranslation(language, 'settings.cloudLoginRequired'));
       return;
     }
     if (!isSupabaseConfigured()) {
       setShowSupabaseSettings(true);
-      alert('Vui lòng nhập Supabase Project URL và Anon Key bên dưới để bắt đầu đồng bộ.');
+      alert(getTranslation(language, 'settings.cloudConfigRequired'));
       return;
     }
 
     setIsCloudSyncing(true);
-    setCloudStatusMsg('Đang đồng bộ dữ liệu với Supabase Cloud...');
+    setCloudStatusMsg(getTranslation(language, 'settings.cloudSyncProgress'));
 
     try {
       // 1. Pull data from Cloud first
       const cloudData = await cloudSyncPull(currentUser.id);
       if (cloudData) {
         if (cloudData.albums && cloudData.albums.length > 0) {
-          localStorage.setItem('spytify_user_albums', JSON.stringify(cloudData.albums));
+          const storedAlbums = localStorage.getItem(albumsStorageKey);
+          const localAlbums: UserAlbum[] = storedAlbums ? JSON.parse(storedAlbums) : [];
+          const existingIds = new Set(localAlbums.map(album => album.id));
+          const mergedAlbums = [
+            ...localAlbums,
+            ...cloudData.albums.filter(album => !existingIds.has(album.id)),
+          ];
+          localStorage.setItem(albumsStorageKey, JSON.stringify(mergedAlbums));
+          onUpdateAlbums(mergedAlbums);
         }
         if (cloudData.avatar && !currentUser.avatar) {
           onUpdateAvatar(cloudData.avatar);
@@ -406,7 +433,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       }
 
       // 2. Push current local state to Cloud
-      const storedAlbums = localStorage.getItem('spytify_user_albums');
+      const storedAlbums = localStorage.getItem(albumsStorageKey);
       const localAlbums = storedAlbums ? JSON.parse(storedAlbums) : [];
       await cloudSyncPush(currentUser.id, {
         albums: localAlbums,
@@ -417,11 +444,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         history: history.slice(0, 30),
       });
 
-      setCloudStatusMsg('Đồng bộ Cloud thành công 100%!');
+      setCloudStatusMsg(getTranslation(language, 'settings.cloudSyncSuccess'));
       setTimeout(() => setCloudStatusMsg(null), 3000);
     } catch (err) {
       console.error(err);
-      setCloudStatusMsg('Lỗi khi đồng bộ Cloud.');
+      setCloudStatusMsg(getTranslation(language, 'settings.cloudSyncError'));
     } finally {
       setIsCloudSyncing(false);
     }
@@ -431,7 +458,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     try {
       const data = JSON.parse(jsonStr);
       if (data.albums && Array.isArray(data.albums)) {
-        localStorage.setItem('spytify_user_albums', JSON.stringify(data.albums));
+        localStorage.setItem(albumsStorageKey, JSON.stringify(data.albums));
+        onUpdateAlbums(data.albums);
       }
       if (data.avatar) {
         onUpdateAvatar(data.avatar);
@@ -460,17 +488,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           invoke('db_add_history', { userId: currentUser.id, track: trk }).catch(console.error);
         }
       }
-      alert('Đã khôi phục hồ sơ, Lịch sử nghe và Album Spytify thành công từ tệp sao lưu!');
+      alert(getTranslation(language, 'settings.backupImportSuccess'));
       window.location.reload();
     } catch (err) {
-      alert('Tệp sao lưu không hợp lệ hoặc sai định dạng JSON: ' + err);
+      alert(getTranslation(language, 'settings.backupImportInvalid', { error: String(err) }));
     }
   };
 
   // Cross-Device Backup: Export Vault to JSON using Native Windows Dialog
   const handleExportBackup = async () => {
     try {
-      const storedAlbums = localStorage.getItem('spytify_user_albums');
+      const storedAlbums = localStorage.getItem(albumsStorageKey);
       const albumsData = storedAlbums ? JSON.parse(storedAlbums) : [];
       const backupData = {
         app: 'Spytify',
@@ -494,7 +522,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         });
         if (filePath) {
           await invoke('save_text_file', { path: filePath, content: jsonStr });
-          alert('Đã lưu tệp sao lưu thành công tại:\n' + filePath);
+          alert(getTranslation(language, 'settings.backupExportSuccess', { path: filePath }));
           return;
         }
       } catch (nativeErr) {
@@ -513,7 +541,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error('Failed to export backup:', err);
-      alert('Lỗi xuất tệp sao lưu: ' + err);
+      alert(getTranslation(language, 'settings.backupExportError', { error: String(err) }));
     }
   };
 
@@ -617,7 +645,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 className="text-[10px] text-[#888] hover:text-cyan-400 font-mono flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <Edit3 className="w-2.5 h-2.5" />
-                <span>Sửa hồ sơ</span>
+                <span>{getTranslation(language, 'settings.editProfile')}</span>
               </button>
             </div>
           </div>
@@ -629,7 +657,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               type="text"
               value={searchFilter}
               onChange={e => setSearchFilter(e.target.value)}
-              placeholder="Tìm kiếm cài đặt..."
+              placeholder={getTranslation(language, 'settings.search')}
               className={`w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none border transition-colors ${
                 themeMode === 'light' 
                   ? 'bg-white text-slate-900 border-[#cbd5e1] placeholder-slate-400' 
@@ -643,13 +671,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Group 1: Tài khoản */}
             <div>
               <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] px-2 mb-1">
-                Cài Đặt Người Dùng
+                {getTranslation(language, 'settings.userGroup')}
               </p>
               <div className="space-y-0.5">
                 {[
-                  { key: 'account', label: 'Thông Tin Tài Khoản', icon: UserIcon },
-                  { key: 'profile_appearance', label: 'Hồ Sơ & Giao Diện', icon: Palette },
-                  { key: 'account_status', label: 'Trạng Thái Tài Khoản', icon: ShieldCheck },
+                  { key: 'account', label: getTranslation(language, 'settings.navAccount'), icon: UserIcon },
+                  { key: 'profile_appearance', label: getTranslation(language, 'settings.navAppearance'), icon: Palette },
+                  { key: 'account_status', label: getTranslation(language, 'settings.navAccountStatus'), icon: ShieldCheck },
                 ]
                   .filter(item => !searchFilter || item.label.toLowerCase().includes(searchFilter.toLowerCase()))
                   .map(item => {
@@ -678,16 +706,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Group 2: Trải nghiệm & Cài đặt ứng dụng */}
             <div>
               <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] px-2 mb-1">
-                Cài Đặt Ứng Dụng
+                {getTranslation(language, 'settings.appGroup')}
               </p>
               <div className="space-y-0.5">
                 {[
-                  { key: 'voice_audio', label: 'Giọng nói và Video', icon: Mic },
-                  { key: 'download_storage', label: 'Tải Xuống & Lưu Trữ', icon: FolderDown },
-                  { key: 'cloud_sync', label: 'Đồng Bộ Đám Mây & Sao Lưu', icon: Cloud },
-                  { key: 'system', label: 'Hệ Thống & Cập Nhật', icon: Zap },
-                  { key: 'language', label: 'Ngôn Ngữ', icon: Globe },
-                  { key: 'activity_history', label: 'Lịch Sử & Thống Kê', icon: Clock },
+                  { key: 'voice_audio', label: getTranslation(language, 'settings.navVoice'), icon: Mic },
+                  { key: 'download_storage', label: getTranslation(language, 'settings.navDownloads'), icon: FolderDown },
+                  { key: 'cloud_sync', label: getTranslation(language, 'settings.navCloud'), icon: Cloud },
+                  { key: 'system', label: getTranslation(language, 'settings.navSystem'), icon: Zap },
+                  { key: 'language', label: getTranslation(language, 'settings.navLanguage'), icon: Globe },
+                  { key: 'activity_history', label: getTranslation(language, 'settings.navHistory'), icon: Clock },
                 ]
                   .filter(item => !searchFilter || item.label.toLowerCase().includes(searchFilter.toLowerCase()))
                   .map(item => {
@@ -712,6 +740,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   })}
               </div>
             </div>
+
           </div>
         </div>
 
@@ -723,7 +752,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               className="w-full px-3 py-2 rounded-xl text-xs font-bold text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
-              <span>Đăng Xuất</span>
+              <span>{getTranslation(language, 'settings.logout')}</span>
             </button>
           ) : (
             <button
@@ -743,10 +772,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Thông Tin Tài Khoản
+                {getTranslation(language, 'settings.accountTitle')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Quản lý tên người dùng, thông tin liên hệ và trạng thái xác thực tài khoản Spytify.
+                {getTranslation(language, 'settings.accountDescription')}
               </p>
             </div>
 
@@ -754,25 +783,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className={`p-4 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
               <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Tên đăng nhập</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.username')}</p>
                   <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                     @{currentUser ? currentUser.username : 'khach'}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => alert('Tên đăng nhập được quản lý bởi phiên xác thực SQLite cục bộ')}
+                  onClick={() => alert(getTranslation(language, 'settings.usernameManaged'))}
                   className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
                 >
-                  Chỉnh sửa
+                  {getTranslation(language, 'settings.edit')}
                 </button>
               </div>
 
               <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Tên hiển thị</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.displayName')}</p>
                   <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                    {currentUser ? currentUser.display_name : 'Khách Chưa Đăng Nhập'}
+                    {currentUser ? currentUser.display_name : getTranslation(language, 'settings.guestNotSignedIn')}
                   </p>
                 </div>
                 <button
@@ -780,13 +809,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onClick={() => setActiveTab('profile_appearance')}
                   className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
                 >
-                  Chỉnh sửa
+                  {getTranslation(language, 'settings.edit')}
                 </button>
               </div>
 
               <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
                 <div className="flex-1 pr-4">
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Tiểu sử cá nhân (Bio)</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.bio')}</p>
                   {isEditingBio ? (
                     <div className="mt-1 flex items-center gap-2">
                       <input
@@ -811,12 +840,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         }}
                         className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-mono font-bold cursor-pointer transition-colors"
                       >
-                        Lưu
+                        {getTranslation(language, 'settings.save')}
                       </button>
                     </div>
                   ) : (
                     <p className={`text-xs mt-0.5 font-sans ${themeMode === 'light' ? 'text-slate-700' : 'text-zinc-300'}`}>
-                      {userBio || 'Chưa thiết lập tiểu sử.'}
+                      {userBio || getTranslation(language, 'settings.bioNotSet')}
                     </p>
                   )}
                 </div>
@@ -826,38 +855,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     onClick={() => setIsEditingBio(true)}
                     className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
                   >
-                    Chỉnh sửa
+                    {getTranslation(language, 'settings.edit')}
                   </button>
                 )}
               </div>
 
               <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Email</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.email')}</p>
                   <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                    {currentUser?.email ? currentUser.email : 'chưa liên kết email'}
+                    {currentUser?.email ? currentUser.email : getTranslation(language, 'settings.emailNotLinked')}
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => alert('Email đăng nhập được đồng bộ qua Cloud')}
+                  onClick={() => alert(getTranslation(language, 'settings.emailSyncedCloud'))}
                   className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
                 >
-                  Chỉnh sửa
+                  {getTranslation(language, 'settings.edit')}
                 </button>
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">Số Điện Thoại</p>
-                  <p className="text-xs text-[#666] font-mono mt-0.5">Bạn chưa thêm số điện thoại nào vào Spytify.</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.phone')}</p>
+                  <p className="text-xs text-[#666] font-mono mt-0.5">{getTranslation(language, 'settings.phoneNotAdded')}</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => alert('Tính năng thêm số điện thoại bảo mật sẽ sớm được hỗ trợ')}
+                  onClick={() => alert(getTranslation(language, 'settings.phoneComingSoon'))}
                   className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
                 >
-                  Thêm
+                  {getTranslation(language, 'settings.add')}
                 </button>
               </div>
             </div>
@@ -865,40 +894,40 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Mật Khẩu & Bảo Mật Card */}
             <div>
               <h3 className={`text-sm font-bold mb-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Mật Khẩu & Bảo Mật
+                {getTranslation(language, 'settings.passwordSecurity')}
               </h3>
               <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
                   <div>
-                    <p className="text-xs font-bold text-white">Mật khẩu</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.password')}</p>
                     <p className="text-[11px] text-[#777] font-mono">••••••••••••</p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => alert('Để đổi mật khẩu, vui lòng đăng xuất và chọn Quên mật khẩu hoặc Thiết lập trong Auth.')}
+                    onClick={() => alert(getTranslation(language, 'settings.passwordChangeHelp'))}
                     className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
                   >
-                    Chỉnh sửa
+                    {getTranslation(language, 'settings.edit')}
                   </button>
                 </div>
 
                 <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
                   <div>
-                    <p className="text-xs font-bold text-white">Xác Thực Đa Nhân Tố (2FA)</p>
-                    <p className="text-[11px] text-[#777] font-mono">Bảo mật mã hóa kép qua SQLite & Supabase Vault</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.twoFactor')}</p>
+                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.twoFactorDescription')}</p>
                   </div>
                   <span className="text-xs font-mono text-emerald-400 font-bold flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    Đã kích hoạt
+                    {getTranslation(language, 'settings.activated')}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs font-bold text-white">Thiết Bị Đã Đăng Nhập</p>
-                    <p className="text-[11px] text-[#777] font-mono">1 thiết bị máy tính đang hoạt động</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.signedInDevices')}</p>
+                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.signedInDeviceCount')}</p>
                   </div>
-                  <span className="text-xs font-mono text-cyan-400 font-bold">Máy hiện tại</span>
+                  <span className="text-xs font-mono text-cyan-400 font-bold">{getTranslation(language, 'settings.currentDevice')}</span>
                 </div>
               </div>
             </div>
@@ -906,7 +935,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Khởi Động & Ứng Dụng Windows Card */}
             <div>
               <h3 className={`text-sm font-bold mb-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Khởi Động &amp; Ứng Dụng Desktop
+                {getTranslation(language, 'settings.desktopStartup')}
               </h3>
               <div className={`p-4 rounded-2xl border ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
                 <div className="flex items-center justify-between gap-4">
@@ -919,12 +948,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
                     <div className="min-w-0">
                       <p className={`text-xs font-bold ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                        Khởi động cùng Windows
+                        {getTranslation(language, 'settings.launchWithWindows')}
                       </p>
                       <p className="text-[11px] text-[#777] mt-0.5">
                         {launchOnStartup
-                          ? 'Bật: Spytify sẽ tự động mở khi bạn đăng nhập vào Windows.'
-                          : 'Tắt: Chỉ mở Spytify thủ công khi bạn nhấn biểu tượng ứng dụng.'}
+                          ? getTranslation(language, 'settings.launchEnabled')
+                          : getTranslation(language, 'settings.launchDisabled')}
                       </p>
                       {launchStartupMsg && (
                         <p className="text-[10px] font-mono text-cyan-400 mt-1">{launchStartupMsg}</p>
@@ -947,6 +976,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </button>
                 </div>
               </div>
+
             </div>
           </div>
         )}
@@ -955,10 +985,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Hồ Sơ & Giao Diện
+                {getTranslation(language, 'settings.navAppearance')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Tùy biến hình đại diện (Avatar), màu sắc chủ đạo Neon Cyberpunk và chế độ Sáng / Tối.
+                {getTranslation(language, 'settings.appearanceDescription')}
               </p>
             </div>
 
@@ -991,7 +1021,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               {/* Presets */}
               <div>
-                <p className="text-[11px] text-[#777] font-mono mb-2">Hoặc chọn nhanh từ bộ sưu tập Đặc nhiệm Spytify:</p>
+                <p className="text-[11px] text-[#777] font-mono mb-2">{getTranslation(language, 'settings.avatarPresetPrompt')}</p>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                   {SPY_AVATARS.map((preset) => {
                     const isSelected = currentUser?.avatar === preset.svg;
@@ -1168,10 +1198,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Trạng Thái Tài Khoản
+                {getTranslation(language, 'settings.navAccountStatus')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Kiểm tra mức độ tuân thủ, độ tin cậy và trạng thái đồng bộ cơ sở dữ liệu.
+                {getTranslation(language, 'settings.statusDescription')}
               </p>
             </div>
 
@@ -1179,7 +1209,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="p-4 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-cyan-200 text-xs flex items-start gap-3">
               <Info className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
               <p className="leading-relaxed">
-                Nhóm tuổi sẽ quyết định liệu bạn có thể truy cập nội dung và cài đặt dành cho người lớn hay không. Bạn thuộc nhóm tuổi người lớn (18+), nên sẽ không có gì thay đổi với bạn.
+                {getTranslation(language, 'settings.ageNotice')}
               </p>
             </div>
 
@@ -1190,11 +1220,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <UserIcon className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white">Nhóm Tuổi</p>
-                    <p className="text-[11px] text-[#777] font-mono">Bạn thuộc nhóm tuổi người lớn (18+) và có quyền truy cập vào tất cả các tính năng.</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.ageGroup')}</p>
+                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.ageDescription')}</p>
                   </div>
                 </div>
-                <span className="text-xs font-bold font-mono text-zinc-300">Người lớn</span>
+                <span className="text-xs font-bold font-mono text-zinc-300">{getTranslation(language, 'settings.adult')}</span>
               </div>
 
               <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
@@ -1203,11 +1233,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white">Trạng thái tài khoản</p>
-                    <p className="text-[11px] text-[#777] font-mono">Cảm ơn bạn đã sử dụng Spytify và tuân thủ nguyên tắc cộng đồng. Bạn không có bất kỳ vi phạm nào.</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.accountStatus')}</p>
+                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.accountStatusDescription')}</p>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-emerald-400">Hoàn toàn ổn &gt;</span>
+                <span className="text-xs font-mono font-bold text-emerald-400">{getTranslation(language, 'settings.healthy')}</span>
               </div>
 
               <div className="flex items-center justify-between">
@@ -1216,11 +1246,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Database className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white">Cơ sở dữ liệu nội bộ SQLite</p>
-                    <p className="text-[11px] text-[#777] font-mono">Lưu trữ siêu tốc trên máy tính, bảo mật tuyệt đối 100%.</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.sqliteTitle')}</p>
+                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.sqliteDescription')}</p>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-cyan-400">Đang hoạt động</span>
+                <span className="text-xs font-mono font-bold text-cyan-400">{getTranslation(language, 'settings.active')}</span>
               </div>
             </div>
           </div>
@@ -1230,10 +1260,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Giọng nói và Video
+                {getTranslation(language, 'settings.navVoice')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Cài đặt âm thanh đầu vào Micro, âm lượng loa đầu ra cho phòng đàm thoại (VoIP).
+                {getTranslation(language, 'settings.voiceDescription')}
               </p>
             </div>
 
@@ -1245,7 +1275,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <Mic className="w-4 h-4 text-emerald-400" />
-                        <span className="text-xs font-bold text-white">Âm lượng Micro (Input)</span>
+                        <span className="text-xs font-bold text-white">{getTranslation(language, 'settings.microphoneVolume')}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded">
@@ -1254,7 +1284,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleUpdateMicVolume(100)}
-                          title="Đặt về 100%"
+                          title={getTranslation(language, 'settings.resetVolume')}
                           className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
                         >
                           <RotateCcw className="w-3 h-3" />
@@ -1272,7 +1302,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     />
                   </div>
                   <p className="text-[10px] text-[#555] font-mono mt-3">
-                    Hỗ trợ khuếch đại mic lên tới 200% cho micro có âm lượng nhỏ.
+                    {getTranslation(language, 'settings.microphoneDescription')}
                   </p>
                 </div>
 
@@ -1282,7 +1312,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <Volume2 className="w-4 h-4 text-cyan-400" />
-                        <span className="text-xs font-bold text-white">Âm lượng Loa (Output)</span>
+                        <span className="text-xs font-bold text-white">{getTranslation(language, 'settings.speakerVolume')}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded">
@@ -1291,7 +1321,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleUpdateSpeakerVolume(100)}
-                          title="Đặt về 100%"
+                          title={getTranslation(language, 'settings.resetVolume')}
                           className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
                         >
                           <RotateCcw className="w-3 h-3" />
@@ -1309,16 +1339,45 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     />
                   </div>
                   <div className="flex items-center justify-between mt-3 pt-1">
-                    <span className="text-[10px] text-[#555] font-mono">0% đến 200%</span>
+                    <span className="text-[10px] text-[#555] font-mono">{getTranslation(language, 'settings.volumeRange')}</span>
                     <button
                       type="button"
                       onClick={playSpeakerTestChime}
                       className="px-2.5 py-1 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
                     >
                       <Volume1 className="w-3 h-3" />
-                      <span>Thử âm thanh loa</span>
+                      <span>{getTranslation(language, 'settings.testSpeaker')}</span>
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Monitor className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.shareFps')}</p>
+                    <p className="text-[10px] text-[#777] font-mono mt-0.5">
+                      {getTranslation(language, 'settings.shareFpsDescription')}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {([30, 60, 90] as const).map(fps => (
+                    <button
+                      key={fps}
+                      type="button"
+                      onClick={() => onScreenShareFpsChange(fps)}
+                      aria-pressed={screenShareFps === fps}
+                      className={`px-4 py-2 rounded-lg border text-xs font-mono font-bold transition-colors cursor-pointer ${
+                        screenShareFps === fps
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                          : 'bg-[#14141c] border-[#22222e] text-[#999] hover:text-white hover:border-emerald-500/40'
+                      }`}
+                    >
+                      {fps} FPS
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1329,10 +1388,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Tải Xuống & Lưu Trữ
+                {getTranslation(language, 'settings.navDownloads')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Cấu hình thư mục lưu nhạc ngoại tuyến (MP3 / FLAC) khi tải về máy tính.
+                {getTranslation(language, 'settings.downloadsDescription')}
               </p>
             </div>
 
@@ -1387,10 +1446,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Đồng Bộ Đám Mây & Sao Lưu
+                {getTranslation(language, 'settings.navCloud')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Đồng bộ Album, Avatar và Lịch sử nghe nhạc sang các thiết bị khác hoặc xuất két sắt JSON.
+                {getTranslation(language, 'settings.cloudDescription')}
               </p>
             </div>
 
@@ -1400,10 +1459,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div>
                   <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
                     <Cloud className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                    Đồng bộ Đám mây (Cloud Sync)
+                    {getTranslation(language, 'settings.cloudSyncLabel')}
                   </label>
                   <p className="text-[11px] text-[#777] mt-0.5">
-                    Tự động đồng bộ Album, Bài hát yêu thích và Avatar qua các máy tính khác theo thời gian thực (100% Miễn phí)
+                    {getTranslation(language, 'settings.cloudSyncDescription')}
                   </p>
                 </div>
                 <span className={`text-[10px] px-2.5 py-0.5 rounded font-mono border ${
@@ -1411,7 +1470,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
                     : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                 }`}>
-                  {isSupabaseConfigured() ? '🟢 Cloud Ready' : '⚪ Chưa kết nối'}
+                  {isSupabaseConfigured()
+                    ? getTranslation(language, 'settings.cloudReady')
+                    : getTranslation(language, 'settings.cloudDisconnected')}
                 </span>
               </div>
 
@@ -1426,7 +1487,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }}
                 >
                   <CloudLightning className={`w-4 h-4 ${isCloudSyncing ? 'animate-spin' : ''}`} />
-                  <span>{isCloudSyncing ? 'Đang đồng bộ...' : 'Đồng bộ Cloud ngay'}</span>
+                  <span>
+                    {isCloudSyncing
+                      ? getTranslation(language, 'settings.syncing')
+                      : getTranslation(language, 'settings.syncNow')}
+                  </span>
                 </button>
 
                 <button
@@ -1434,7 +1499,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   className="py-2.5 px-3 rounded-xl bg-[#0c0c12] hover:bg-[#15151e] border border-[#222230] text-xs font-semibold text-[#aaa] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
                 >
                   <Key className="w-3.5 h-3.5" />
-                  <span>Cài đặt Supabase riêng (Dành cho IT)</span>
+                  <span>{getTranslation(language, 'settings.customSupabase')}</span>
                   {showSupabaseSettings ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
               </div>
@@ -1451,7 +1516,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <div className="flex items-center justify-between border-b border-[#181822] pb-2">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
                       <Zap className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                      Tự lưu trữ cơ sở dữ liệu Supabase riêng
+                      {getTranslation(language, 'settings.selfHostedSupabase')}
                     </span>
                     <button
                       type="button"
@@ -1459,7 +1524,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       className="px-2.5 py-1 rounded bg-[#181824] hover:bg-[#222230] text-[11px] font-mono text-[#aaa] hover:text-white border border-[#2c2c3c] flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       {copiedSql ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedSql ? 'Đã sao chép SQL!' : 'Sao chép mã SQL 1-Click'}</span>
+                      <span>
+                        {copiedSql
+                          ? getTranslation(language, 'settings.copiedSql')
+                          : getTranslation(language, 'settings.copySql')}
+                      </span>
                     </button>
                   </div>
 
@@ -1470,7 +1539,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       </label>
                       <input
                         type="text"
-                        placeholder={supabaseConfig.isCustom ? "https://your-project.supabase.co" : "Mặc định: Cloud chính thức của Spytify (Đang bảo mật)"}
+                        placeholder={
+                          supabaseConfig.isCustom
+                            ? 'https://your-project.supabase.co'
+                            : getTranslation(language, 'settings.defaultProjectPlaceholder')
+                        }
                         value={supabaseConfig.url}
                         onChange={(e) => setSupabaseConfig(prev => ({ ...prev, url: e.target.value }))}
                         className="w-full py-2 px-3 rounded-lg bg-[#070709] border border-[#262634] text-xs text-white outline-none focus:border-white/50 font-mono"
@@ -1483,7 +1556,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       </label>
                       <input
                         type="password"
-                        placeholder={supabaseConfig.isCustom ? "sb_publishable_... hoặc eyJhbGciOi..." : "Mặc định: Key hệ thống ẩn an toàn"}
+                        placeholder={
+                          supabaseConfig.isCustom
+                            ? 'sb_publishable_...'
+                            : getTranslation(language, 'settings.defaultKeyPlaceholder')
+                        }
                         value={supabaseConfig.anonKey}
                         onChange={(e) => setSupabaseConfig(prev => ({ ...prev, anonKey: e.target.value }))}
                         className="w-full py-2 px-3 rounded-lg bg-[#070709] border border-[#262634] text-xs text-white outline-none focus:border-white/50 font-mono"
@@ -1498,14 +1575,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         className="py-1.5 px-3 rounded-lg bg-[#181824] hover:bg-[#222234] border border-[#2c2c3c] text-white font-mono text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                       >
                         <RefreshCw className={`w-3 h-3 ${isTestingConnection ? 'animate-spin' : ''}`} />
-                        <span>{isTestingConnection ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}</span>
+                        <span>
+                          {isTestingConnection
+                            ? getTranslation(language, 'settings.testing')
+                            : getTranslation(language, 'settings.testConnection')}
+                        </span>
                       </button>
 
                       <button
                         type="submit"
                         className="py-1.5 px-4 rounded-lg bg-white text-black font-bold text-xs hover:bg-[#ddd] transition-colors cursor-pointer"
                       >
-                        Lưu cấu hình riêng
+                        {getTranslation(language, 'settings.saveConfig')}
                       </button>
                     </div>
                   </form>
@@ -1540,7 +1621,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
                       {getTranslation(language, 'profile.exportBackup')}
                     </p>
-                    <p className="text-[10px] text-[#777] font-mono">Tải về két sắt Album, Avatar, Yêu thích</p>
+                    <p className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'settings.exportBackupHint')}</p>
                   </div>
                 </button>
 
@@ -1558,7 +1639,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
                       {getTranslation(language, 'profile.importBackup')}
                     </p>
-                    <p className="text-[10px] text-[#777] font-mono">Khôi phục toàn bộ dữ liệu từ máy cũ</p>
+                    <p className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'settings.importBackupHint')}</p>
                   </div>
                 </button>
               </div>
@@ -1570,10 +1651,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Hệ Thống & Cập Nhật
+                {getTranslation(language, 'settings.navSystem')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Thiết lập hành vi ứng dụng Windows, thu nhỏ khay hệ thống và cập nhật phiên bản.
+                {getTranslation(language, 'settings.systemDescription')}
               </p>
             </div>
 
@@ -1588,11 +1669,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Zap className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white">Khởi động cùng Windows</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.launchWithWindows')}</p>
                     <p className="text-[11px] text-[#777] mt-0.5">
                       {launchOnStartup
-                        ? 'Bật: Tự động khởi chạy Spytify mỗi khi mở máy Windows.'
-                        : 'Tắt: Không tự khởi chạy khi bật máy tính.'}
+                        ? getTranslation(language, 'settings.launchEnabled')
+                        : getTranslation(language, 'settings.launchDisabled')}
                     </p>
                   </div>
                 </div>
@@ -1622,11 +1703,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Power className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white">Chạy ngầm ở khay hệ thống (System Tray)</p>
+                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.trayTitle')}</p>
                     <p className="text-[11px] text-[#777] mt-0.5">
                       {closeToTray 
-                        ? 'Bật: Nhấn nút [X] sẽ ẩn app xuống khay hệ thống để tiếp tục phát nhạc ngầm.' 
-                        : 'Tắt: Nhấn nút [X] sẽ đóng và thoát hoàn toàn ứng dụng.'}
+                        ? getTranslation(language, 'settings.trayEnabled')
+                        : getTranslation(language, 'settings.trayDisabled')}
                     </p>
                   </div>
                 </div>
@@ -1655,13 +1736,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-xs font-bold text-white">Cập nhật ứng dụng Spytify</p>
+                      <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.updateApp')}</p>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#151520] text-zinc-300 border border-[#252535]">
-                        Phiên bản: v{CURRENT_VERSION}
+                        {getTranslation(language, 'settings.version')} v{CURRENT_VERSION}
                       </span>
                     </div>
                     <p className="text-[11px] text-[#777] mt-0.5">
-                      Tự động kiểm tra bản build mới nhất trên GitHub.
+                      {getTranslation(language, 'settings.updateDescription')}
                     </p>
                     {updateStatusMsg && (
                       <p className="text-[11px] text-emerald-400 font-mono mt-1">
@@ -1681,7 +1762,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   }}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-                  <span>{isCheckingUpdate ? 'Đang kiểm tra...' : 'Kiểm tra bản mới'}</span>
+                  <span>
+                    {isCheckingUpdate
+                      ? getTranslation(language, 'settings.checking')
+                      : getTranslation(language, 'settings.checkUpdate')}
+                  </span>
                 </button>
               </div>
             </div>
@@ -1692,10 +1777,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Ngôn Ngữ (Language)
+                {getTranslation(language, 'settings.navLanguage')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Chọn ngôn ngữ hiển thị trên toàn bộ giao diện, menu và hệ thống thông báo.
+                {getTranslation(language, 'settings.languageDescription')}
               </p>
             </div>
 
@@ -1742,10 +1827,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-6">
             <div>
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                Lịch Sử & Thống Kê
+                {getTranslation(language, 'settings.navHistory')}
               </h2>
               <p className="text-xs text-[#777] font-mono mt-0.5">
-                Tổng hợp hoạt động nghe nhạc, nghệ sĩ nghe nhiều nhất và danh sách các bài hát gần đây.
+                {getTranslation(language, 'settings.historyDescription')}
               </p>
             </div>
 
@@ -1760,7 +1845,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Headphones className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-[11px] text-[#777] font-mono uppercase">Tổng lượt nghe</p>
+                    <p className="text-[11px] text-[#777] font-mono uppercase">{getTranslation(language, 'settings.totalPlays')}</p>
                     <p className={`text-lg font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.total_played}</p>
                   </div>
                 </div>
@@ -1773,7 +1858,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Heart className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-[11px] text-[#777] font-mono uppercase">Bài hát yêu thích</p>
+                    <p className="text-[11px] text-[#777] font-mono uppercase">{getTranslation(language, 'settings.favoritesCount')}</p>
                     <p className={`text-lg font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.favorite_count}</p>
                   </div>
                 </div>
@@ -1786,8 +1871,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Disc className="w-5 h-5" />
                   </div>
                   <div className="overflow-hidden">
-                    <p className="text-[11px] text-[#777] font-mono uppercase">Nghệ sĩ nghe nhiều</p>
-                    <p className={`text-sm font-bold mt-0.5 truncate ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.top_artist || 'Chưa xác định'}</p>
+                    <p className="text-[11px] text-[#777] font-mono uppercase">{getTranslation(language, 'settings.topArtist')}</p>
+                    <p className={`text-sm font-bold mt-0.5 truncate ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.top_artist || getTranslation(language, 'settings.unknown')}</p>
                   </div>
                 </div>
               </div>
@@ -1798,13 +1883,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                  Bài hát phát gần đây (30 bài)
+                  {getTranslation(language, 'settings.recentTracks')}
                 </h3>
-                <span className="text-[10px] text-[#777] font-mono">Bấm bài bất kỳ để nghe lại</span>
+                <span className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'settings.replayHint')}</span>
               </div>
 
               {history.length === 0 ? (
-                <div className="text-center py-8 text-[#555] text-xs">Chưa có lịch sử phát nhạc.</div>
+                <div className="text-center py-8 text-[#555] text-xs">{getTranslation(language, 'settings.noHistory')}</div>
               ) : (
                 <div className="space-y-1 max-h-[480px] overflow-y-auto pr-1">
                   {history

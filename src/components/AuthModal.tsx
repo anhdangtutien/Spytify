@@ -3,14 +3,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { X, Lock, User as UserIcon, Sparkles, Loader2, Disc, Mail, AlertTriangle, Settings2, Info, CheckCircle2 } from 'lucide-react';
 import { User } from '../types';
 import { isSupabaseConfigured, cloudRegisterUser, cloudLoginUser } from '../services/supabase';
+import { getTranslation, LanguageCode } from '../locales/i18n';
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (user: User) => void;
+  language?: LanguageCode;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess, language = 'vi' }) => {
+  const t = (key: string) => getTranslation(language, `auth.${key}`);
   const [isRegister, setIsRegister] = useState(false);
   const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [showDevClientId, setShowDevClientId] = useState(false);
@@ -35,15 +38,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const validateRealEmail = (mail: string): { valid: boolean; reason?: string } => {
     const trimmed = mail.trim().toLowerCase();
     if (!trimmed.includes('@') || !trimmed.includes('.')) {
-      return { valid: false, reason: 'Email phải có ký tự @ và tên miền (ví dụ: .com, .vn)' };
+      return { valid: false, reason: t('emailSyntax') };
     }
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(trimmed)) {
-      return { valid: false, reason: 'Địa chỉ email chứa ký tự không hợp lệ' };
+      return { valid: false, reason: t('emailInvalidCharacters') };
     }
     const domain = trimmed.split('@')[1];
     if (!domain.includes('.')) {
-      return { valid: false, reason: 'Tên miền email không tồn tại' };
+      return { valid: false, reason: t('emailDomainInvalid') };
     }
     return { valid: true };
   };
@@ -55,15 +58,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     if (isRegister) {
       const emailCheck = validateRealEmail(registerEmail);
       if (!emailCheck.valid) {
-        setError(emailCheck.reason || 'Email không hợp lệ');
+        setError(emailCheck.reason || t('emailInvalid'));
         return;
       }
       if (password.length < 6) {
-        setError('Mật khẩu phải từ 6 ký tự trở lên');
+        setError(t('passwordMin'));
         return;
       }
       if (registerUsername.trim().length < 3) {
-        setError('Tên tài khoản phải từ 3 ký tự trở lên');
+        setError(t('usernameMin'));
         return;
       }
 
@@ -103,7 +106,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         onSuccess(user);
         onClose();
       } catch (err: unknown) {
-        setError(typeof err === 'string' ? err : 'Đăng ký thất bại');
+        setError(typeof err === 'string' ? err : t('registerFailed'));
       } finally {
         setLoading(false);
       }
@@ -111,7 +114,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     } else {
       // Login by Username or Email
       if (!identifier.trim()) {
-        setError('Vui lòng nhập Email hoặc Tên tài khoản');
+        setError(t('identifierRequired'));
         return;
       }
 
@@ -145,7 +148,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           onClose();
         }
       } catch (err: unknown) {
-        setError(typeof err === 'string' ? err : 'Tài khoản hoặc mật khẩu không chính xác');
+        setError(typeof err === 'string' ? err : t('credentialsInvalid'));
       } finally {
         setLoading(false);
       }
@@ -159,7 +162,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     const cleanEmail = googleEmail.trim().toLowerCase();
     const emailCheck = validateRealEmail(cleanEmail);
     if (!emailCheck.valid) {
-      setError(emailCheck.reason || 'Vui lòng nhập địa chỉ Gmail hợp lệ');
+      setError(emailCheck.reason || t('gmailRequired'));
       return;
     }
 
@@ -184,7 +187,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       onSuccess(user);
       onClose();
     } catch (err: unknown) {
-      setError(typeof err === 'string' ? err : 'Đăng nhập Google thất bại');
+      setError(typeof err === 'string' ? err : t('googleLoginFailed'));
     } finally {
       setLoading(false);
     }
@@ -194,7 +197,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setError(null);
 
     if (googleClientId.includes('@')) {
-      setError('⚠️ Bạn đang nhập địa chỉ Email vào ô Client ID. Google Client ID phải có dạng: xxxxx.apps.googleusercontent.com');
+      setError(t('clientIdLooksLikeEmail'));
       return;
     }
 
@@ -218,7 +221,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       onSuccess(user);
       onClose();
     } catch (err: unknown) {
-      setError(typeof err === 'string' ? err : 'Đăng nhập Google thất bại');
+      setError(typeof err === 'string' ? err : t('googleLoginFailed'));
     } finally {
       setLoading(false);
     }
@@ -243,7 +246,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           <h2 className="text-base font-black tracking-tight text-white uppercase flex items-center justify-center gap-1.5">
             SPYTIFY ACCOUNT
           </h2>
-          <p className="text-[11px] text-[#ffffff] font-mono">SQLite Local Auth • Hoạt động 100% Offline</p>
+          <p className="text-[11px] text-[#ffffff] font-mono">{t('sqliteStatus')}</p>
         </div>
 
         {/* Google Login Modal Screen */}
@@ -257,10 +260,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                 </svg>
-                <span>Đăng nhập nhanh bằng tài khoản Google</span>
+                <span>{t('googleQuickTitle')}</span>
               </div>
               <p className="text-[11px] text-[#888] leading-relaxed">
-                Đăng nhập tức thì với địa chỉ Gmail của bạn. Dữ liệu sẽ tự động đồng bộ thống nhất trên mọi thiết bị và Supabase Cloud!
+                {t('googleQuickDescription')}
               </p>
             </div>
 
@@ -275,7 +278,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
             <form onSubmit={handleQuickGoogleLogin} className="space-y-3">
               <div>
                 <label className="block text-[11px] font-semibold uppercase text-[#777] mb-1 font-mono">
-                  Địa chỉ Gmail của bạn
+                  {t('gmailAddress')}
                 </label>
                 <div className="relative flex items-center">
                   <Mail className="w-4 h-4 text-[#555] absolute left-3 pointer-events-none" />
@@ -284,7 +287,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     required
                     value={googleEmail}
                     onChange={(e) => setGoogleEmail(e.target.value)}
-                    placeholder="tenban@gmail.com"
+                    placeholder={t('gmailPlaceholder')}
                     className="w-full pl-9 pr-3 py-2 bg-[#0f0f0f] text-white text-xs rounded-lg border border-[#222] focus:border-[#4285F4] outline-none transition-colors"
                   />
                 </div>
@@ -292,7 +295,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
               <div>
                 <label className="block text-[11px] font-semibold uppercase text-[#777] mb-1 font-mono">
-                  Tên hiển thị (Tùy chọn)
+                  {t('displayNameOptional')}
                 </label>
                 <div className="relative flex items-center">
                   <UserIcon className="w-4 h-4 text-[#555] absolute left-3 pointer-events-none" />
@@ -300,7 +303,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     type="text"
                     value={googleName}
                     onChange={(e) => setGoogleName(e.target.value)}
-                    placeholder="Ví dụ: Anh Đăng"
+                    placeholder={t('displayNameExample')}
                     className="w-full pl-9 pr-3 py-2 bg-[#0f0f0f] text-white text-xs rounded-lg border border-[#222] focus:border-[#4285F4] outline-none transition-colors"
                   />
                 </div>
@@ -312,14 +315,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   onClick={() => setShowGoogleModal(false)}
                   className="flex-1 py-2 rounded-lg bg-[#141414] text-[#888] hover:text-white text-xs font-semibold cursor-pointer"
                 >
-                  Quay lại
+                  {t('back')}
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
                   className="flex-1 py-2 rounded-lg bg-[#4285F4] hover:bg-[#3367d6] text-white text-xs font-bold uppercase cursor-pointer transition-colors flex items-center justify-center gap-1.5 shadow-md disabled:opacity-50"
                 >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Đăng nhập ngay</span>}
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>{t('loginNow')}</span>}
                 </button>
               </div>
             </form>
@@ -332,7 +335,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 className="text-[10px] text-[#555] hover:text-[#999] flex items-center gap-1 cursor-pointer font-mono"
               >
                 <Settings2 className="w-3 h-3" />
-                <span>{showDevClientId ? 'Ẩn cấu hình Client ID' : 'Dành cho Developer: Cấu hình Google Client ID riêng'}</span>
+                <span>{showDevClientId ? t('hideClientId') : t('developerClientId')}</span>
               </button>
 
               {showDevClientId && (
@@ -350,7 +353,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     disabled={loading || !googleClientId.trim()}
                     className="w-full py-1.5 rounded bg-[#1e1e1e] hover:bg-[#282828] text-white text-[10px] font-semibold cursor-pointer transition-colors disabled:opacity-40"
                   >
-                    Mở trình duyệt đăng nhập OAuth
+                    {t('openOAuth')}
                   </button>
                 </div>
               )}
@@ -371,12 +374,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
               </svg>
-              <span>Đăng nhập với tài khoản Google</span>
+              <span>{t('googleLogin')}</span>
             </button>
 
             <div className="flex items-center gap-2 mb-4">
               <div className="flex-1 h-px bg-[#181818]" />
-              <span className="text-[10px] text-[#555] uppercase font-mono">hoặc đăng nhập bằng Email</span>
+              <span className="text-[10px] text-[#555] uppercase font-mono">{t('orLoginWithEmail')}</span>
               <div className="flex-1 h-px bg-[#181818]" />
             </div>
 
@@ -390,7 +393,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     : 'text-[#666] hover:text-[#999]'
                 }`}
               >
-                Đăng nhập
+                {t('loginTab')}
               </button>
               <button
                 onClick={() => { setIsRegister(true); setError(null); }}
@@ -400,7 +403,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     : 'text-[#666] hover:text-[#999]'
                 }`}
               >
-                Đăng ký tài khoản
+                {t('registerTab')}
               </button>
             </div>
 
@@ -418,7 +421,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 <>
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#777] mb-1 font-mono">
-                      Email thật của bạn
+                      {t('realEmail')}
                     </label>
                     <div className="relative flex items-center">
                       <Mail className="w-4 h-4 text-[#555] absolute left-3 pointer-events-none" />
@@ -427,7 +430,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                         required
                         value={registerEmail}
                         onChange={(e) => setRegisterEmail(e.target.value)}
-                        placeholder="tenban@gmail.com"
+                        placeholder={t('gmailPlaceholder')}
                         className="w-full pl-9 pr-3 py-2 bg-[#0f0f0f] text-white text-xs rounded-lg border border-[#222] focus:border-[#ffffff] outline-none transition-colors"
                       />
                     </div>
@@ -435,7 +438,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#777] mb-1 font-mono">
-                      Tên tài khoản (Username)
+                      {t('username')}
                     </label>
                     <div className="relative flex items-center">
                       <UserIcon className="w-4 h-4 text-[#555] absolute left-3 pointer-events-none" />
@@ -444,7 +447,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                         required
                         value={registerUsername}
                         onChange={(e) => setRegisterUsername(e.target.value)}
-                        placeholder="Ví dụ: minhtri2025"
+                        placeholder={t('usernameExample')}
                         className="w-full pl-9 pr-3 py-2 bg-[#0f0f0f] text-white text-xs rounded-lg border border-[#222] focus:border-[#ffffff] outline-none transition-colors"
                       />
                     </div>
@@ -452,7 +455,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
                   <div>
                     <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#777] mb-1 font-mono">
-                Tên hiển thị (Tùy chọn)
+                {t('displayNameOptional')}
                     </label>
                     <div className="relative flex items-center">
                       <UserIcon className="w-4 h-4 text-[#555] absolute left-3 pointer-events-none" />
@@ -460,7 +463,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                         type="text"
                         value={displayName}
                         onChange={(e) => setDisplayName(e.target.value)}
-                        placeholder="Ví dụ: Minh Trí"
+                        placeholder={t('displayNameExample')}
                         className="w-full pl-9 pr-3 py-2 bg-[#0f0f0f] text-white text-xs rounded-lg border border-[#222] focus:border-[#ffffff] outline-none transition-colors"
                       />
                     </div>
@@ -469,7 +472,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
               ) : (
                 <div>
                   <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#777] mb-1 font-mono">
-                    Email hoặc Tên tài khoản
+                    {t('emailOrUsername')}
                   </label>
                   <div className="relative flex items-center">
                     <UserIcon className="w-4 h-4 text-[#555] absolute left-3 pointer-events-none" />
@@ -478,7 +481,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                       required
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="Email hoặc username của bạn"
+                      placeholder={t('identifierPlaceholder')}
                       className="w-full pl-9 pr-3 py-2 bg-[#0f0f0f] text-white text-xs rounded-lg border border-[#222] focus:border-[#ffffff] outline-none transition-colors"
                     />
                   </div>
@@ -487,7 +490,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
               <div>
                 <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#777] mb-1 font-mono">
-                  Mật khẩu
+                  {t('password')}
                 </label>
                 <div className="relative flex items-center">
                   <Lock className="w-4 h-4 text-[#555] absolute left-3 pointer-events-none" />
@@ -496,7 +499,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Tối thiểu 6 ký tự"
+                    placeholder={t('passwordPlaceholder')}
                     className="w-full pl-9 pr-3 py-2 bg-[#0f0f0f] text-white text-xs rounded-lg border border-[#222] focus:border-[#ffffff] outline-none transition-colors"
                   />
                 </div>
@@ -512,7 +515,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-              <span>{isRegister ? 'Tạo tài khoản ngay' : 'Đăng nhập'}</span>
+              <span>{isRegister ? t('createAccountNow') : t('loginTab')}</span>
                   </>
                 )}
               </button>
@@ -521,7 +524,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
         )}
 
         <p className="text-[10px] text-[#444] text-center mt-4">
-          Tài khoản lưu trữ an toàn trong SQLite nội bộ tại AppData, bảo mật 100%
+          {t('sqliteFooter')}
         </p>
       </div>
     </div>

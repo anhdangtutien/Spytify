@@ -31,6 +31,7 @@ impl DatabaseManager {
                     let _ = std::fs::copy(&old_db, &db_path);
                 }
             }
+
         }
 
         let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
@@ -68,6 +69,24 @@ impl DatabaseManager {
                 duration_secs INTEGER NOT NULL,
                 listened_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS chat_images (
+                id TEXT PRIMARY KEY,
+                url_or_key TEXT NOT NULL,
+                base64_data TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS server_chat_messages (
+                id TEXT PRIMARY KEY,
+                server_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                created_order INTEGER NOT NULL,
+                message_json TEXT NOT NULL,
+                saved_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_server_chat_messages_order
+                ON server_chat_messages(server_id, created_order DESC, id DESC);
             ",
         )
         .map_err(|e| e.to_string())?;
@@ -547,5 +566,140 @@ impl DatabaseManager {
             favorite_count,
             top_artist,
         })
+    }
+
+    pub fn save_chat_image(&self, id: &str, url_or_key: &str, base64_data: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT OR REPLACE INTO chat_images (id, url_or_key, base64_data, created_at) VALUES (?1, ?2, ?3, CURRENT_TIMESTAMP)",
+            params![id, url_or_key, base64_data],
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Giữ tối đa 150 hình ảnh gần nhất để tránh phình dung lượng database
+        let _ = conn.execute(
+            "DELETE FROM chat_images WHERE id NOT IN (
+                SELECT id FROM chat_images ORDER BY created_at DESC LIMIT 150
+            )",
+            [],
+        );
+        Ok(())
+    }
+
+    pub fn get_chat_image(&self, id_or_url: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT base64_data FROM chat_images WHERE id = ?1 OR url_or_key = ?1 LIMIT 1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(params![id_or_url]).map_err(|e| e.to_string())?;
+        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let data: String = row.get(0).map_err(|e| e.to_string())?;
+            Ok(Some(data))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn save_server_chat_message(
+        &self,
+        id: &str,
+        server_id: &str,
+        channel_id: &str,
+        created_order: i64,
+        message_json: &str,
+        max_messages: usize,
+    ) -> Result<(), String> {
+        let mut conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let max_messages = max_messages.max(1).min(80) as i64;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT OR REPLACE INTO server_chat_messages
+                (id, server_id, channel_id, created_order, message_json, saved_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, CURRENT_TIMESTAMP)",
+            params![id, server_id, channel_id, created_order, message_json],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM server_chat_messages
+             WHERE server_id = ?1
+               AND id NOT IN (
+                   SELECT id FROM server_chat_messages
+                   WHERE server_id = ?1
+                   ORDER BY created_order DESC, id DESC
+                   LIMIT ?2
+               )",
+            params![server_id, max_messages],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_server_chat_messages(
+        &self,
+        server_id: &str,
+        max_messages: usize,
+    ) -> Result<Vec<String>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let max_messages = max_messages.max(1).min(80) as i64;
+        let mut stmt = conn
+            .prepare(
+                "SELECT message_json FROM server_chat_messages
+                 WHERE server_id = ?1
+                 ORDER BY created_order DESC, id DESC
+                 LIMIT ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params![server_id, max_messages], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut messages: Vec<String> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        messages.reverse();
+        Ok(messages)
+    }
+
+    pub fn delete_server_chat_message(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM server_chat_messages WHERE id = ?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_chat_messages_keep_only_the_latest_80() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE server_chat_messages (
+                id TEXT PRIMARY KEY,
+                server_id TEXT NOT NULL,
+                channel_id TEXT NOT NULL,
+                created_order INTEGER NOT NULL,
+                message_json TEXT NOT NULL,
+                saved_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );",
+        )
+        .unwrap();
+        let db = DatabaseManager {
+            conn: Mutex::new(conn),
+        };
+
+        for order in 0..81 {
+            let id = format!("msg_{order}");
+            let message =
+                format!(r#"{{"id":"{id}","image_url":"data:image/png;base64,abc"}}"#);
+            db.save_server_chat_message(&id, "server", "channel", order, &message, 200)
+                .unwrap();
+        }
+
+        let messages = db.get_server_chat_messages("server", 200).unwrap();
+        assert_eq!(messages.len(), 80);
+        assert!(messages[0].contains("\"id\":\"msg_1\""));
+        assert!(messages[0].contains("\"image_url\""));
+        assert!(messages[79].contains("\"id\":\"msg_80\""));
     }
 }

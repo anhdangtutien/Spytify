@@ -30,6 +30,20 @@ export default function App() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [screenShareFps, setScreenShareFps] = useState<30 | 60 | 90>(() => {
+    try {
+      const saved = localStorage.getItem('spytify_screenshare_fps');
+      return saved === '30' || saved === '60' || saved === '90' ? Number(saved) as 30 | 60 | 90 : 60;
+    } catch {
+      return 60;
+    }
+  });
+  const handleUpdateScreenShareFps = (fps: 30 | 60 | 90) => {
+    setScreenShareFps(fps);
+    try {
+      localStorage.setItem('spytify_screenshare_fps', String(fps));
+    } catch {}
+  };
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState<number>(() => {
@@ -406,9 +420,27 @@ export default function App() {
     }
   };
 
-  const [albums, setAlbums] = useState<UserAlbum[]>(() => {
+  const getAlbumsStorageKey = (userId?: string | null) =>
+    userId ? `spytify_user_albums_${userId}` : 'spytify_user_albums_guest';
+  const loadAlbumsForUser = (userId?: string | null): UserAlbum[] => {
     try {
-      const stored = localStorage.getItem('spytify_user_albums');
+      let stored = localStorage.getItem(getAlbumsStorageKey(userId));
+      if (!stored && userId) {
+        const legacyOwnerKey = 'spytify_user_albums_legacy_owner_id';
+        const legacyOwnerId = localStorage.getItem(legacyOwnerKey);
+        if (!legacyOwnerId || legacyOwnerId === userId) {
+          stored = localStorage.getItem('spytify_user_albums');
+          if (stored) {
+            localStorage.setItem(getAlbumsStorageKey(userId), stored);
+            if (!legacyOwnerId) localStorage.setItem(legacyOwnerKey, userId);
+            localStorage.removeItem('spytify_user_albums');
+          }
+        }
+      } else if (!stored && !userId) {
+        if (!localStorage.getItem('spytify_user_albums_legacy_owner_id')) {
+          stored = localStorage.getItem('spytify_user_albums');
+        }
+      }
       if (stored) {
         const parsed: UserAlbum[] = JSON.parse(stored);
         return parsed.map(alb => ({
@@ -420,11 +452,28 @@ export default function App() {
     } catch {
       return [];
     }
-  });
+  };
+  const persistAlbumsForUser = (userId: string | null | undefined, userAlbums: UserAlbum[]) => {
+    try {
+      localStorage.setItem(getAlbumsStorageKey(userId), JSON.stringify(userAlbums));
+      if (userId && !localStorage.getItem('spytify_user_albums_legacy_owner_id') &&
+          localStorage.getItem('spytify_user_albums')) {
+        localStorage.setItem('spytify_user_albums_legacy_owner_id', userId);
+        localStorage.removeItem('spytify_user_albums');
+      }
+    } catch (error) {
+      console.error('Failed to persist user albums:', error);
+    }
+  };
+  const [albums, setAlbums] = useState<UserAlbum[]>(() => loadAlbumsForUser());
+  useEffect(() => {
+    setAlbums(loadAlbumsForUser(currentUser?.id));
+  }, [currentUser?.id]);
   const [trackToAddToAlbum, setTrackToAddToAlbum] = useState<Track | null>(null);
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
 
   const handleCreateAlbum = (title: string, description: string): UserAlbum => {
+    const userId = currentUserRef.current?.id;
     const newAlbum: UserAlbum = {
       id: 'album_' + Date.now(),
       title,
@@ -434,9 +483,9 @@ export default function App() {
     };
     setAlbums(prev => {
       const updated = [newAlbum, ...prev];
-      localStorage.setItem('spytify_user_albums', JSON.stringify(updated));
-      if (currentUserRef.current && isSupabaseConfigured()) {
-        cloudSyncPush(currentUserRef.current.id, { albums: updated }).catch(console.error);
+      persistAlbumsForUser(userId, updated);
+      if (userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
       }
       return updated;
     });
@@ -445,20 +494,25 @@ export default function App() {
   };
 
   const handleDeleteAlbum = (albumId: string) => {
+    const userId = currentUserRef.current?.id;
     setAlbums(prev => {
       const updated = prev.filter(a => a.id !== albumId);
-      localStorage.setItem('spytify_user_albums', JSON.stringify(updated));
+      persistAlbumsForUser(userId, updated);
+      if (userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
+      }
       return updated;
     });
     showNotification(getTranslation(language, 'toast.albumDeleted'));
   };
 
   const handleUpdateAlbum = (albumId: string, updates: Partial<UserAlbum>) => {
+    const userId = currentUserRef.current?.id;
     setAlbums(prev => {
       const updated = prev.map(a => a.id === albumId ? { ...a, ...updates } : a);
-      localStorage.setItem('spytify_user_albums', JSON.stringify(updated));
-      if (currentUserRef.current && isSupabaseConfigured()) {
-        cloudSyncPush(currentUserRef.current.id, { albums: updated }).catch(console.error);
+      persistAlbumsForUser(userId, updated);
+      if (userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
       }
       return updated;
     });
@@ -466,6 +520,7 @@ export default function App() {
   };
 
   const handleAddTrackToAlbum = (albumId: string, track: Track) => {
+    const userId = currentUserRef.current?.id;
     let wasAlreadyPresent = false;
     setAlbums(prev => {
       const updated = prev.map(a => {
@@ -479,7 +534,10 @@ export default function App() {
         }
         return a;
       });
-      localStorage.setItem('spytify_user_albums', JSON.stringify(updated));
+      persistAlbumsForUser(userId, updated);
+      if (!wasAlreadyPresent && userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
+      }
       return updated;
     });
     if (wasAlreadyPresent) {
@@ -490,6 +548,7 @@ export default function App() {
   };
 
   const handleRemoveTrackFromAlbum = (albumId: string, trackId: string) => {
+    const userId = currentUserRef.current?.id;
     setAlbums(prev => {
       const updated = prev.map(a => {
         if (a.id === albumId) {
@@ -497,7 +556,10 @@ export default function App() {
         }
         return a;
       });
-      localStorage.setItem('spytify_user_albums', JSON.stringify(updated));
+      persistAlbumsForUser(userId, updated);
+      if (userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
+      }
       return updated;
     });
     showNotification(getTranslation(language, 'toast.trackRemovedFromAlbum'));
@@ -1375,8 +1437,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 .catch(() => {});
 
               invoke<Track[]>('db_get_favorites', { userId: user.id }).then(localFavs => {
-                const localAlbumsStr = localStorage.getItem('spytify_user_albums');
-                const localAlbums: UserAlbum[] = localAlbumsStr ? JSON.parse(localAlbumsStr) : [];
+                const localAlbums = loadAlbumsForUser(user.id);
                 cloudSyncPush(user.id, {
                   username: user.username,
                   displayName: user.display_name,
@@ -1388,6 +1449,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }).catch(() => {});
 
               cloudSyncPull(user.id).then(cloudData => {
+                if (cloudData?.albums?.length) {
+                  const localAlbums = loadAlbumsForUser(user.id);
+                  const existingIds = new Set(localAlbums.map(album => album.id));
+                  const mergedAlbums = [
+                    ...localAlbums,
+                    ...cloudData.albums.filter(album => !existingIds.has(album.id)),
+                  ];
+                  persistAlbumsForUser(user.id, mergedAlbums);
+                  if (currentUserRef.current?.id === user.id) setAlbums(mergedAlbums);
+                }
                 if (cloudData?.avatar && cloudData.avatar !== user.avatar) {
                   setCurrentUser(prev => prev ? { ...prev, avatar: cloudData.avatar } : null);
                   invoke('auth_update_avatar', { userId: user.id, avatar: cloudData.avatar }).catch(() => {});
@@ -1445,13 +1516,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       cloudSyncPull(user.id).then(cloudData => {
         if (cloudData) {
           if (cloudData.albums && cloudData.albums.length > 0) {
-            setAlbums(prev => {
-              const existingIds = new Set(prev.map(a => a.id));
-              const newAlbums = cloudData.albums.filter(a => !existingIds.has(a.id));
-              const merged = [...prev, ...newAlbums];
-              localStorage.setItem('spytify_user_albums', JSON.stringify(merged));
-              return merged;
-            });
+            const localAlbums = loadAlbumsForUser(user.id);
+            const existingIds = new Set(localAlbums.map(album => album.id));
+            const mergedAlbums = [
+              ...localAlbums,
+              ...cloudData.albums.filter(album => !existingIds.has(album.id)),
+            ];
+            persistAlbumsForUser(user.id, mergedAlbums);
+            if (currentUserRef.current?.id === user.id) setAlbums(mergedAlbums);
           }
           if (cloudData.favorites && cloudData.favorites.length > 0) {
             for (const t of cloudData.favorites) {
@@ -3255,6 +3327,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             isOpen={isAuthModalOpen}
             onClose={() => setIsAuthModalOpen(false)}
             onSuccess={handleLoginSuccess}
+            language={language}
           />
 
           {/* Software Update Modal */}
@@ -3508,6 +3581,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               onPlayTrack={handlePlayTrack}
               onPauseTrack={handlePauseTrack}
               onOpenAuth={() => setIsAuthModalOpen(true)}
+              screenShareFps={screenShareFps}
+              onScreenShareFpsChange={handleUpdateScreenShareFps}
               accentColor={activeAccentColor}
               language={language}
               themeMode={themeMode}
@@ -3591,12 +3666,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onLogout={handleLogout}
                 onOpenAuth={() => setIsAuthModalOpen(true)}
                 onPlayTrack={handlePlayTrack}
+                screenShareFps={screenShareFps}
+                onScreenShareFpsChange={handleUpdateScreenShareFps}
                 downloadFolder={downloadFolder}
                 onChangeDownloadFolder={handleChangeDownloadFolder}
                 onOpenDownloadFolder={handleOpenDownloadFolder}
                 onOpenUpdateModal={(info) => {
                   setUpdateInfo(info);
                   setIsUpdateModalOpen(true);
+                }}
+                onUpdateAlbums={(updatedAlbums) => {
+                  persistAlbumsForUser(currentUser?.id, updatedAlbums);
+                  setAlbums(updatedAlbums);
                 }}
               />
             ) : currentView === 'search' ? (
