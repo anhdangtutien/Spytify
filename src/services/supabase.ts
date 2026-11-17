@@ -2,8 +2,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { invoke } from '@tauri-apps/api/core';
 import { UserAlbum, Track, HistoryItem, User, CommunityFileAttachment } from '../types';
 
-const DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const DEFAULT_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || 'https://ggfbbmdyughnhrmyrwea.supabase.co/rest/v1/';
+const DEFAULT_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_v6t5_lUSc8snoAtuntaWKQ_TBTh4nUT';
 
 export interface SupabaseConfig {
   url: string;
