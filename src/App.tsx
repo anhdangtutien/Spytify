@@ -431,6 +431,46 @@ export default function App() {
     }
   };
 
+  const handleUpdateThought = (thought: string) => {
+    setCurrentUser(prev => prev ? { ...prev, thought } : null);
+    if (currentUser && isSupabaseConfigured()) {
+      cloudSyncPush(currentUser.id, { thought })
+        .then(synced => {
+          if (!synced) console.warn('Failed to sync profile thought to Supabase.');
+        })
+        .catch(error => console.warn('Failed to sync profile thought to Supabase:', error));
+    }
+  };
+
+  const handleCloudProfileUpdate = (profile: {
+    avatar?: string | null;
+    bio?: string | null;
+    thought?: string | null;
+  }) => {
+    const userId = currentUser?.id;
+    if (!userId) return;
+
+    if (profile.bio !== undefined) {
+      localStorage.setItem(`spytify_user_bio_${userId}`, profile.bio ?? '');
+      localStorage.setItem('spytify_user_bio', profile.bio ?? '');
+    }
+    if (profile.thought !== undefined) {
+      localStorage.setItem(`spytify_user_thought_${userId}`, profile.thought ?? '');
+      localStorage.setItem('spytify_user_thought', profile.thought ?? '');
+    }
+    if (profile.avatar !== undefined) {
+      invoke('auth_update_avatar', { userId, avatar: profile.avatar || '' })
+        .catch(error => console.warn('Failed to update local avatar from cloud profile:', error));
+    }
+
+    setCurrentUser(prev => prev ? {
+      ...prev,
+      ...(profile.avatar !== undefined ? { avatar: profile.avatar } : {}),
+      ...(profile.bio !== undefined ? { bio: profile.bio ?? '' } : {}),
+      ...(profile.thought !== undefined ? { thought: profile.thought ?? '' } : {}),
+    } : null);
+  };
+
   const getAlbumsStorageKey = (userId?: string | null) =>
     userId ? `spytify_user_albums_${userId}` : 'spytify_user_albums_guest';
   const loadAlbumsForUser = (userId?: string | null): UserAlbum[] => {
@@ -1463,6 +1503,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     setCurrentUser(prev => prev ? { ...prev, bio: cloudData.bio } : null);
                   }
                 }
+                if (typeof cloudData?.thought === 'string') {
+                  localStorage.setItem(`spytify_user_thought_${user.id}`, cloudData.thought);
+                  localStorage.setItem('spytify_user_thought', cloudData.thought);
+                  if (currentUserRef.current?.id === user.id) {
+                    setCurrentUser(prev => prev ? { ...prev, thought: cloudData.thought } : null);
+                  }
+                }
                 if (cloudData?.albums?.length) {
                   const localAlbums = loadAlbumsForUser(user.id);
                   const existingIds = new Set(localAlbums.map(album => album.id));
@@ -1534,6 +1581,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             localStorage.setItem('spytify_user_bio', cloudData.bio);
             if (currentUserRef.current?.id === user.id) {
               setCurrentUser(prev => prev ? { ...prev, bio: cloudData.bio } : null);
+            }
+          }
+          if (typeof cloudData.thought === 'string') {
+            localStorage.setItem(`spytify_user_thought_${user.id}`, cloudData.thought);
+            localStorage.setItem('spytify_user_thought', cloudData.thought);
+            if (currentUserRef.current?.id === user.id) {
+              setCurrentUser(prev => prev ? { ...prev, thought: cloudData.thought } : null);
             }
           }
           if (cloudData.albums && cloudData.albums.length > 0) {
@@ -3603,6 +3657,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               onPauseTrack={handlePauseTrack}
               onOpenAuth={() => setIsAuthModalOpen(true)}
               onUpdateBio={handleUpdateBio}
+              onUpdateThought={handleUpdateThought}
+              onCloudProfileUpdate={handleCloudProfileUpdate}
               screenShareFps={screenShareFps}
               onScreenShareFpsChange={handleUpdateScreenShareFps}
               accentColor={activeAccentColor}

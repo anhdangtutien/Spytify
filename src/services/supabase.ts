@@ -338,7 +338,7 @@ export async function cloudRegisterUser(
   try {
     const { data: existingProfile, error: existingProfileError } = await client
       .from('spytify_profiles')
-      .select('avatar, bio')
+      .select('avatar, bio, thought')
       .eq('id', user.id)
       .maybeSingle();
     if (existingProfileError) throw existingProfileError;
@@ -352,9 +352,9 @@ export async function cloudRegisterUser(
       salt: salt,
       avatar: existingProfile ? existingProfile.avatar : user.avatar || null,
       ...(existingProfile
-        ? { bio: existingProfile.bio }
+        ? { bio: existingProfile.bio, thought: existingProfile.thought }
         : user.bio !== undefined
-          ? { bio: user.bio }
+          ? { bio: user.bio, thought: user.thought ?? user.custom_status ?? null }
           : {}),
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' });
@@ -545,6 +545,7 @@ export async function cloudSyncPull(userId: string): Promise<CloudUserData | nul
     if (profileRes.data) {
       result.avatar = profileRes.data.avatar || undefined;
       result.bio = profileRes.data.bio ?? undefined;
+      result.thought = profileRes.data.thought ?? undefined;
       result.accentColor = profileRes.data.accent_color || undefined;
       result.themeMode = profileRes.data.theme_mode || undefined;
       result.language = profileRes.data.language || undefined;

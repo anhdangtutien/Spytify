@@ -15,6 +15,7 @@ import {
 import { Track, User, CommunityServer, CommunityChannel, CommunityMessage, CommunityFileAttachment, StageSession, VoiceParticipant, CommunityUserProfile, CommunityServerTag, SearchResult, RequestBotTrack } from '../types';
 import {
   getSupabaseClient,
+  cloudSyncPush,
   MAX_CHAT_MESSAGES_LIMIT,
   fetchCloudDirectMessages,
   fetchIncomingCloudDirectMessages,
@@ -55,6 +56,12 @@ interface CommunityViewProps {
   onPauseTrack?: () => void;
   onOpenAuth?: () => void;
   onUpdateBio?: (bio: string) => void;
+  onUpdateThought?: (thought: string) => void;
+  onCloudProfileUpdate?: (profile: {
+    avatar?: string | null;
+    bio?: string | null;
+    thought?: string | null;
+  }) => void;
   accentColor?: string;
   language?: LanguageCode;
   themeMode?: 'dark' | 'light';
@@ -980,6 +987,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   onPauseTrack,
   onOpenAuth,
   onUpdateBio,
+  onUpdateThought,
+  onCloudProfileUpdate,
   accentColor = '#FF2A55',
   language = 'vi',
   themeMode = 'dark',
@@ -2612,12 +2621,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
       localStorage.setItem('spytify_user_thought', trimmed);
     } catch {}
+    onUpdateThought?.(trimmed);
     if (activeChannelRef.current) {
       activeChannelRef.current.send({
         type: 'broadcast',
         event: 'user_presence',
         payload: {
           ...myPresencePayloadRef.current,
+          thought: trimmed,
           custom_status: trimmed,
         },
       });
@@ -3002,11 +3013,38 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const [myUserThought, setMyUserThought] = useState<string>(() => {
     try {
-      return localStorage.getItem('spytify_user_thought') || '';
+      if (currentUser?.id) {
+        return localStorage.getItem(`spytify_user_thought_${currentUser.id}`) ??
+          currentUser.thought ??
+          currentUser.custom_status ??
+          '';
+      }
+      return localStorage.getItem('spytify_user_thought') ?? '';
     } catch {
-      return '';
+      return currentUser?.thought || currentUser?.custom_status || '';
     }
   });
+  useEffect(() => {
+    if (!currentUser?.id) {
+      try {
+        setMyUserThought(localStorage.getItem('spytify_user_thought') ?? '');
+      } catch {
+        setMyUserThought('');
+      }
+      return;
+    }
+
+    try {
+      const savedThought = localStorage.getItem(`spytify_user_thought_${currentUser.id}`);
+      setMyUserThought(
+        typeof currentUser.thought === 'string'
+          ? currentUser.thought
+          : savedThought ?? currentUser.custom_status ?? ''
+      );
+    } catch {
+      setMyUserThought(currentUser.thought || currentUser.custom_status || '');
+    }
+  }, [currentUser?.id, currentUser?.thought, currentUser?.custom_status]);
   const [isEditingThoughtModal, setIsEditingThoughtModal] = useState(false);
   const [thoughtDraft, setThoughtDraft] = useState('');
   const [openMemberActionsMenuId, setOpenMemberActionsMenuId] = useState<string | null>(null);
@@ -7548,6 +7586,25 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           } catch {}
         }
 
+        const ownProfileUpdate = profileUpdates.find(profile => profile.id === currentUser.id);
+        if (ownProfileUpdate) {
+          const bio = ownProfileUpdate.bio ?? '';
+          const thought = ownProfileUpdate.thought ?? '';
+          setMyBio(bio);
+          setMyUserThought(thought);
+          try {
+            localStorage.setItem(`spytify_user_bio_${currentUser.id}`, bio);
+            localStorage.setItem('spytify_user_bio', bio);
+            localStorage.setItem(`spytify_user_thought_${currentUser.id}`, thought);
+            localStorage.setItem('spytify_user_thought', thought);
+          } catch {}
+          onCloudProfileUpdate?.({
+            avatar: ownProfileUpdate.avatar,
+            bio: ownProfileUpdate.bio,
+            thought: ownProfileUpdate.thought,
+          });
+        }
+
         // 0. Đồng bộ lời mời vào Server (incoming / outgoing) & các Server của user từ Cloud
         setIncomingServerInvites(serverInvites.incoming);
         setOutgoingServerInvites(serverInvites.outgoing);
@@ -7692,6 +7749,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   display_name: cp.display_name || existing.display_name,
                   avatar: cp.avatar || existing.avatar || null,
                   bio: cp.bio ?? existing.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
+                  thought: cp.thought ?? existing.thought ?? null,
+                  custom_status: cp.thought ?? existing.custom_status,
                   followsCurrentUser: Boolean(nextFollowersMap[cp.id]),
                 });
               } else {
@@ -7703,6 +7762,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   role: 'AGENT',
                   status: 'offline',
                   bio: cp.bio || 'Thành viên Spytify từ hệ thống cộng đồng.',
+                  thought: cp.thought ?? null,
+                  custom_status: cp.thought ?? undefined,
                   listening: null,
                   listeningTrack: null,
                   isHost: false,
@@ -7732,6 +7793,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 display_name: profile.display_name || existing?.display_name || profile.username,
                 avatar: profile.avatar,
                 bio: profile.bio ?? existing?.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
+                thought: profile.thought ?? existing?.thought ?? null,
+                custom_status: profile.thought ?? existing?.custom_status,
               });
             });
 
@@ -7754,6 +7817,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 ...existing,
                 avatar: profile.avatar,
                 bio: profile.bio ?? existing.bio ?? null,
+                thought: profile.thought ?? existing.thought ?? null,
+                custom_status: profile.thought ?? existing.custom_status ?? null,
               };
             });
             return next;
@@ -8138,6 +8203,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             display_name: profile.display_name || existing?.display_name || profile.username,
             avatar: profile.avatar,
             bio: profile.bio ?? existing?.bio ?? 'Thành viên cộng đồng Spytify.',
+            thought: profile.thought,
+            custom_status: profile.thought ?? undefined,
           });
         });
         const next = Array.from(byId.values());
@@ -8167,6 +8234,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               display_name: profile.display_name || presence.display_name,
               avatar: profile.avatar,
               bio: profile.bio,
+              thought: profile.thought,
+              custom_status: profile.thought ?? undefined,
             };
           });
         });
@@ -8193,16 +8262,25 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         );
       const bio = profile?.bio ?? presence?.bio;
       const avatar = profile?.avatar ?? presence?.avatar;
+      const thought = profile && Object.prototype.hasOwnProperty.call(profile, 'thought')
+        ? profile.thought
+        : presence?.thought ?? presence?.custom_status;
       if (
         (bio === undefined || bio === null || bio === prev.bio) &&
-        (avatar === undefined || avatar === null || avatar === prev.member.avatar)
+        (avatar === undefined || avatar === null || avatar === prev.member.avatar) &&
+        (thought === undefined || thought === prev.member.thought)
       ) {
         return prev;
       }
       return {
         ...prev,
         bio: bio ?? prev.bio,
-        member: { ...prev.member, avatar: avatar ?? prev.member.avatar },
+        member: {
+          ...prev.member,
+          avatar: avatar ?? prev.member.avatar,
+          thought: thought === undefined ? prev.member.thought : thought,
+          custom_status: thought === undefined ? prev.member.custom_status : thought,
+        },
       };
     });
   }, [registeredUsers, realtimeUserPresences]);
@@ -8221,6 +8299,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         updated &&
         (updated.avatar !== selectedProfileUser.avatar ||
           updated.display_name !== selectedProfileUser.display_name ||
+          updated.bio !== selectedProfileUser.bio ||
+          updated.thought !== selectedProfileUser.thought ||
           isUserFollowingMe(updated.id) !== selectedProfileUser.followsCurrentUser)
       ) {
         setSelectedProfileUser(prev =>
@@ -8229,6 +8309,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 ...prev,
                 avatar: updated.avatar,
                 display_name: updated.display_name,
+                bio: updated.bio,
+                thought: updated.thought,
+                custom_status: updated.custom_status,
                 followsCurrentUser: isUserFollowingMe(updated.id),
               }
             : null
@@ -14322,7 +14405,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         const tags = resolveMemberTags(mem.id, selectedServer);
                         const userProfile = registeredUsers.find(u => u.id === mem.id) || INITIAL_USERS.find(u => u.id === mem.id);
                         const memberBio = isMe ? myBio : (realtimeUserPresences[mem.id]?.bio || userProfile?.bio || (mem as any).bio || 'Thành viên cộng đồng Spytify.');
-                        const memberThought = isMe ? myUserThought : (realtimeUserPresences[mem.id]?.thought || (mem as any).thought || null);
+                        const memberThought = isMe ? myUserThought : (
+                          realtimeUserPresences[mem.id]?.thought ??
+                          realtimeUserPresences[mem.id]?.custom_status ??
+                          userProfile?.thought ??
+                          userProfile?.custom_status ??
+                          (mem as any).thought ??
+                          (mem as any).custom_status ??
+                          null
+                        );
                         setHoveredProfile({
                           member: {
                             ...mem,
@@ -14439,7 +14530,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         const tags = resolveMemberTags(mem.id, selectedServer);
                         const userProfile = registeredUsers.find(u => u.id === mem.id) || INITIAL_USERS.find(u => u.id === mem.id);
                         const memberBio = isMe ? myBio : (realtimeUserPresences[mem.id]?.bio || userProfile?.bio || (mem as any).bio || 'Thành viên cộng đồng Spytify.');
-                        const memberThought = isMe ? myUserThought : (realtimeUserPresences[mem.id]?.thought || (mem as any).thought || null);
+                        const memberThought = isMe ? myUserThought : (
+                          realtimeUserPresences[mem.id]?.thought ??
+                          realtimeUserPresences[mem.id]?.custom_status ??
+                          userProfile?.thought ??
+                          userProfile?.custom_status ??
+                          (mem as any).thought ??
+                          (mem as any).custom_status ??
+                          null
+                        );
                         setHoveredProfile({
                           member: {
                             ...mem,
@@ -18003,12 +18102,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       }
                       localStorage.removeItem('spytify_user_thought');
                     } catch {}
+                    onUpdateThought?.('');
                     if (activeChannelRef.current) {
                       activeChannelRef.current.send({
                         type: 'broadcast',
                         event: 'user_presence',
                         payload: {
                           ...myPresencePayloadRef.current,
+                          thought: '',
                           custom_status: '',
                         },
                       });

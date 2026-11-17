@@ -38,6 +38,7 @@ export interface User {
   avatar?: string | null;
   email?: string | null;
   bio?: string;
+  thought?: string | null;
   custom_status?: string;
   created_at: string;
 }
@@ -194,6 +195,7 @@ export interface CommunityUserProfile {
   role: string;
   status: 'online' | 'idle' | 'dnd' | 'invisible' | 'offline';
   bio?: string;
+  thought?: string | null;
   custom_status?: string;
   listening?: string | null;
   listeningTrack?: Track | null;

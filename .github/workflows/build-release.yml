@@ -47,7 +47,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Phiên bản Spytify v1.0.3 alpha cho Windows và macOS (đồng bộ kick thành viên, sửa cuộc gọi 1-1, chia tab nhiều màn hình share & sửa phóng to toàn màn hình, thiết kế lại ô suy nghĩ có đuôi lệch phải, sửa phân quyền Chủ Server/Mod & khóa đổi theme member, kéo thả icon server, đưa chọn tag sở thích vào cài đặt, sửa nút mời ở phòng thoại & thêm tùy chọn Khởi động cùng Windows trong phần Tài khoản).'
+          releaseBody: 'Spytify v1.0.7: sửa đồng bộ avatar, tiểu sử và suy nghĩ/trạng thái giữa các thiết bị thông qua Supabase.'
           releaseDraft: false
           prerelease: false
 
@@ -96,7 +96,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Phiên bản Spytify v1.0.3 alpha cho Windows và macOS (Apple Silicon M1/M2/M3/M4 & Intel).'
+          releaseBody: 'Spytify v1.0.7: sửa đồng bộ avatar, tiểu sử và suy nghĩ/trạng thái giữa các thiết bị thông qua Supabase. macOS Universal hỗ trợ Apple Silicon và Intel.'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin

@@ -1,8 +1,8 @@
-# 🕵️‍♂️ Spytify — Spy Music (v1.0.6 alpha)
+# 🕵️‍♂️ Spytify — Spy Music (v1.0.7 alpha)
 
 <div align="center">
 
-![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.0.6_alpha-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
+![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.0.7_alpha-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
 ![Tauri v2](https://img.shields.io/badge/TAURI-v2-FFC131?style=for-the-badge&logo=tauri&logoColor=black)
 ![React 19](https://img.shields.io/badge/REACT_19-CYBER_HUD-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![Rust Engine](https://img.shields.io/badge/RUST_ENGINE-NATIVE_SORT_FILTER-DEA584?style=for-the-badge&logo=rust&logoColor=black)
@@ -16,10 +16,12 @@
 
 ---
 
-## 🇬🇧 English — What's New in v1.0.6 alpha
+## 🇬🇧 English — What's New in v1.0.7 alpha
 
-Spytify 1.0.6 focuses on a more complete, personalized Spy Jam experience:
+Spytify 1.0.7 improves cross-device profile synchronization, alongside the personalized Spy Jam features introduced in 1.0.6:
 
+- **☁️ Cloud profile synchronization**:
+  - Avatar, bio, and thought/status updates are synchronized across signed-in devices.
 - **💬 Server chat and unread navigation**:
   - Server icons show unread message counts; chat displays an unread summary, a new-message divider, and a one-click jump to the present.
   - Mentions support `@user` and `@everyone`, with message highlighting, in-app notifications, and improved keyboard navigation.
@@ -35,10 +37,12 @@ Spytify 1.0.6 focuses on a more complete, personalized Spy Jam experience:
 
 ---
 
-## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.6 alpha
+## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.7 alpha
 
-Spytify 1.0.6 tập trung hoàn thiện trải nghiệm Spy Jam cá nhân hóa:
+Spytify 1.0.7 sửa đồng bộ hồ sơ giữa các thiết bị, bên cạnh các tính năng Spy Jam cá nhân hóa được giới thiệu ở bản 1.0.6:
 
+- **☁️ Đồng bộ hồ sơ đám mây**:
+  - Avatar, tiểu sử và suy nghĩ/trạng thái được đồng bộ giữa các thiết bị đã đăng nhập.
 - **💬 Chat server và điều hướng tin chưa đọc**:
   - Icon server hiển thị số tin chưa đọc; khung chat có thanh tóm tắt, vạch phân cách tin mới và nút nhảy tới hiện tại.
   - Hỗ trợ nhắc `@user`, `@everyone`, highlight tin nhắn, thông báo trong ứng dụng và cải thiện điều hướng gợi ý bằng bàn phím.
