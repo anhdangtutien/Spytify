@@ -2,9 +2,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { invoke } from '@tauri-apps/api/core';
 import { UserAlbum, Track, HistoryItem, User, CommunityFileAttachment } from '../types';
 
-// System default Supabase credentials (baked in for smooth out-of-the-box sync)
-const DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || 'https://qibsrzgbyclzzayfkeei.supabase.co';
-const DEFAULT_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_GVAkGRpbXs9N_ATIKEoscQ_DJ6QSSVX';
+const DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const DEFAULT_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export interface SupabaseConfig {
   url: string;
@@ -125,6 +124,7 @@ ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS password_hash TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS salt TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS google_id TEXT;
 ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE public.spytify_profiles ADD COLUMN IF NOT EXISTS thought TEXT;
 
 CREATE TABLE IF NOT EXISTS public.spytify_albums (
     id TEXT PRIMARY KEY,
@@ -317,6 +317,7 @@ export interface CloudUserData {
   email?: string;
   avatar?: string;
   bio?: string;
+  thought?: string;
   accentColor?: string;
   themeMode?: 'dark' | 'light';
   language?: string;
@@ -427,6 +428,7 @@ export async function cloudSyncPush(userId: string, data: Partial<CloudUserData>
     if (data.email) profilePayload.email = data.email;
     if (data.avatar !== undefined) profilePayload.avatar = data.avatar;
     if (data.bio !== undefined) profilePayload.bio = data.bio;
+    if (data.thought !== undefined) profilePayload.thought = data.thought;
     if (data.accentColor) profilePayload.accent_color = data.accentColor;
     if (data.themeMode) profilePayload.theme_mode = data.themeMode;
 
@@ -728,6 +730,7 @@ export interface CloudPublicProfile {
   display_name: string;
   avatar: string | null;
   bio: string | null;
+  thought?: string | null;
 }
 
 export interface CloudProfileUpdate extends CloudPublicProfile {
@@ -743,7 +746,7 @@ export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
   try {
     const { data, error } = await client
       .from('spytify_profiles')
-      .select('id, username, display_name, bio')
+      .select('id, username, display_name, bio, thought')
       .limit(200);
     if (error || !data) return [];
     return data.map((row: any) => ({
@@ -752,6 +755,7 @@ export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
       display_name: row.display_name || row.username || 'Operative',
       avatar: null,
       bio: row.bio || null,
+      thought: row.thought || null,
     }));
   } catch {
     return [];
@@ -763,7 +767,7 @@ export async function fetchCloudProfileUpdatesSince(since: string): Promise<Clou
   if (!client) return [];
   const { data, error } = await client
     .from('spytify_profiles')
-    .select('id, username, display_name, avatar, bio, updated_at')
+    .select('id, username, display_name, avatar, bio, thought, updated_at')
     .gt('updated_at', since)
     .order('updated_at', { ascending: true })
     .limit(1000);
@@ -774,6 +778,7 @@ export async function fetchCloudProfileUpdatesSince(since: string): Promise<Clou
     display_name: row.display_name || row.username || 'Operative',
     avatar: row.avatar || null,
     bio: row.bio ?? null,
+    thought: row.thought ?? null,
     updated_at: row.updated_at,
   }));
 }

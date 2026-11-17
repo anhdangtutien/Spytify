@@ -7483,7 +7483,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         }
 
         const [cloudProfiles, profileUpdates, followGraph, serverInvites, serverAudit] = await Promise.all([
-          fetchAllCloudProfiles(),
+          !syncProfileChanges ? fetchAllCloudProfiles() : Promise.resolve([]),
           syncProfileChanges
             ? fetchCloudProfileUpdatesSince(profileSyncSince)
             : Promise.resolve([]),

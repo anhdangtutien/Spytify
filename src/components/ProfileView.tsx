@@ -312,15 +312,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
+        canvas.width = 128;
+        canvas.height = 128;
         const ctx = canvas.getContext('2d');
         if (ctx) {
           const minSide = Math.min(img.width, img.height);
           const startX = (img.width - minSide) / 2;
           const startY = (img.height - minSide) / 2;
-          ctx.drawImage(img, startX, startY, minSide, minSide, 0, 0, 256, 256);
-          const base64Jpeg = canvas.toDataURL('image/jpeg', 0.85);
+          ctx.drawImage(img, startX, startY, minSide, minSide, 0, 0, 128, 128);
+          const base64Jpeg = canvas.toDataURL('image/jpeg', 0.75);
           onUpdateAvatar(base64Jpeg);
         }
       };

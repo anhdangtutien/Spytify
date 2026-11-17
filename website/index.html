@@ -3,1006 +3,497 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Spytify — Hi-Fi Music Player & Spy Jam Voice Hub</title>
-  <meta name="description" content="Trình phát nhạc siêu nhẹ lõi Rust, tích hợp trạm thoại Spy Jam, chia sẻ màn hình 90 FPS. Miễn phí, mã nguồn mở.">
+  <title>Spytify — Trình phát nhạc Hi-Fi lõi Rust & Trạm sóng cộng đồng Spy Jam</title>
+  <meta name="description" content="Spytify là trình phát nhạc siêu nhẹ viết bằng Rust và React, tích hợp trạm thoại Spy Jam, chia sẻ màn hình 90 FPS và phát nhạc đa nguồn YouTube, SoundCloud, Audius.">
   <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT:'#FF2A55', dark:'#E01E45', glow:'rgba(255,42,85,0.35)', dim:'rgba(255,42,85,0.12)' },
+            surface: { DEFAULT:'#0B0D13', card:'#121620', border:'#1F2636', hover:'#19202E' }
+          },
+          fontFamily: { sans:['"Plus Jakarta Sans"','sans-serif'], mono:['"JetBrains Mono"','monospace'] }
+        }
+      }
+    }
+  </script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --brand: #FF2A55;
-      --brand-rgb: 255, 42, 85;
-      --bg: #09090b;
-      --bg-card: #111113;
-      --bg-elevated: #18181b;
-      --border: rgba(255,255,255,0.06);
-      --text: #fafafa;
-      --text-muted: #a1a1aa;
-      --text-dim: #71717a;
-      --radius: 16px;
-    }
-    html { font-size: 16px; }
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      -webkit-font-smoothing: antialiased;
-      overflow-x: hidden;
-      line-height: 1.6;
-    }
-    ::selection { background: rgba(var(--brand-rgb), 0.3); color: #fff; }
-
-    /* ── Utility ── */
-    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
-    .badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
-      padding: 6px 14px; border-radius: 999px;
-      border: 1px solid rgba(var(--brand-rgb), 0.25);
-      background: rgba(var(--brand-rgb), 0.08);
-      color: var(--brand);
-    }
-    .badge .dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--brand);
-      animation: blink 2s ease-in-out infinite;
-    }
-    @keyframes blink { 0%,100%{opacity:.3} 50%{opacity:1} }
-
-    .section-label {
-      font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
-      text-transform: uppercase; color: var(--brand);
-    }
-    .section-title {
-      font-size: clamp(28px, 5vw, 48px); font-weight: 800;
-      line-height: 1.15; color: var(--text); letter-spacing: -0.025em;
-    }
-    .section-desc {
-      font-size: 17px; color: var(--text-muted); max-width: 560px; line-height: 1.7;
-    }
-
-    /* ── Buttons ── */
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 10px;
-      padding: 14px 28px; border-radius: 12px;
-      background: var(--brand); color: #fff;
-      font-weight: 700; font-size: 15px;
-      text-decoration: none; border: none; cursor: pointer;
-      transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
-      box-shadow: 0 0 0 0 rgba(var(--brand-rgb), 0);
-    }
-    .btn-primary:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 30px rgba(var(--brand-rgb), 0.3);
-      background: #e6224c;
-    }
-    .btn-primary:active { transform: translateY(0); }
-
-    .btn-secondary {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 14px 24px; border-radius: 12px;
-      background: var(--bg-elevated); color: var(--text);
-      font-weight: 600; font-size: 15px;
-      text-decoration: none; border: 1px solid var(--border);
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .btn-secondary:hover {
-      border-color: rgba(255,255,255,0.15);
-      background: #222224;
-    }
-
-    /* ── Nav ── */
-    .nav {
-      position: sticky; top: 0; z-index: 100;
-      background: rgba(9,9,11,0.8);
-      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-      border-bottom: 1px solid var(--border);
-    }
-    .nav-inner {
-      display: flex; align-items: center; justify-content: space-between;
-      height: 64px;
-    }
-    .nav-logo {
-      display: flex; align-items: center; gap: 10px;
-      text-decoration: none; color: var(--text);
-    }
-    .nav-logo img { width: 32px; height: 32px; }
-    .nav-logo span { font-size: 18px; font-weight: 800; letter-spacing: 0.02em; }
-    .nav-links { display: flex; gap: 32px; list-style: none; }
-    .nav-links a {
-      font-size: 14px; font-weight: 500; color: var(--text-muted);
-      text-decoration: none; transition: color 0.15s;
-    }
-    .nav-links a:hover { color: var(--text); }
-    .nav-actions { display: flex; align-items: center; gap: 12px; }
-    .nav-actions .btn-primary { padding: 10px 20px; font-size: 14px; }
-    .gh-link {
-      display: flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; border-radius: 10px;
-      border: 1px solid var(--border); color: var(--text-muted);
-      text-decoration: none; transition: color 0.15s, border-color 0.15s;
-    }
-    .gh-link:hover { color: var(--text); border-color: rgba(255,255,255,0.15); }
-
-    @media (max-width: 768px) {
-      .nav-links { display: none; }
-    }
-
-    /* ── Hero ── */
-    .hero {
-      padding: 100px 0 80px;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-    .hero::before {
-      content: '';
-      position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
-      width: 800px; height: 600px;
-      background: radial-gradient(ellipse, rgba(var(--brand-rgb),0.12) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .hero h1 {
-      font-size: clamp(36px, 6vw, 72px);
-      font-weight: 900; line-height: 1.08;
-      letter-spacing: -0.035em;
-      max-width: 820px; margin: 24px auto 0;
-    }
-    .hero h1 .gradient {
-      background: linear-gradient(135deg, var(--brand), #FF6B8A, #FF9B5C);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .hero p {
-      font-size: 18px; color: var(--text-muted); max-width: 540px;
-      margin: 20px auto 0; line-height: 1.65;
-    }
-    .hero-actions {
-      display: flex; align-items: center; justify-content: center;
-      gap: 12px; margin-top: 40px; flex-wrap: wrap;
-    }
-    .hero-meta {
-      margin-top: 16px; font-size: 13px; color: var(--text-dim);
-      font-weight: 500;
-    }
-
-    /* ── Window mockup ── */
-    .window {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 20px 70px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
-    }
-    .window-bar {
-      display: flex; align-items: center; gap: 8px;
-      padding: 0 16px; height: 44px;
-      background: rgba(255,255,255,0.02);
-      border-bottom: 1px solid var(--border);
-    }
-    .window-dot { width: 12px; height: 12px; border-radius: 50%; }
-    .window-dot.r { background: #FF5F57; }
-    .window-dot.y { background: #FEBC2E; }
-    .window-dot.g { background: #28C840; }
-    .window-title {
-      margin-left: 12px; font-size: 12px; font-weight: 600;
-      color: var(--text-dim); letter-spacing: 0.01em;
-    }
-    .window-body { padding: 0; }
-
-    /* ── App mockup layout ── */
-    .app-layout { display: flex; min-height: 480px; }
-    .app-sidebar {
-      width: 220px; flex-shrink: 0;
-      background: rgba(255,255,255,0.015);
-      border-right: 1px solid var(--border);
-      padding: 20px 12px; display: flex; flex-direction: column; justify-content: space-between;
-    }
-    .app-main { flex: 1; padding: 24px; display: flex; flex-direction: column; }
-
-    .sidebar-brand {
-      display: flex; align-items: center; gap: 8px;
-      padding: 0 8px; margin-bottom: 24px;
-    }
-    .sidebar-brand img { width: 24px; height: 24px; }
-    .sidebar-brand span { font-size: 14px; font-weight: 800; letter-spacing: 0.03em; }
-    .sidebar-nav { list-style: none; display: flex; flex-direction: column; gap: 2px; }
-    .sidebar-nav li {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; border-radius: 10px;
-      font-size: 13px; font-weight: 500; color: var(--text-muted);
-      cursor: default; transition: background 0.15s;
-    }
-    .sidebar-nav li.active {
-      background: rgba(var(--brand-rgb), 0.1); color: var(--brand); font-weight: 600;
-    }
-    .sidebar-nav li svg, .sidebar-nav li img { width: 16px; height: 16px; opacity: 0.7; }
-    .sidebar-nav li.active svg, .sidebar-nav li.active img { opacity: 1; }
-
-    .sidebar-stat {
-      padding: 12px; border-radius: 10px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border);
-      font-size: 12px; color: var(--text-dim);
-    }
-    .sidebar-stat .stat-row {
-      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
-    }
-    .sidebar-stat .stat-val { color: var(--brand); font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-    .stat-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
-    .stat-bar-fill { height: 100%; width: 18%; background: var(--brand); border-radius: 2px; }
-
-    /* Track row */
-    .track-list { display: flex; flex-direction: column; gap: 2px; margin-top: 20px; }
-    .track-row {
-      display: grid; grid-template-columns: 36px 1fr 140px 60px;
-      align-items: center; gap: 12px;
-      padding: 10px 12px; border-radius: 10px;
-      font-size: 13px; color: var(--text-muted);
-      transition: background 0.1s;
-    }
-    .track-row:hover { background: rgba(255,255,255,0.03); }
-    .track-row.playing { background: rgba(var(--brand-rgb),0.08); color: var(--text); }
-    .track-num { font-weight: 600; font-size: 13px; text-align: center; }
-    .track-row.playing .track-num { color: var(--brand); }
-    .track-title { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .track-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .track-dur { text-align: right; font-variant-numeric: tabular-nums; }
-    .source-tag {
-      display: inline-flex; padding: 2px 6px; border-radius: 4px;
-      font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
-      margin-right: 8px;
-    }
-    .source-yt { background: rgba(255,0,0,0.1); color: #f87171; }
-    .source-sc { background: rgba(255,120,0,0.1); color: #fb923c; }
-    .source-ad { background: rgba(168,85,247,0.1); color: #c084fc; }
-
-    /* Player bar */
-    .player-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 0 24px; height: 56px;
-      background: rgba(255,255,255,0.02);
-      border-top: 1px solid var(--border);
-    }
-    .player-track-info { display: flex; align-items: center; gap: 12px; }
-    .player-btn {
-      width: 36px; height: 36px; border-radius: 50%;
-      background: var(--brand); display: flex; align-items: center; justify-content: center;
-      color: #fff; font-size: 14px;
-    }
-    .player-title { font-size: 13px; font-weight: 600; }
-    .player-sub { font-size: 11px; color: var(--text-dim); }
-    .player-progress {
-      flex: 1; max-width: 400px; margin: 0 32px;
-      height: 3px; background: rgba(255,255,255,0.08);
-      border-radius: 2px; overflow: hidden;
-    }
-    .player-progress-fill { width: 62%; height: 100%; background: var(--brand); border-radius: 2px; }
-
-    @media (max-width: 768px) {
-      .app-sidebar { display: none; }
-      .track-row { grid-template-columns: 28px 1fr 50px; }
-      .track-artist { display: none; }
-      .player-progress { display: none; }
-    }
-
-    /* ── Spy Jam Mockup ── */
-    .jam-layout { display: flex; min-height: 500px; }
-    .jam-servers {
-      width: 64px; flex-shrink: 0;
-      background: rgba(0,0,0,0.3);
-      border-right: 1px solid var(--border);
-      display: flex; flex-direction: column; align-items: center;
-      padding: 16px 0; gap: 10px;
-    }
-    .jam-srv-icon {
-      width: 44px; height: 44px; border-radius: 14px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 800; cursor: default;
-      transition: border-radius 0.2s;
-      overflow: hidden;
-    }
-    .jam-srv-icon img { width: 24px; height: 24px; }
-    .jam-srv-icon.active { border-radius: 16px; box-shadow: 0 0 0 2px var(--brand); }
-    .jam-divider { width: 28px; height: 2px; border-radius: 1px; background: var(--border); }
-    .jam-channels {
-      width: 230px; flex-shrink: 0;
-      background: rgba(255,255,255,0.015);
-      border-right: 1px solid var(--border);
-      padding: 16px 10px;
-      display: flex; flex-direction: column; justify-content: space-between;
-    }
-    .jam-chat { flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
-
-    .ch-heading {
-      font-size: 11px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.06em; color: var(--text-dim);
-      padding: 0 8px; margin: 16px 0 6px;
-    }
-    .ch-item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 10px; border-radius: 8px;
-      font-size: 13px; font-weight: 500; color: var(--text-muted);
-      cursor: default;
-    }
-    .ch-item.active { background: rgba(var(--brand-rgb),0.1); color: var(--brand); font-weight: 600; }
-    .voice-room {
-      padding: 10px; border-radius: 12px;
-      background: rgba(168,85,247,0.06);
-      border: 1px solid rgba(168,85,247,0.15);
-      margin-top: 4px;
-    }
-    .voice-room-header {
-      display: flex; justify-content: space-between; align-items: center;
-      font-size: 12px; font-weight: 700; color: #c084fc;
-    }
-    .voice-member {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 0; font-size: 12px; color: var(--text-muted);
-    }
-    .voice-avatar {
-      width: 20px; height: 20px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 9px; font-weight: 700; color: #fff;
-    }
-    .voice-controls {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 10px; border-radius: 10px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border);
-    }
-    .vc-btn {
-      padding: 6px 8px; border-radius: 6px; font-size: 12px;
-      background: rgba(255,255,255,0.05); border: none; cursor: default;
-    }
-
-    .stream-banner {
-      padding: 20px; border-radius: 14px;
-      background: linear-gradient(135deg, rgba(168,85,247,0.08), rgba(var(--brand-rgb),0.06));
-      border: 1px solid rgba(168,85,247,0.12);
-      margin-bottom: 20px;
-    }
-    .stream-status {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 11px; font-weight: 700; color: #4ade80;
-      padding: 4px 10px; border-radius: 999px;
-      background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.15);
-    }
-    .stream-status .livedot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: #4ade80; animation: blink 1.5s ease infinite;
-    }
-    .msg { display: flex; gap: 12px; padding: 8px 0; }
-    .msg-avatar {
-      width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; color: #fff;
-    }
-    .msg-name { font-size: 13px; font-weight: 700; }
-    .msg-time { font-size: 11px; color: var(--text-dim); margin-left: 8px; font-weight: 400; }
-    .msg-text { font-size: 13px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
-    .msg-embed {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 12px; border-radius: 10px;
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border);
-      margin-top: 6px; max-width: 340px;
-    }
-    .msg-embed-icon {
-      width: 32px; height: 32px; border-radius: 8px;
-      background: rgba(var(--brand-rgb),0.15);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; flex-shrink: 0;
-    }
-    .msg-embed-title { font-size: 13px; font-weight: 600; color: var(--text); }
-    .msg-embed-sub { font-size: 11px; color: var(--text-dim); }
-
-    .chat-input {
-      display: flex; align-items: center; gap: 10px;
-      padding: 12px 16px; border-radius: 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--border);
-      font-size: 13px; color: var(--text-dim);
-    }
-
-    @media (max-width: 768px) {
-      .jam-servers { display: none; }
-      .jam-channels { display: none; }
-    }
-
-    /* ── Feature Sections ── */
-    .feature-section {
-      padding: 100px 0;
-      border-top: 1px solid var(--border);
-    }
-    .feature-header {
-      margin-bottom: 48px;
-    }
-
-    /* ── Carousel ── */
-    .carousel-section {
-      padding: 100px 0;
-      border-top: 1px solid var(--border);
-    }
-    .carousel-header {
-      display: flex; align-items: flex-end; justify-content: space-between;
-      margin-bottom: 40px; gap: 20px; flex-wrap: wrap;
-    }
-    .carousel-nav { display: flex; gap: 8px; }
-    .carousel-btn {
-      width: 44px; height: 44px; border-radius: 12px;
-      background: var(--bg-elevated); border: 1px solid var(--border);
-      color: var(--text-muted); cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: color 0.15s, border-color 0.15s;
-      font-size: 18px;
-    }
-    .carousel-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.15); }
-    .carousel-track {
-      display: flex; gap: 20px;
-      overflow-x: auto; scroll-snap-type: x mandatory;
-      scrollbar-width: none; -ms-overflow-style: none;
-      padding-bottom: 8px;
-    }
-    .carousel-track::-webkit-scrollbar { display: none; }
-    .carousel-card {
-      flex-shrink: 0;
-      width: 380px;
-      scroll-snap-align: start;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 32px;
-      display: flex; flex-direction: column; justify-content: space-between;
-      transition: border-color 0.2s;
-    }
-    .carousel-card:hover { border-color: rgba(255,255,255,0.1); }
-    .card-icon {
-      width: 48px; height: 48px; border-radius: 14px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 22px; margin-bottom: 24px;
-    }
-    .card-title { font-size: 20px; font-weight: 700; margin-bottom: 10px; color: var(--text); }
-    .card-desc { font-size: 14px; color: var(--text-muted); line-height: 1.65; margin-bottom: 24px; }
-    .card-stat {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 14px; border-radius: 10px;
-      font-size: 13px; font-weight: 600;
-    }
-    .card-stat + .card-stat { margin-top: 6px; }
-    .card-footer {
-      margin-top: 24px; padding-top: 20px;
-      border-top: 1px solid var(--border);
-      display: flex; justify-content: space-between;
-      font-size: 12px; color: var(--text-dim); font-weight: 500;
-    }
-
-    @media (max-width: 640px) {
-      .carousel-card { width: 85vw; }
-    }
-
-    /* ── CTA ── */
-    .cta {
-      padding: 100px 0;
-      text-align: center;
-    }
-    .cta-box {
-      padding: 64px 40px;
-      border-radius: 24px;
-      background: linear-gradient(145deg, rgba(var(--brand-rgb),0.06), var(--bg-card));
-      border: 1px solid rgba(var(--brand-rgb),0.15);
-      position: relative;
-      overflow: hidden;
-    }
-    .cta-box::before {
-      content: '';
-      position: absolute; top: -100px; left: 50%; transform: translateX(-50%);
-      width: 500px; height: 300px;
-      background: radial-gradient(ellipse, rgba(var(--brand-rgb),0.1), transparent 70%);
-      pointer-events: none;
-    }
-    .cta-box h2 {
-      font-size: clamp(24px, 4vw, 40px);
-      font-weight: 800; letter-spacing: -0.02em;
-      position: relative;
-    }
-    .cta-box p {
-      font-size: 16px; color: var(--text-muted);
-      margin: 16px auto 0; max-width: 440px;
-    }
-    .cta-actions {
-      display: flex; align-items: center; justify-content: center;
-      gap: 12px; margin-top: 32px; flex-wrap: wrap;
-      position: relative;
-    }
-
-    /* ── Footer ── */
-    .site-footer {
-      border-top: 1px solid var(--border);
-      padding: 40px 0;
-    }
-    .footer-inner {
-      display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap; gap: 16px;
-      font-size: 13px; color: var(--text-dim);
-    }
-    .footer-inner a { color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
-    .footer-inner a:hover { color: var(--text-muted); }
-    .footer-links { display: flex; gap: 24px; }
+    body { background:#07090E; color:#E2E8F0; font-family:'Plus Jakarta Sans',sans-serif; overflow-x:hidden; }
+    .neon-glow { box-shadow:0 0 35px rgba(255,42,85,0.35); }
+    .neon-text-glow { text-shadow:0 0 20px rgba(255,42,85,0.5); }
+    .glass-panel { background:rgba(18,22,32,0.75); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px); border:1px solid rgba(255,255,255,0.08); }
+    .glass-panel-hover:hover { border-color:rgba(255,42,85,0.4); background:rgba(25,32,46,0.85); transition:all .3s cubic-bezier(.4,0,.2,1); }
+    .bg-grid { background-size:40px 40px; background-image:linear-gradient(to right,rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.03) 1px,transparent 1px); }
+    .no-scrollbar::-webkit-scrollbar{display:none} .no-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
+    @keyframes pulse-slow{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.6;transform:scale(1.08)}}
+    .animate-pulse-slow{animation:pulse-slow 8s infinite ease-in-out}
   </style>
 </head>
-<body>
+<body class="selection:bg-brand selection:text-white">
 
-<!-- ══════════════════════════════════════════ NAV ══════════════════════════════════════════ -->
-<nav class="nav">
-  <div class="container nav-inner">
-    <a href="#" class="nav-logo">
-      <img src="assets/spytify-logo.png" alt="Spytify">
-      <span>Spytify</span>
-    </a>
-    <ul class="nav-links">
-      <li><a href="#home-preview">Trang chủ App</a></li>
-      <li><a href="#jam-preview">Spy Jam</a></li>
-      <li><a href="#explore">Khám phá</a></li>
-      <li><a href="https://github.com/anhdangtutien/Spytify/releases" target="_blank">Releases</a></li>
-    </ul>
-    <div class="nav-actions">
-      <a href="https://github.com/anhdangtutien/Spytify" target="_blank" class="gh-link" title="GitHub">
-        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-      </a>
-      <a href="#download" class="btn-primary btn-dl">
-        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-        Tải xuống
-      </a>
-    </div>
+  <!-- Glow Background -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+    <div class="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[500px] bg-brand/15 rounded-full blur-[130px] animate-pulse-slow"></div>
+    <div class="absolute top-[40%] -left-32 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[140px]"></div>
+    <div class="absolute top-[65%] -right-32 w-[550px] h-[550px] bg-brand/10 rounded-full blur-[140px]"></div>
   </div>
-</nav>
 
-<!-- ══════════════════════════════════════════ HERO ══════════════════════════════════════════ -->
-<section class="hero" id="download">
-  <div class="container" style="position:relative;z-index:1">
-    <div class="badge">
-      <span class="dot"></span>
-      <span id="hero-version">v1.0.6 alpha</span>
-      <span style="color:var(--text-dim)">·</span>
-      <span style="color:var(--text-muted)">Rust · React 19 · WebRTC</span>
-    </div>
-
-    <h1>Nghe nhạc Hi-Fi siêu nhẹ<br>cùng <span class="gradient">Spy Jam</span></h1>
-
-    <p>Lõi âm thanh Rust không độ trễ, tải nhạc đa nguồn, voice chat &amp; chia sẻ màn hình 90 FPS. Dung lượng chỉ 15 MB, tiết kiệm đến 80% RAM.</p>
-
-    <div class="hero-actions">
-      <a id="btn-win" href="https://github.com/anhdangtutien/Spytify/releases" class="btn-primary btn-dl">
-        <svg width="20" height="20" fill="currentColor" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.901-1.799"/></svg>
-        Tải cho Windows
-        <span id="size-badge" style="font-size:12px;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,0.25);font-weight:600">~15 MB</span>
+  <!-- NAVBAR -->
+  <header class="sticky top-0 z-50 glass-panel border-b border-surface-border/60">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+      <a href="#" class="flex items-center gap-3 group">
+        <div class="relative w-11 h-11 rounded-xl bg-brand/10 border border-brand/30 flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform">
+          <img src="assets/spytify-logo.png" alt="Spytify Logo" class="w-8 h-8 object-contain">
+        </div>
+        <div>
+          <span class="text-xl font-extrabold tracking-tight text-white flex items-center gap-1.5">
+            SPYTIFY
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand/20 text-brand border border-brand/40 uppercase tracking-widest">Alpha</span>
+          </span>
+          <span class="text-xs text-slate-400 block -mt-0.5">Spy Music & Spy Jam</span>
+        </div>
       </a>
-      <a id="btn-mac" href="https://github.com/anhdangtutien/Spytify/releases" target="_blank" class="btn-secondary">
-        <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.61-.75 1.04-1.8.92-2.85-.9.04-2 .6-2.65 1.35-.58.66-1.09 1.73-.96 2.76.99.08 2.06-.51 2.69-1.26z"/></svg>
-        macOS (.dmg)
-      </a>
-    </div>
-
-    <p class="hero-meta">Windows 10/11 64-bit · macOS Universal · Không quảng cáo · Mã nguồn mở MIT</p>
-  </div>
-</section>
-
-<!-- ══════════════════════════════════════════ TRANG CHỦ APP ══════════════════════════════════════════ -->
-<section class="feature-section" id="home-preview">
-  <div class="container">
-    <div class="feature-header">
-      <p class="section-label">Trình phát nhạc</p>
-      <h2 class="section-title" style="margin-top:8px">Âm thanh Hi-Fi, giao diện tối giản</h2>
-      <p class="section-desc" style="margin-top:12px">Tìm kiếm và phát nhạc từ YouTube, SoundCloud, Audius hoặc kho nhạc trên máy tính. Giải mã âm thanh trực tiếp bằng Rust &mdash; không qua trình duyệt.</p>
-    </div>
-
-    <div class="window">
-      <div class="window-bar">
-        <div class="window-dot r"></div>
-        <div class="window-dot y"></div>
-        <div class="window-dot g"></div>
-        <span class="window-title">Spytify — Trang chủ Khám phá</span>
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+        <a href="#home-preview" class="hover:text-white transition-colors">Trang chủ App</a>
+        <a href="#jam-preview" class="hover:text-white transition-colors">Server Spy Jam</a>
+        <a href="#explore" class="hover:text-white transition-colors">Khám phá</a>
+      </nav>
+      <div class="flex items-center gap-3">
+        <a href="https://github.com/anhdangtutien/Spytify" target="_blank" rel="noopener noreferrer" class="p-2.5 rounded-xl border border-surface-border text-slate-300 hover:text-white hover:border-slate-500 transition-colors" title="GitHub">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        </a>
+        <a href="#download" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-dark text-white text-sm font-bold shadow-lg shadow-brand/25 transition-all btn-dl">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+          Tải Spytify
+        </a>
       </div>
-      <div class="window-body">
-        <div class="app-layout">
-          <!-- Sidebar -->
-          <div class="app-sidebar">
-            <div>
-              <div class="sidebar-brand">
-                <img src="assets/spytify-logo.png" alt="">
-                <span>SPYTIFY</span>
-              </div>
-              <ul class="sidebar-nav">
-                <li class="active">
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.1-1.3 2-3 2s-3-.9-3-2 1.3-2 3-2 3 .9 3 2zm12-3c0 1.1-1.3 2-3 2s-3-.9-3-2 1.3-2 3-2 3 .9 3 2zM9 10l12-3"/></svg>
-                  Khám phá nhạc
-                </li>
-                <li>
-                  <img src="assets/spy-jam-icon.png" alt="" style="filter:grayscale(1)">
-                  Spy Jam
-                </li>
-                <li>
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
-                  Yêu thích
-                </li>
-                <li>
-                  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                  Album
-                </li>
-              </ul>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="relative pt-16 pb-24 md:pt-24 md:pb-32 overflow-hidden bg-grid">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-panel border border-brand/30 text-xs font-semibold text-brand mb-8 shadow-sm">
+        <span class="w-2 h-2 rounded-full bg-brand animate-ping"></span>
+        <span id="hero-tag-text">Phiên bản mới: v1.0.6 alpha</span>
+        <span class="text-slate-500">•</span>
+        <span class="text-slate-300">Lõi Rust Native & Spy Jam 90 FPS</span>
+      </div>
+      <h1 class="text-4xl sm:text-6xl lg:text-7xl font-extrabold text-white tracking-tight leading-[1.1] max-w-4xl mx-auto">
+        Trình phát nhạc <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand via-rose-400 to-amber-300 neon-text-glow">Hi-Fi siêu nhẹ</span> & Trạm sóng <span class="text-white">Spy Jam</span>
+      </h1>
+      <p class="mt-6 text-lg sm:text-xl text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
+        Giải phóng bộ nhớ máy tính. Tận hưởng âm thanh nguyên bản với lõi Rust, tải nhạc đa nguồn, gọi thoại voice chat và chia sẻ màn hình 90 FPS mượt mà cùng bạn bè.
+      </p>
+      <div id="download" class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-lg mx-auto">
+        <a id="btn-download-primary" href="https://github.com/anhdangtutien/Spytify/releases" class="btn-dl w-full sm:w-auto px-8 py-4 rounded-2xl bg-brand hover:bg-brand-dark text-white font-bold text-base flex items-center justify-center gap-3 shadow-xl neon-glow transition-all hover:scale-[1.02] active:scale-[0.98]">
+          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.901-1.799"/></svg>
+          <div class="text-left">
+            <div class="leading-none text-xs text-rose-100 font-medium">Tải xuống miễn phí</div>
+            <div class="leading-tight text-base font-extrabold">Cài đặt cho Windows</div>
+          </div>
+          <span class="text-xs px-2 py-0.5 rounded bg-black/30 text-rose-200 border border-white/10 font-mono ml-1" id="file-size-badge">~15 MB</span>
+        </a>
+        <a id="btn-download-mac" href="https://github.com/anhdangtutien/Spytify/releases" target="_blank" class="w-full sm:w-auto px-6 py-4 rounded-2xl glass-panel glass-panel-hover text-white font-semibold text-sm flex items-center justify-center gap-2.5 transition-all">
+          <svg class="w-5 h-5 text-slate-300" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.61-.75 1.04-1.8 0.92-2.85-.9.04-2 .6-2.65 1.35-.58.66-1.09 1.73-.96 2.76.99.08 2.06-.51 2.69-1.26z"/></svg>
+          <span>Tải cho macOS (.dmg)</span>
+        </a>
+      </div>
+      <p class="mt-3 text-xs text-slate-500 font-mono">Windows 10/11 64-bit & macOS Universal • Không quảng cáo • Mã nguồn mở</p>
+    </div>
+  </section>
+
+  <!-- ═══════════ TRANG CHỦ SPYTIFY ═══════════ -->
+  <section id="home-preview" class="py-20 md:py-28 relative border-t border-surface-border">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto mb-14">
+        <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Giao diện trang chủ</h2>
+        <p class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+          Khám phá âm nhạc <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand to-rose-400">Hi-Fi</span> đa nguồn
+        </p>
+        <p class="mt-4 text-slate-400 text-base sm:text-lg">Phát trực tiếp từ YouTube, SoundCloud, Audius hoặc kho nhạc trên máy. Lõi giải mã Rust — không qua trình duyệt.</p>
+      </div>
+
+      <!-- Window Mockup -->
+      <div class="glass-panel rounded-2xl md:rounded-3xl p-2 sm:p-3 shadow-2xl border border-white/10 overflow-hidden">
+        <div class="bg-[#0D1017] rounded-xl md:rounded-2xl border border-white/5 overflow-hidden">
+          <!-- Topbar -->
+          <div class="h-10 bg-[#141824] px-4 flex items-center justify-between border-b border-white/5 select-none">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#27C93F]"></div>
+              <span class="ml-3 text-xs font-mono text-slate-400 font-semibold flex items-center gap-1.5">
+                <img src="assets/spytify-logo.png" class="w-4 h-4 object-contain">
+                Spytify — Trang chủ Khám phá
+              </span>
             </div>
-            <div class="sidebar-stat">
-              <div class="stat-row">
-                <span>RAM</span>
-                <span class="stat-val">68 MB</span>
+            <div class="text-[11px] font-mono text-slate-500 hidden sm:block">Rodio 0.20 · Stereo 48kHz · Local SQLite</div>
+          </div>
+
+          <!-- App Body -->
+          <div class="flex min-h-[420px] sm:min-h-[480px]">
+            <!-- Sidebar -->
+            <div class="hidden lg:flex flex-col justify-between w-[210px] bg-[#0F131D] p-4 border-r border-white/5 flex-shrink-0">
+              <div class="space-y-5">
+                <div class="flex items-center gap-2.5 px-2"><img src="assets/spytify-logo.png" class="w-6 h-6 object-contain"><span class="font-extrabold text-white text-sm tracking-wider">SPYTIFY</span></div>
+                <div class="space-y-1 text-xs">
+                  <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-brand text-white font-bold shadow-md shadow-brand/30">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                    Trang chủ & Xu hướng
+                  </div>
+                  <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5">
+                    <img src="assets/spy-jam-icon.png" class="w-4 h-4 object-contain opacity-70"> Spy Jam
+                  </div>
+                  <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                    Yêu thích
+                  </div>
+                  <div class="flex items-center gap-2.5 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    Album
+                  </div>
+                </div>
               </div>
-              <div class="stat-bar"><div class="stat-bar-fill"></div></div>
+              <div class="p-3 rounded-xl bg-white/5 border border-white/5 text-[11px] text-slate-400">
+                <div class="flex justify-between mb-1"><span class="text-slate-300 font-semibold">RAM</span><span class="text-brand font-mono font-bold">68 MB</span></div>
+                <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden"><div class="w-[18%] h-full bg-brand rounded-full"></div></div>
+              </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="flex-1 p-4 sm:p-6 flex flex-col">
+              <!-- Search -->
+              <div class="flex items-center gap-2.5 px-4 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs text-slate-400 mb-5">
+                <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                <span class="truncate">Tìm bài hát, nghệ sĩ, dán link YouTube / SoundCloud...</span>
+                <div class="hidden sm:flex items-center gap-1.5 ml-auto text-[10px] font-semibold">
+                  <span class="px-2 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">YouTube</span>
+                  <span class="px-2 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20">SoundCloud</span>
+                  <span class="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">Audius</span>
+                </div>
+              </div>
+
+              <!-- Featured -->
+              <div class="rounded-2xl bg-gradient-to-r from-brand/20 via-purple-900/20 to-transparent p-5 border border-brand/15 mb-5 relative overflow-hidden">
+                <div class="flex items-center gap-5 relative z-10">
+                  <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-brand to-rose-400 flex items-center justify-center text-white shadow-xl flex-shrink-0">
+                    <svg class="w-8 h-8 sm:w-10 sm:h-10" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                  </div>
+                  <div>
+                    <span class="text-[10px] font-mono tracking-widest text-brand font-bold uppercase">ALBUM ĐỀ XUẤT</span>
+                    <h3 class="text-lg sm:text-2xl font-extrabold text-white mt-0.5">Midnight Neon Collection</h3>
+                    <p class="text-xs text-slate-300 mt-1">14 bài · Synthwave · Hi-Fi Lossless 320kbps</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Track List -->
+              <div class="space-y-1 text-xs flex-1">
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-brand/[0.08] border border-brand/20 text-white font-medium">
+                  <span class="w-6 font-mono text-brand font-bold text-center">▶</span>
+                  <div class="flex-1 flex items-center gap-2 overflow-hidden ml-2">
+                    <span class="px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 text-[9px] font-bold">YT</span>
+                    <span class="truncate font-semibold">Cyber City Echoes (Original Mix)</span>
+                  </div>
+                  <span class="w-28 text-slate-400 hidden sm:block truncate">Neon Dreams</span>
+                  <span class="w-12 text-right font-mono text-slate-300">3:45</span>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/[0.03] text-slate-300 transition-colors">
+                  <span class="w-6 font-mono text-slate-500 text-center">2</span>
+                  <div class="flex-1 flex items-center gap-2 overflow-hidden ml-2">
+                    <span class="px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 text-[9px] font-bold">SC</span>
+                    <span class="truncate">Rainy Rooftop Synthwave</span>
+                  </div>
+                  <span class="w-28 text-slate-500 hidden sm:block truncate">Lofi Spytify</span>
+                  <span class="w-12 text-right font-mono text-slate-400">4:12</span>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/[0.03] text-slate-300 transition-colors">
+                  <span class="w-6 font-mono text-slate-500 text-center">3</span>
+                  <div class="flex-1 flex items-center gap-2 overflow-hidden ml-2">
+                    <span class="px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 text-[9px] font-bold">AD</span>
+                    <span class="truncate">Deep Space Radio Ambient</span>
+                  </div>
+                  <span class="w-28 text-slate-500 hidden sm:block truncate">Starlight Orbit</span>
+                  <span class="w-12 text-right font-mono text-slate-400">5:30</span>
+                </div>
+                <div class="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/[0.03] text-slate-300 transition-colors">
+                  <span class="w-6 font-mono text-slate-500 text-center">4</span>
+                  <div class="flex-1 flex items-center gap-2 overflow-hidden ml-2">
+                    <span class="px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 text-[9px] font-bold">YT</span>
+                    <span class="truncate">Tokyo Drift Phonk Bass</span>
+                  </div>
+                  <span class="w-28 text-slate-500 hidden sm:block truncate">DVRST Remix</span>
+                  <span class="w-12 text-right font-mono text-slate-400">2:58</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Main -->
-          <div class="app-main">
-            <!-- Search -->
-            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,0.03);border:1px solid var(--border)">
-              <svg width="16" height="16" fill="none" stroke="currentColor" style="color:var(--text-dim)" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              <span style="font-size:13px;color:var(--text-dim)">Tìm bài hát, nghệ sĩ, dán link YouTube / SoundCloud...</span>
+          <!-- Player Bar -->
+          <div class="h-14 bg-[#101420] border-t border-white/5 px-4 sm:px-6 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center font-black text-sm shadow-md shadow-brand/40">▶</div>
+              <div><div class="text-xs font-bold text-white">Cyber City Echoes</div><div class="text-[10px] text-slate-500 font-mono">01:14 / 03:45</div></div>
             </div>
-
-            <!-- Featured -->
-            <div style="margin-top:20px;padding:24px;border-radius:14px;background:linear-gradient(135deg,rgba(var(--brand-rgb),0.1),rgba(168,85,247,0.06));border:1px solid rgba(var(--brand-rgb),0.1)">
-              <span style="font-size:11px;font-weight:700;letter-spacing:0.06em;color:var(--brand);text-transform:uppercase">Đề xuất hôm nay</span>
-              <div style="font-size:22px;font-weight:800;margin-top:4px">Midnight Neon Collection</div>
-              <div style="font-size:13px;color:var(--text-muted);margin-top:2px">14 bài · Synthwave · Hi-Fi Lossless</div>
-              <button class="btn-primary" style="margin-top:14px;padding:10px 20px;font-size:13px">▶ Phát ngay</button>
-            </div>
-
-            <!-- Track List -->
-            <div class="track-list">
-              <div class="track-row playing">
-                <div class="track-num">▶</div>
-                <div><span class="source-tag source-yt">YT</span><span class="track-title">Cyber City Echoes</span></div>
-                <div class="track-artist">Neon Dreams</div>
-                <div class="track-dur">3:45</div>
-              </div>
-              <div class="track-row">
-                <div class="track-num">2</div>
-                <div><span class="source-tag source-sc">SC</span><span class="track-title">Rainy Rooftop Synthwave</span></div>
-                <div class="track-artist">Lofi Spytify</div>
-                <div class="track-dur">4:12</div>
-              </div>
-              <div class="track-row">
-                <div class="track-num">3</div>
-                <div><span class="source-tag source-ad">AD</span><span class="track-title">Deep Space Radio Ambient</span></div>
-                <div class="track-artist">Starlight Orbit</div>
-                <div class="track-dur">5:30</div>
-              </div>
-              <div class="track-row">
-                <div class="track-num">4</div>
-                <div><span class="source-tag source-yt">YT</span><span class="track-title">Tokyo Drift Phonk Bass</span></div>
-                <div class="track-artist">DVRST Remix</div>
-                <div class="track-dur">2:58</div>
-              </div>
-            </div>
+            <div class="hidden md:block flex-1 max-w-sm mx-6"><div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden"><div class="w-[62%] h-full bg-brand rounded-full"></div></div></div>
+            <div class="text-[11px] font-mono text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 hidden sm:block">Hi-Fi Stereo Active</div>
           </div>
         </div>
-
-        <!-- Player bar -->
-        <div class="player-bar">
-          <div class="player-track-info">
-            <div class="player-btn">▶</div>
-            <div>
-              <div class="player-title">Cyber City Echoes</div>
-              <div class="player-sub">01:14 / 03:45</div>
-            </div>
-          </div>
-          <div class="player-progress"><div class="player-progress-fill"></div></div>
-          <div style="font-size:12px;color:var(--text-dim);font-weight:600">Rodio Engine · Stereo 48kHz</div>
-        </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ══════════════════════════════════════════ SPY JAM SERVER ══════════════════════════════════════════ -->
-<section class="feature-section" id="jam-preview" style="background:rgba(255,255,255,0.01)">
-  <div class="container">
-    <div class="feature-header">
-      <p class="section-label">Spy Jam · Community Hub</p>
-      <h2 class="section-title" style="margin-top:8px">Voice chat & Chia sẻ màn hình 90 FPS</h2>
-      <p class="section-desc" style="margin-top:12px">Tạo server riêng, gọi thoại WebRTC chất lượng cao, chia sẻ màn hình không giới hạn FPS và bot nhạc nghe chung &mdash; tất cả tích hợp sẵn.</p>
-    </div>
-
-    <div class="window" style="border-color:rgba(168,85,247,0.1)">
-      <div class="window-bar">
-        <div class="window-dot r"></div>
-        <div class="window-dot y"></div>
-        <div class="window-dot g"></div>
-        <span class="window-title" style="color:#c084fc">Spy Jam — Server: Cyber Điệp Viên</span>
+  <!-- ═══════════ SERVER SPY JAM ═══════════ -->
+  <section id="jam-preview" class="py-20 md:py-28 relative border-t border-surface-border bg-surface/30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto mb-14">
+        <h2 class="text-xs font-mono font-bold text-purple-400 uppercase tracking-widest mb-3">Trạm sóng cộng đồng</h2>
+        <p class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+          Server <span class="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-brand">Spy Jam</span> — Voice & Screen 90 FPS
+        </p>
+        <p class="mt-4 text-slate-400 text-base sm:text-lg">Tạo server riêng, gọi thoại WebRTC, chia sẻ màn hình không giới hạn FPS và bot nhạc nghe chung — tất cả tích hợp sẵn.</p>
       </div>
-      <div class="window-body">
-        <div class="jam-layout">
-          <!-- Server icons -->
-          <div class="jam-servers">
-            <div class="jam-srv-icon" style="background:rgba(var(--brand-rgb),0.15)">
-              <img src="assets/spytify-logo.png" alt="">
+
+      <div class="glass-panel rounded-2xl md:rounded-3xl p-2 sm:p-3 shadow-2xl border border-purple-500/15 overflow-hidden">
+        <div class="bg-[#0A0D15] rounded-xl md:rounded-2xl border border-white/5 overflow-hidden">
+          <div class="h-10 bg-[#141926] px-4 flex items-center justify-between border-b border-white/5 select-none">
+            <div class="flex items-center gap-2">
+              <div class="w-3 h-3 rounded-full bg-[#FF5F56]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#FFBD2E]"></div>
+              <div class="w-3 h-3 rounded-full bg-[#27C93F]"></div>
+              <span class="ml-3 text-xs font-mono text-purple-300 font-semibold flex items-center gap-2">
+                <img src="assets/spy-jam-icon.png" class="w-4 h-4 object-contain"> Spy Jam — Server: Cyber Điệp Viên
+              </span>
             </div>
-            <div class="jam-divider"></div>
-            <div class="jam-srv-icon active" style="background:linear-gradient(135deg,#7c3aed,var(--brand))">
-              <span style="color:#fff;font-size:10px">JAM</span>
-            </div>
-            <div class="jam-srv-icon" style="background:rgba(255,255,255,0.05)">
-              <span style="color:var(--text-dim);font-size:10px">LOFI</span>
-            </div>
-            <div class="jam-srv-icon" style="background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.1)">
-              <span style="color:var(--text-dim);font-size:16px">+</span>
-            </div>
+            <div class="text-[11px] font-mono text-emerald-400 hidden sm:block">🟢 WebRTC Realtime (12ms)</div>
           </div>
 
-          <!-- Channels -->
-          <div class="jam-channels">
-            <div>
-              <div style="font-size:13px;font-weight:800;padding:0 8px;color:var(--text)">Cyber Điệp Viên</div>
-              <div class="ch-heading">💬 Kênh văn bản</div>
-              <div class="ch-item" style="color:var(--text-muted)"># thảo-luận-chung</div>
-              <div class="ch-item active"># phòng-nghe-nhạc</div>
-              <div class="ch-item" style="color:var(--text-muted)"># lệnh-bot-rythm</div>
+          <div class="flex min-h-[420px] sm:min-h-[500px]">
+            <!-- Server Icons -->
+            <div class="hidden sm:flex flex-col items-center py-4 gap-3 w-16 bg-[#080A10] border-r border-white/5 flex-shrink-0">
+              <div class="w-10 h-10 rounded-2xl bg-brand/15 flex items-center justify-center"><img src="assets/spytify-logo.png" class="w-6 h-6 object-contain"></div>
+              <div class="w-6 h-0.5 bg-white/10 rounded-full"></div>
+              <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-brand flex items-center justify-center text-white font-bold text-[10px] ring-2 ring-brand">JAM</div>
+              <div class="w-10 h-10 rounded-2xl bg-[#181E2C] text-slate-400 flex items-center justify-center font-bold text-[10px]">LOFI</div>
+              <div class="w-10 h-10 rounded-2xl bg-[#181E2C] border border-dashed border-white/15 text-slate-500 flex items-center justify-center text-base">+</div>
+            </div>
 
-              <div class="ch-heading">🔊 Phòng thoại</div>
-              <div class="voice-room">
-                <div class="voice-room-header">
-                  <span>Voice & Screen</span>
-                  <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(168,85,247,0.15)">3</span>
-                </div>
-                <div style="padding:8px 4px 0">
-                  <div class="voice-member">
-                    <div class="voice-avatar" style="background:#10b981">A</div>
-                    <span style="color:var(--text);font-weight:600">AnhDang</span>
-                    <span style="font-size:10px">🎙️</span>
+            <!-- Channels -->
+            <div class="hidden md:flex flex-col justify-between w-[220px] bg-[#0E121B] p-3 border-r border-white/5 flex-shrink-0">
+              <div>
+                <div class="font-bold text-xs text-white px-2 mb-4">Cyber Điệp Viên</div>
+                <div class="text-[10px] font-mono uppercase text-slate-500 px-2 font-bold mb-1.5">💬 Kênh văn bản</div>
+                <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-slate-400"># thảo-luận-chung</div>
+                <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs bg-brand/15 text-brand font-bold"># phòng-nghe-nhạc</div>
+                <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-slate-400"># lệnh-bot-rythm</div>
+
+                <div class="text-[10px] font-mono uppercase text-slate-500 px-2 font-bold mt-4 mb-1.5">🔊 Phòng thoại</div>
+                <div class="p-2.5 rounded-xl bg-purple-500/[0.07] border border-purple-500/20 space-y-2">
+                  <div class="flex justify-between text-purple-300 font-bold text-[11px]">
+                    <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>Voice & Screen</span>
+                    <span class="text-[10px] bg-purple-500/15 px-1.5 rounded">3</span>
                   </div>
-                  <div class="voice-member">
-                    <div class="voice-avatar" style="background:#8b5cf6">S</div>
-                    <span>Scout</span>
-                    <span style="font-size:10px;color:#c084fc">📺 90fps</span>
-                  </div>
-                  <div class="voice-member">
-                    <div class="voice-avatar" style="background:var(--brand)">R</div>
-                    <span>Rythm Bot</span>
-                    <span style="font-size:10px;color:var(--brand)">🎵</span>
+                  <div class="pl-1 space-y-1.5 text-[11px]">
+                    <div class="flex items-center gap-2 text-white"><div class="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-[8px] font-bold">A</div><span class="font-medium">AnhDang</span><span class="text-[9px] text-emerald-400">🎙️</span></div>
+                    <div class="flex items-center gap-2 text-slate-300"><div class="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center text-[8px] font-bold">S</div><span>Scout</span><span class="text-[9px] text-purple-400">📺 90fps</span></div>
+                    <div class="flex items-center gap-2 text-slate-400"><div class="w-4 h-4 rounded-full bg-rose-500 flex items-center justify-center text-[8px] font-bold">R</div><span>Rythm Bot</span><span class="text-[9px] text-brand">🎵</span></div>
                   </div>
                 </div>
               </div>
-            </div>
-
-            <div class="voice-controls">
-              <div style="display:flex;gap:4px">
-                <span class="vc-btn">🎙️</span>
-                <span class="vc-btn">🎧</span>
-                <span class="vc-btn" style="background:rgba(168,85,247,0.1);color:#c084fc">📺</span>
-              </div>
-              <span class="vc-btn" style="background:rgba(239,68,68,0.1);color:#f87171;font-size:11px;font-weight:600">Rời phòng</span>
-            </div>
-          </div>
-
-          <!-- Chat -->
-          <div class="jam-chat">
-            <div>
-              <!-- Stream banner -->
-              <div class="stream-banner">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-                  <div class="stream-status">
-                    <span class="livedot"></span>
-                    ĐANG STREAM · 90 FPS
-                  </div>
-                  <span style="font-size:11px;color:var(--text-dim)">1080p · WebRTC P2P</span>
+              <div class="p-2 rounded-xl bg-[#161C2A] border border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-1">
+                  <button class="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs">🎙️</button>
+                  <button class="p-1.5 rounded-lg bg-white/10 text-slate-300 text-xs">🎧</button>
+                  <button class="p-1.5 rounded-lg bg-purple-500/20 text-purple-400 text-xs">📺</button>
                 </div>
-                <div style="font-size:16px;font-weight:700">🎮 Game Stream & Audio Jam</div>
-                <div style="font-size:12px;color:var(--text-dim);margin-top:4px">Streamer: @Scout · Bot Rythm đang phát nhạc đồng bộ</div>
+                <button class="px-2 py-1 rounded-lg bg-red-500/20 text-red-400 text-[10px] font-bold">Rời phòng</button>
+              </div>
+            </div>
+
+            <!-- Chat Area -->
+            <div class="flex-1 p-4 sm:p-5 flex flex-col justify-between">
+              <!-- Stream Banner -->
+              <div class="rounded-xl bg-gradient-to-tr from-[#121724] to-[#1C152B] p-4 border border-purple-500/20 mb-4 relative overflow-hidden">
+                <div class="flex items-center justify-between text-xs mb-3">
+                  <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-mono text-[10px] font-bold flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> ĐANG STREAM · 90 FPS
+                  </span>
+                  <span class="text-[10px] text-slate-500 font-mono">1080p · WebRTC P2P</span>
+                </div>
+                <div class="text-sm font-bold text-white">🎮 Game Stream & Audio Jam</div>
+                <div class="text-[11px] text-slate-400 mt-1">Streamer: @Scout · Bot Rythm đang phát nhạc đồng bộ cho cả phòng</div>
               </div>
 
               <!-- Messages -->
-              <div class="msg">
-                <div class="msg-avatar" style="background:#10b981">AD</div>
-                <div>
-                  <div><span class="msg-name" style="color:#34d399">AnhDang</span><span class="msg-time">23:45</span></div>
-                  <div class="msg-text">Mọi người test thử share màn hình 90 FPS bản v1.0.6 nhé, mượt lắm! 🚀</div>
-                </div>
-              </div>
-              <div class="msg">
-                <div class="msg-avatar" style="background:var(--brand)">RB</div>
-                <div>
+              <div class="space-y-4 text-xs flex-1">
+                <div class="flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">AD</div>
                   <div>
-                    <span class="msg-name" style="color:var(--brand)">Rythm Bot</span>
-                    <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(var(--brand-rgb),0.1);color:var(--brand);font-weight:700;margin-left:6px">BOT</span>
+                    <div class="flex items-center gap-2"><span class="font-bold text-emerald-300">AnhDang</span><span class="text-[10px] text-slate-500 font-mono">23:45</span></div>
+                    <p class="text-slate-300 mt-0.5">Mọi người test thử share màn hình 90 FPS bản v1.0.6 nhé, mượt lắm! 🚀</p>
                   </div>
-                  <div class="msg-embed">
-                    <div class="msg-embed-icon">🎵</div>
-                    <div>
-                      <div class="msg-embed-title">Synthwave Hi-Fi Collection</div>
-                      <div class="msg-embed-sub">Đang phát đồng bộ · 320kbps</div>
+                </div>
+                <div class="flex items-start gap-3">
+                  <div class="w-8 h-8 rounded-full bg-rose-500 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">RB</div>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-bold text-brand">Rythm Bot</span>
+                      <span class="text-[9px] px-1.5 py-0.5 rounded bg-brand/15 text-brand font-mono font-bold">BOT</span>
+                    </div>
+                    <div class="mt-1 p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-3 max-w-xs">
+                      <div class="w-8 h-8 rounded-lg bg-brand/20 flex items-center justify-center text-sm flex-shrink-0">🎵</div>
+                      <div class="overflow-hidden">
+                        <div class="font-bold text-white truncate">Synthwave Hi-Fi Collection</div>
+                        <div class="text-[10px] text-slate-400 truncate">Đang phát đồng bộ · 320kbps</div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Input -->
-            <div class="chat-input">
-              <span>💬</span>
-              <span style="flex:1">Gửi tin nhắn tới #phòng-nghe-nhạc...</span>
-              <span>🎵</span>
-              <span>📷</span>
+              <!-- Input -->
+              <div class="bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-2.5 flex items-center justify-between text-xs text-slate-400 mt-4">
+                <div class="flex items-center gap-2 flex-1">💬 <span class="truncate">Gửi tin nhắn tới #phòng-nghe-nhạc...</span></div>
+                <div class="flex items-center gap-2">🎵 📷 <span class="text-brand font-bold">Gửi</span></div>
+              </div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ══════════════════════════════════════════ CAROUSEL (3 MỤC CUỐI) ══════════════════════════════════════════ -->
-<section class="carousel-section" id="explore">
-  <div class="container">
-    <div class="carousel-header">
-      <div>
-        <p class="section-label">Khám phá thêm</p>
-        <h2 class="section-title" style="margin-top:8px">Hiệu năng · Cài đặt · Bảo mật</h2>
-      </div>
-      <div class="carousel-nav">
-        <button class="carousel-btn" onclick="slide(-1)" aria-label="Previous">←</button>
-        <button class="carousel-btn" onclick="slide(1)" aria-label="Next">→</button>
-      </div>
-    </div>
-
-    <div class="carousel-track" id="carousel">
-
-      <!-- Card 1: Hiệu năng -->
-      <div class="carousel-card">
+  <!-- ═══════════ 3 MỤC CUỐI - CAROUSEL ═══════════ -->
+  <section id="explore" class="py-20 md:py-28 relative border-t border-surface-border overflow-hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-10 gap-4">
         <div>
-          <div class="card-icon" style="background:rgba(var(--brand-rgb),0.1);color:var(--brand)">⚡</div>
-          <h3 class="card-title">Siêu nhẹ nhờ lõi Rust</h3>
-          <p class="card-desc">Không đóng gói Chromium như Spotify hay Discord. Spytify dùng WebView2 có sẵn trên Windows nên dung lượng cài đặt chỉ ~15 MB và RAM tiêu tốn thấp kỷ lục.</p>
-          <div class="card-stat" style="background:rgba(var(--brand-rgb),0.06);color:var(--brand);border:1px solid rgba(var(--brand-rgb),0.1)">
-            <span>Spytify</span><span style="font-weight:800">~68 MB RAM</span>
-          </div>
-          <div class="card-stat" style="background:rgba(255,255,255,0.02);color:var(--text-dim);border:1px solid var(--border)">
-            <span>Spotify Desktop</span><span>~450 MB</span>
-          </div>
-          <div class="card-stat" style="background:rgba(255,255,255,0.02);color:var(--text-dim);border:1px solid var(--border)">
-            <span>Discord</span><span>~500 MB</span>
-          </div>
+          <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Lướt để khám phá</h2>
+          <p class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">Hiệu năng · Cài đặt · Bảo mật</p>
+          <p class="text-slate-400 mt-2 text-base">Vuốt ngang hoặc bấm mũi tên để khám phá thêm.</p>
         </div>
-        <div class="card-footer">
-          <span>Khởi động &lt; 0.5 giây</span>
-          <span style="color:#4ade80">Tiết kiệm 80% RAM</span>
+        <div class="flex items-center gap-3">
+          <button onclick="document.getElementById('carousel').scrollBy({left:-400,behavior:'smooth'})" class="p-3 rounded-2xl glass-panel glass-panel-hover text-white hover:text-brand transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <button onclick="document.getElementById('carousel').scrollBy({left:400,behavior:'smooth'})" class="p-3 rounded-2xl glass-panel glass-panel-hover text-white hover:text-brand transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+          </button>
         </div>
       </div>
 
-      <!-- Card 2: Cài đặt -->
-      <div class="carousel-card">
-        <div>
-          <div class="card-icon" style="background:rgba(251,191,36,0.1);color:#fbbf24">🛡️</div>
-          <h3 class="card-title">Hướng dẫn cài đặt</h3>
-          <p class="card-desc">Windows SmartScreen có thể hiển thị cảnh báo với ứng dụng mã nguồn mở chưa có chứng chỉ số doanh nghiệp. Chỉ cần 2 bước đơn giản:</p>
-          <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
-            <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border)">
-              <span style="width:28px;height:28px;border-radius:8px;background:rgba(var(--brand-rgb),0.1);color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0">1</span>
-              <span style="font-size:14px;color:var(--text)">Bấm <strong style="color:#fbbf24">"More info"</strong></span>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--border)">
-              <span style="width:28px;height:28px;border-radius:8px;background:rgba(74,222,128,0.1);color:#4ade80;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0">2</span>
-              <span style="font-size:14px;color:var(--text)">Chọn <strong style="color:#4ade80">"Run anyway"</strong></span>
+      <div id="carousel" class="flex gap-6 overflow-x-auto no-scrollbar pb-4 snap-x snap-mandatory scroll-smooth">
+        <!-- Card 1: Hiệu năng -->
+        <div class="snap-start flex-shrink-0 w-[85vw] sm:w-[420px] glass-panel rounded-3xl p-7 border border-white/[0.06] shadow-xl flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-brand/15 text-brand border border-brand/25 flex items-center justify-center font-black text-xl mb-6">⚡</div>
+            <h3 class="text-xl font-extrabold text-white mb-2">Siêu nhẹ nhờ lõi Rust</h3>
+            <p class="text-sm text-slate-400 leading-relaxed mb-6">Không đóng gói Chromium như Spotify hay Discord. Spytify dùng WebView2 có sẵn trên Windows nên chỉ cần ~15 MB và RAM cực thấp.</p>
+            <div class="space-y-2 text-xs">
+              <div class="p-3 rounded-xl bg-brand/[0.08] border border-brand/20 flex justify-between font-semibold"><span class="text-white">Spytify</span><span class="text-brand font-mono font-bold text-sm">~68 MB RAM 🚀</span></div>
+              <div class="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex justify-between text-slate-500"><span>Spotify Desktop</span><span class="font-mono">~450 MB</span></div>
+              <div class="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex justify-between text-slate-500"><span>Discord</span><span class="font-mono">~500 MB</span></div>
             </div>
           </div>
+          <div class="mt-6 pt-4 border-t border-white/5 flex justify-between text-xs text-slate-500 font-mono"><span>Khởi động &lt; 0.5s</span><span class="text-emerald-400">Tiết kiệm ~80% RAM</span></div>
         </div>
-        <div class="card-footer">
-          <span>Windows 10/11 64-bit</span>
-          <span>macOS Universal</span>
-        </div>
-      </div>
 
-      <!-- Card 3: Bảo mật -->
-      <div class="carousel-card">
-        <div>
-          <div class="card-icon" style="background:rgba(34,211,238,0.1);color:#22d3ee">🔒</div>
-          <h3 class="card-title">Local-First & Quyền riêng tư</h3>
-          <p class="card-desc">Dữ liệu được lưu trong file SQLite ngay trên máy của bạn. Không thu thập, không theo dõi, không bán dữ liệu. Tùy chọn đồng bộ Cloud khi cần.</p>
-          <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;font-size:14px;color:var(--text-muted)">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="color:#22d3ee">✓</span>
-              <span>Offline-First &mdash; nghe nhạc khi mất mạng</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="color:#22d3ee">✓</span>
-              <span>Tùy chọn Supabase Cloud Sync</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="color:#22d3ee">✓</span>
-              <span>Tự host database riêng cho IT</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="color:#22d3ee">✓</span>
-              <span>Mã hóa mật khẩu SHA-256 + Salt</span>
+        <!-- Card 2: Cài đặt -->
+        <div class="snap-start flex-shrink-0 w-[85vw] sm:w-[420px] glass-panel rounded-3xl p-7 border border-white/[0.06] shadow-xl flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/25 flex items-center justify-center font-black text-xl mb-6">🛡️</div>
+            <h3 class="text-xl font-extrabold text-white mb-2">Hướng dẫn cài đặt</h3>
+            <p class="text-sm text-slate-400 leading-relaxed mb-5">Windows SmartScreen có thể hiển thị cảnh báo với ứng dụng mã nguồn mở chưa có chứng chỉ số. Chỉ cần 2 bước:</p>
+            <div class="space-y-3">
+              <div class="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
+                <span class="w-7 h-7 rounded-lg bg-brand/15 text-brand flex items-center justify-center font-bold text-xs flex-shrink-0">1</span>
+                <span class="text-sm text-white">Bấm <strong class="text-amber-300">"More info"</strong></span>
+              </div>
+              <div class="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
+                <span class="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">2</span>
+                <span class="text-sm text-white">Chọn <strong class="text-emerald-400">"Run anyway"</strong></span>
+              </div>
             </div>
           </div>
+          <div class="mt-6 pt-4 border-t border-white/5 flex justify-between text-xs text-slate-500 font-mono"><span>Windows 10/11 64-bit</span><span>macOS Universal</span></div>
         </div>
-        <div class="card-footer">
-          <span>spytify.db (SQLite)</span>
-          <span style="color:#22d3ee">Mã nguồn mở MIT</span>
+
+        <!-- Card 3: Bảo mật -->
+        <div class="snap-start flex-shrink-0 w-[85vw] sm:w-[420px] glass-panel rounded-3xl p-7 border border-white/[0.06] shadow-xl flex flex-col justify-between">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 flex items-center justify-center font-black text-xl mb-6">🔒</div>
+            <h3 class="text-xl font-extrabold text-white mb-2">Local-First & Quyền riêng tư</h3>
+            <p class="text-sm text-slate-400 leading-relaxed mb-5">Dữ liệu được lưu trong file SQLite ngay trên máy. Không thu thập, không theo dõi, không bán dữ liệu.</p>
+            <div class="space-y-2.5 text-sm text-slate-300">
+              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Offline-First — nghe nhạc khi mất mạng</div>
+              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Tùy chọn Supabase Cloud Sync</div>
+              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Tự host database riêng cho IT</div>
+              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Mã hóa SHA-256 + Salt</div>
+            </div>
+          </div>
+          <div class="mt-6 pt-4 border-t border-white/5 flex justify-between text-xs text-slate-500 font-mono"><span>spytify.db (SQLite)</span><span class="text-cyan-400">Mã nguồn mở MIT</span></div>
         </div>
       </div>
-
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ══════════════════════════════════════════ CTA ══════════════════════════════════════════ -->
-<section class="cta">
-  <div class="container">
-    <div class="cta-box">
-      <h2>Sẵn sàng thử Spytify?</h2>
-      <p>Miễn phí, không quảng cáo, mã nguồn mở. Tải về và trải nghiệm ngay.</p>
-      <div class="cta-actions">
-        <a id="btn-win-bottom" href="https://github.com/anhdangtutien/Spytify/releases" class="btn-primary btn-dl">
-          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-          Tải cho Windows
-        </a>
-        <a href="https://github.com/anhdangtutien/Spytify" target="_blank" class="btn-secondary">
-          ⭐ Star trên GitHub
-        </a>
+  <!-- CTA -->
+  <section class="py-20 relative overflow-hidden">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="glass-panel rounded-3xl p-8 sm:p-14 text-center relative border border-brand/30 neon-glow">
+        <h2 class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">Sẵn sàng nâng cấp trải nghiệm?</h2>
+        <p class="mt-4 text-slate-300 text-base sm:text-lg max-w-xl mx-auto">Tải Spytify ngay. Miễn phí, không quảng cáo, mã nguồn mở 100%.</p>
+        <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+          <a href="https://github.com/anhdangtutien/Spytify/releases" class="btn-dl px-8 py-4 rounded-2xl bg-brand hover:bg-brand-dark text-white font-bold text-base shadow-xl neon-glow transition-transform hover:scale-105 active:scale-95 flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Tải Spytify cho Windows
+          </a>
+          <a href="https://github.com/anhdangtutien/Spytify" target="_blank" class="px-6 py-4 rounded-2xl glass-panel text-white font-semibold text-base hover:bg-white/10 transition-colors flex items-center gap-2">⭐ Star trên GitHub</a>
+        </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ══════════════════════════════════════════ FOOTER ══════════════════════════════════════════ -->
-<footer class="site-footer">
-  <div class="container footer-inner">
-    <div style="display:flex;align-items:center;gap:8px">
-      <img src="assets/spytify-logo.png" alt="" width="20" height="20" style="opacity:.5">
-      <span>© 2026 Spytify · MIT License</span>
+  <!-- FOOTER -->
+  <footer class="border-t border-surface-border py-12 text-slate-500 text-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-3"><img src="assets/spytify-logo.png" class="w-6 h-6 object-contain opacity-70"><span>© 2026 Spytify Team & anhdangtutien. MIT License.</span></div>
+      <div class="flex items-center gap-6">
+        <a href="https://github.com/anhdangtutien/Spytify/releases" target="_blank" class="hover:text-slate-300">Releases</a>
+        <a href="https://github.com/anhdangtutien/Spytify/issues" target="_blank" class="hover:text-slate-300">Báo lỗi</a>
+        <a href="https://github.com/anhdangtutien/Spytify/blob/main/LICENSE" target="_blank" class="hover:text-slate-300">License</a>
+      </div>
     </div>
-    <div class="footer-links">
-      <a href="https://github.com/anhdangtutien/Spytify/releases" target="_blank">Releases</a>
-      <a href="https://github.com/anhdangtutien/Spytify/issues" target="_blank">Báo lỗi</a>
-      <a href="https://github.com/anhdangtutien/Spytify/blob/main/LICENSE" target="_blank">License</a>
-    </div>
-  </div>
-</footer>
+  </footer>
 
-<script>
-// ── Carousel ──
-function slide(dir) {
-  const el = document.getElementById('carousel');
-  el.scrollBy({ left: dir * 400, behavior: 'smooth' });
-}
-
-// ── Auto-fetch GitHub Releases ──
-(async function() {
-  try {
-    const res = await fetch('https://api.github.com/repos/anhdangtutien/Spytify/releases?per_page=5');
-    if (!res.ok) return;
-    const releases = await res.json();
-    for (const rel of releases) {
-      const exe = (rel.assets||[]).find(a => a.name.endsWith('.exe'));
-      const dmg = (rel.assets||[]).find(a => a.name.endsWith('.dmg'));
-      if (exe) {
-        document.querySelectorAll('.btn-dl').forEach(b => b.href = exe.browser_download_url);
-        const sb = document.getElementById('size-badge');
-        if (sb) sb.textContent = (exe.size/1048576).toFixed(1) + ' MB';
+  <script>
+  (async function(){
+    try {
+      const res = await fetch('https://api.github.com/repos/anhdangtutien/Spytify/releases?per_page=5');
+      if (!res.ok) return;
+      const releases = await res.json();
+      for (const rel of releases) {
+        const exe = (rel.assets||[]).find(a=>a.name.endsWith('.exe'));
+        const dmg = (rel.assets||[]).find(a=>a.name.endsWith('.dmg'));
+        if (exe) {
+          document.querySelectorAll('.btn-dl').forEach(b=>b.href=exe.browser_download_url);
+          const sb=document.getElementById('file-size-badge');
+          if(sb)sb.textContent=(exe.size/1048576).toFixed(1)+' MB';
+        }
+        if (dmg) { const mb=document.getElementById('btn-download-mac'); if(mb)mb.href=dmg.browser_download_url; }
+        const hv=document.getElementById('hero-tag-text');
+        if(hv&&rel.tag_name)hv.textContent='Phiên bản mới: '+(rel.name||rel.tag_name);
+        if(exe||dmg)break;
       }
-      if (dmg) {
-        const mb = document.getElementById('btn-mac');
-        if (mb) mb.href = dmg.browser_download_url;
-      }
-      const hv = document.getElementById('hero-version');
-      if (hv && rel.tag_name) hv.textContent = (rel.name || rel.tag_name);
-      if (exe || dmg) break;
-    }
-  } catch(e) { console.warn('GitHub API:', e); }
-})();
-</script>
+    } catch(e){ console.warn('GitHub API:',e); }
+  })();
+  </script>
 </body>
 </html>
