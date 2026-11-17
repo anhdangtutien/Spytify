@@ -62,7 +62,8 @@
       <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
         <a href="#home-preview" class="hover:text-white transition-colors">Trang chủ App</a>
         <a href="#jam-preview" class="hover:text-white transition-colors">Server Spy Jam</a>
-        <a href="#explore" class="hover:text-white transition-colors">Khám phá</a>
+        <a href="#compare" class="hover:text-white transition-colors">So sánh hiệu năng</a>
+        <a href="#faq" class="hover:text-white transition-colors">Hướng dẫn & FAQ</a>
       </nav>
       <div class="flex items-center gap-3">
         <a href="https://github.com/anhdangtutien/Spytify" target="_blank" rel="noopener noreferrer" class="p-2.5 rounded-xl border border-surface-border text-slate-300 hover:text-white hover:border-slate-500 transition-colors" title="GitHub">
@@ -370,75 +371,131 @@
     </div>
   </section>
 
-  <!-- ═══════════ 3 MỤC CUỐI - CAROUSEL ═══════════ -->
-  <section id="explore" class="py-20 md:py-28 relative border-t border-surface-border overflow-hidden">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-10 gap-4">
-        <div>
-          <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Lướt để khám phá</h2>
-          <p class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">Hiệu năng · Cài đặt · Bảo mật</p>
-          <p class="text-slate-400 mt-2 text-base">Vuốt ngang hoặc bấm mũi tên để khám phá thêm.</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <button onclick="document.getElementById('carousel').scrollBy({left:-400,behavior:'smooth'})" class="p-3 rounded-2xl glass-panel glass-panel-hover text-white hover:text-brand transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <button onclick="document.getElementById('carousel').scrollBy({left:400,behavior:'smooth'})" class="p-3 rounded-2xl glass-panel glass-panel-hover text-white hover:text-brand transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
-          </button>
-        </div>
+  <!-- ═══════════ SO SÁNH HIỆU NĂNG (THEO CHIỀU DỌC NHƯ BẢN ĐẦU) ═══════════ -->
+  <section id="compare" class="py-20 md:py-28 relative border-t border-surface-border">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-14">
+        <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Hiệu năng thực tế</h2>
+        <p class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">Tại sao nên chọn Spytify?</p>
+        <p class="text-slate-400 mt-4 text-base sm:text-lg">So sánh trực tiếp giữa Spytify với các trình phát nhạc và ứng dụng giao tiếp phổ biến.</p>
       </div>
 
-      <div id="carousel" class="flex gap-6 overflow-x-auto no-scrollbar pb-4 snap-x snap-mandatory scroll-smooth">
-        <!-- Card 1: Hiệu năng -->
-        <div class="snap-start flex-shrink-0 w-[85vw] sm:w-[420px] glass-panel rounded-3xl p-7 border border-white/[0.06] shadow-xl flex flex-col justify-between">
-          <div>
-            <div class="w-12 h-12 rounded-2xl bg-brand/15 text-brand border border-brand/25 flex items-center justify-center font-black text-xl mb-6">⚡</div>
-            <h3 class="text-xl font-extrabold text-white mb-2">Siêu nhẹ nhờ lõi Rust</h3>
-            <p class="text-sm text-slate-400 leading-relaxed mb-6">Không đóng gói Chromium như Spotify hay Discord. Spytify dùng WebView2 có sẵn trên Windows nên chỉ cần ~15 MB và RAM cực thấp.</p>
-            <div class="space-y-2 text-xs">
-              <div class="p-3 rounded-xl bg-brand/[0.08] border border-brand/20 flex justify-between font-semibold"><span class="text-white">Spytify</span><span class="text-brand font-mono font-bold text-sm">~68 MB RAM 🚀</span></div>
-              <div class="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex justify-between text-slate-500"><span>Spotify Desktop</span><span class="font-mono">~450 MB</span></div>
-              <div class="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex justify-between text-slate-500"><span>Discord</span><span class="font-mono">~500 MB</span></div>
-            </div>
-          </div>
-          <div class="mt-6 pt-4 border-t border-white/5 flex justify-between text-xs text-slate-500 font-mono"><span>Khởi động &lt; 0.5s</span><span class="text-emerald-400">Tiết kiệm ~80% RAM</span></div>
-        </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse glass-panel rounded-2xl overflow-hidden text-sm">
+          <thead>
+            <tr class="border-b border-white/10 bg-white/5 text-slate-300 font-mono text-xs uppercase">
+              <th class="py-4 px-6">Tiêu chí so sánh</th>
+              <th class="py-4 px-6 text-brand font-bold">Spytify (Rust + Tauri)</th>
+              <th class="py-4 px-6">Spotify (CEF / C++)</th>
+              <th class="py-4 px-6">Discord (Electron)</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5 text-slate-300">
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Dung lượng RAM khi chạy</td>
+              <td class="py-4 px-6 text-brand font-bold font-mono">~60 - 100 MB 🚀</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~300 - 500 MB</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~350 - 600 MB</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Kích thước bộ cài</td>
+              <td class="py-4 px-6 text-brand font-bold font-mono">Chỉ ~15 MB</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~90 MB</td>
+              <td class="py-4 px-6 font-mono text-slate-400">~110 MB</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Tốc độ khởi động</td>
+              <td class="py-4 px-6 text-brand font-bold">Tức thì (&lt; 0.5s)</td>
+              <td class="py-4 px-6 text-slate-400">2 - 4 giây</td>
+              <td class="py-4 px-6 text-slate-400">3 - 6 giây</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Gọi thoại &amp; Chia sẻ màn hình</td>
+              <td class="py-4 px-6 text-emerald-400 font-bold">Lên đến 90 FPS</td>
+              <td class="py-4 px-6 text-slate-400">Không có</td>
+              <td class="py-4 px-6 text-slate-400">Giới hạn 30 FPS (Cần Nitro)</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Bảo mật &amp; Dữ liệu cá nhân</td>
+              <td class="py-4 px-6 text-emerald-400 font-bold">Local-First (SQLite trên máy)</td>
+              <td class="py-4 px-6 text-slate-400">Thu thập &amp; Theo dõi hành vi</td>
+              <td class="py-4 px-6 text-slate-400">Lưu trữ máy chủ đám mây</td>
+            </tr>
+            <tr>
+              <td class="py-4 px-6 font-semibold text-white">Quảng cáo làm phiền</td>
+              <td class="py-4 px-6 text-emerald-400 font-bold">100% Không quảng cáo</td>
+              <td class="py-4 px-6 text-slate-400">Có quảng cáo âm thanh &amp; banner</td>
+              <td class="py-4 px-6 text-slate-400">Gợi ý Nitro &amp; In-app Ads</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
-        <!-- Card 2: Cài đặt -->
-        <div class="snap-start flex-shrink-0 w-[85vw] sm:w-[420px] glass-panel rounded-3xl p-7 border border-white/[0.06] shadow-xl flex flex-col justify-between">
-          <div>
-            <div class="w-12 h-12 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/25 flex items-center justify-center font-black text-xl mb-6">🛡️</div>
-            <h3 class="text-xl font-extrabold text-white mb-2">Hướng dẫn cài đặt</h3>
-            <p class="text-sm text-slate-400 leading-relaxed mb-5">Windows SmartScreen có thể hiển thị cảnh báo với ứng dụng mã nguồn mở chưa có chứng chỉ số. Chỉ cần 2 bước:</p>
-            <div class="space-y-3">
+  <!-- ═══════════ HƯỚNG DẪN CÀI ĐẶT & BẢO MẬT (XẾP DỌC NHƯ BẢN ĐẦU) ═══════════ -->
+  <section id="faq" class="py-20 md:py-28 relative border-t border-surface-border bg-surface/30">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-14">
+        <h2 class="text-xs font-mono font-bold text-brand uppercase tracking-widest mb-3">Hướng dẫn &amp; Giải đáp</h2>
+        <p class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">Cài đặt, Bảo mật &amp; Hỏi đáp</p>
+        <p class="text-slate-400 mt-4 text-base sm:text-lg">Các thắc mắc phổ biến nhất khi sử dụng Spytify.</p>
+      </div>
+
+      <div class="space-y-5">
+        <!-- Card Hướng dẫn Windows SmartScreen -->
+        <div class="glass-panel glass-panel-hover rounded-2xl p-6 sm:p-7 border border-white/5 transition-all">
+          <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-3">
+            <span class="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/25 flex items-center justify-center text-base flex-shrink-0">🛡️</span>
+            <span>Windows Defender báo "Windows protected your PC" khi cài đặt?</span>
+          </h3>
+          <div class="mt-4 pl-12 text-sm text-slate-300 leading-relaxed">
+            <p>
+              Đây là cảnh báo tự động của <b>Windows SmartScreen</b> đối với các phần mềm mã nguồn mở mới phát hành chưa mua chứng chỉ số doanh nghiệp từ Microsoft.
+            </p>
+            <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div class="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
                 <span class="w-7 h-7 rounded-lg bg-brand/15 text-brand flex items-center justify-center font-bold text-xs flex-shrink-0">1</span>
-                <span class="text-sm text-white">Bấm <strong class="text-amber-300">"More info"</strong></span>
+                <span class="text-white text-xs sm:text-sm">Bấm chữ <strong class="text-amber-300 underline">"More info"</strong> (Xem thêm)</span>
               </div>
               <div class="flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/5">
                 <span class="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">2</span>
-                <span class="text-sm text-white">Chọn <strong class="text-emerald-400">"Run anyway"</strong></span>
+                <span class="text-white text-xs sm:text-sm">Chọn nút <strong class="text-emerald-400 underline">"Run anyway"</strong> (Vẫn chạy)</span>
               </div>
             </div>
+            <p class="mt-3 text-xs text-slate-400">Ứng dụng hoàn toàn sạch 100%, không chứa mã độc và mã nguồn mở công khai trên GitHub.</p>
           </div>
-          <div class="mt-6 pt-4 border-t border-white/5 flex justify-between text-xs text-slate-500 font-mono"><span>Windows 10/11 64-bit</span><span>macOS Universal</span></div>
         </div>
 
-        <!-- Card 3: Bảo mật -->
-        <div class="snap-start flex-shrink-0 w-[85vw] sm:w-[420px] glass-panel rounded-3xl p-7 border border-white/[0.06] shadow-xl flex flex-col justify-between">
-          <div>
-            <div class="w-12 h-12 rounded-2xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 flex items-center justify-center font-black text-xl mb-6">🔒</div>
-            <h3 class="text-xl font-extrabold text-white mb-2">Local-First & Quyền riêng tư</h3>
-            <p class="text-sm text-slate-400 leading-relaxed mb-5">Dữ liệu được lưu trong file SQLite ngay trên máy. Không thu thập, không theo dõi, không bán dữ liệu.</p>
-            <div class="space-y-2.5 text-sm text-slate-300">
-              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Offline-First — nghe nhạc khi mất mạng</div>
-              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Tùy chọn Supabase Cloud Sync</div>
-              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Tự host database riêng cho IT</div>
-              <div class="flex items-center gap-2"><span class="text-cyan-400">✓</span> Mã hóa SHA-256 + Salt</div>
-            </div>
+        <!-- Card Bảo mật & Local-First SQLite -->
+        <div class="glass-panel glass-panel-hover rounded-2xl p-6 sm:p-7 border border-white/5 transition-all">
+          <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-3">
+            <span class="w-9 h-9 rounded-xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 flex items-center justify-center text-base flex-shrink-0">🔒</span>
+            <span>Dữ liệu cá nhân và danh sách bài hát được bảo mật như thế nào?</span>
+          </h3>
+          <div class="mt-4 pl-12 text-sm text-slate-300 leading-relaxed">
+            <p>
+              Spytify tuân thủ nguyên tắc <b>Local-First</b>: Mọi dữ liệu (danh sách yêu thích, playlist, lịch sử nghe nhạc) được lưu trữ ngay trên máy tính của bạn trong cơ sở dữ liệu SQLite (<code class="text-cyan-300 font-mono text-xs">spytify.db</code>).
+            </p>
+            <ul class="mt-3 space-y-1.5 text-xs sm:text-sm text-slate-300">
+              <li class="flex items-center gap-2"><span class="text-cyan-400 font-bold">✓</span> Hoạt động offline mượt mà ngay cả khi không có kết nối internet.</li>
+              <li class="flex items-center gap-2"><span class="text-cyan-400 font-bold">✓</span> Không theo dõi hành vi, không gửi telemetry hay bán dữ liệu người dùng.</li>
+              <li class="flex items-center gap-2"><span class="text-cyan-400 font-bold">✓</span> Tích hợp tùy chọn đồng bộ hóa đám mây Supabase hoặc tự host riêng cho quản trị viên.</li>
+            </ul>
           </div>
-          <div class="mt-6 pt-4 border-t border-white/5 flex justify-between text-xs text-slate-500 font-mono"><span>spytify.db (SQLite)</span><span class="text-cyan-400">Mã nguồn mở MIT</span></div>
+        </div>
+
+        <!-- Card Spy Jam WebRTC P2P -->
+        <div class="glass-panel glass-panel-hover rounded-2xl p-6 sm:p-7 border border-white/5 transition-all">
+          <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-3">
+            <span class="w-9 h-9 rounded-xl bg-purple-500/15 text-purple-400 border border-purple-500/25 flex items-center justify-center text-base flex-shrink-0">🌐</span>
+            <span>Trạm thoại Spy Jam có yêu cầu mở cổng mạng (Port Forwarding) không?</span>
+          </h3>
+          <div class="mt-4 pl-12 text-sm text-slate-300 leading-relaxed">
+            <p>
+              <b>Hoàn toàn không cần.</b> Spy Jam ứng dụng giao thức WebRTC tiêu chuẩn kết hợp máy chủ STUN/TURN, cho phép bạn gọi thoại và chia sẻ màn hình 90 FPS sắc nét với bạn bè thông qua mạng Wifi, LAN hay mạng di động mà không cần mở bất kỳ cổng router nào.
+            </p>
+          </div>
         </div>
       </div>
     </div>
