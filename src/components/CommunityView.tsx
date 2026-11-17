@@ -12,13 +12,16 @@ import {
   ListMusic, SkipForward, Square, AlertTriangle, LogOut,
   Video, VideoOff, ChevronDown, ChevronUp, ChevronRight, Bell, BellOff, Move
 } from 'lucide-react';
-import { Track, User, CommunityServer, CommunityChannel, CommunityMessage, StageSession, VoiceParticipant, CommunityUserProfile, CommunityServerTag, SearchResult, RequestBotTrack } from '../types';
+import { Track, User, CommunityServer, CommunityChannel, CommunityMessage, CommunityFileAttachment, StageSession, VoiceParticipant, CommunityUserProfile, CommunityServerTag, SearchResult, RequestBotTrack } from '../types';
 import {
   getSupabaseClient,
   MAX_CHAT_MESSAGES_LIMIT,
   fetchCloudDirectMessages,
   fetchIncomingCloudDirectMessages,
   pushCloudDirectMessage,
+  uploadChatFile,
+  downloadChatFile,
+  MAX_CHAT_FILE_SIZE,
   fetchAllCloudProfiles,
   fetchCloudFollowGraph,
   pushCloudFollow,
@@ -636,6 +639,11 @@ const compressChatImageFile = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
   });
 };
+
+const formatChatFileSize = (size: number) =>
+  size >= 1024 * 1024
+    ? `${(size / (1024 * 1024)).toFixed(2)} MB`
+    : `${(size / 1024).toFixed(1)} KB`;
 
 // Registered Operatives in Spytify Network
 const INITIAL_USERS: CommunityUserProfile[] = [
@@ -1301,9 +1309,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // ──────── GỬI ẢNH CHAT & LIGHTBOX PREVIEW ────────
   const [pendingChatImage, setPendingChatImage] = useState<string | null>(null);
+  const [pendingChatFile, setPendingChatFile] = useState<File | null>(null);
+  const [chatFileError, setChatFileError] = useState<string | null>(null);
+  const [isUploadingChatFile, setIsUploadingChatFile] = useState(false);
   const [pendingDmImage, setPendingDmImage] = useState<string | null>(null);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
   const chatImageInputRef = useRef<HTMLInputElement | null>(null);
+  const chatFileInputRef = useRef<HTMLInputElement | null>(null);
   const dmImageInputRef = useRef<HTMLInputElement | null>(null);
 
   // ──────── DISCORD-STYLE SCREEN SHARING (CHIA SẺ MÀN HÌNH NHIỀU NGƯỜI ĐỒNG THỜI) ────────
@@ -7047,10 +7059,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const jumpToPresent = () => {
     shouldAutoScrollMessagesRef.current = true;
-    isChatAtBottomRef.current = true;
     setIsChatScrolledFromBottom(false);
     markChannelAsRead(selectedChannel.id);
-    scrollToBottom();
+    const container = chatMessagesContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else {
+      scrollToBottom();
+    }
   };
 
   useEffect(() => {
@@ -7547,14 +7563,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     syncIncomingCloudDms(true);
     const dmPollTimer = setInterval(() => {
       syncIncomingCloudDms(false);
+    }, 60_000);
+    const cloudSyncTimer = setInterval(() => {
       syncCloudProfilesAndFollows();
-    }, 5000);
+    }, 5 * 60_000);
 
     const client = getSupabaseClient();
     if (!client) {
       return () => {
         isMounted = false;
         clearInterval(dmPollTimer);
+        clearInterval(cloudSyncTimer);
       };
     }
 
@@ -7874,6 +7893,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     return () => {
       isMounted = false;
       clearInterval(dmPollTimer);
+      clearInterval(cloudSyncTimer);
       socialCh.unsubscribe();
       globalSocialChannelRef.current = null;
     };
@@ -8036,15 +8056,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       const chatSenders = new Map<string, { id: string; username: string; display_name: string; avatar: string | null }>();
 
       if (cloudRows && cloudRows.length > 0) {
-        const historyInitKey = `spytify_server_chat_init_${currentUser.id}_${currentSrvId}`;
-        const isFirstHistorySync = !localStorage.getItem(historyInitKey);
         cloudRows.forEach(row => {
-          if (!row.id) return;
-          if (isFirstHistorySync) {
-            seenMessageIdsRef.current.add(row.id);
-            return;
-          }
           if (
+            !row.id ||
             row.sender_id === currentUser.id ||
             row.sender_id === 'usr_me' ||
             seenMessageIdsRef.current.has(row.id)
@@ -8063,17 +8077,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             content: row.content,
             track_embed: row.track_embed || null,
             image_url: row.image_url || null,
+            file_attachment: row.file_attachment || null,
             created_at: row.created_at || '',
           };
           seenMessageIdsRef.current.add(row.id);
           trackUnreadServerMessage(currentSrvId, message);
         });
         persistSeenMessageIds();
-        if (isFirstHistorySync) {
-          try {
-            localStorage.setItem(historyInitKey, '1');
-          } catch {}
-        }
 
         cloudRows.forEach(r => {
           if (r.sender_id && r.sender_id !== 'usr_me') {
@@ -8102,6 +8112,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               content: row.content,
               track_embed: row.track_embed || null,
               image_url: row.image_url || existing?.image_url || null,
+              file_attachment: row.file_attachment || existing?.file_attachment || null,
               created_at: row.created_at || '',
             });
           });
@@ -9208,13 +9219,37 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const clean = inputText.trim();
-    if (!clean && !attachCurrentTrack && !pendingChatImage) return;
+    if (!clean && !attachCurrentTrack && !pendingChatImage && !pendingChatFile) return;
+
+    const targetServerId = selectedServer.id;
+    const targetChannelId = selectedChannel.id;
+    setChatFileError(null);
+    let fileAttachment: CommunityFileAttachment | null = null;
+    if (pendingChatFile) {
+      if (!currentUser?.id) {
+        setChatFileError('Đăng nhập để gửi tệp trong kênh chat.');
+        return;
+      }
+      setIsUploadingChatFile(true);
+      try {
+        fileAttachment = await uploadChatFile(targetServerId, targetChannelId, pendingChatFile);
+      } catch (error) {
+        setChatFileError(error instanceof Error ? error.message : 'Không tải được tệp lên.');
+        return;
+      } finally {
+        setIsUploadingChatFile(false);
+      }
+      if (selectedServer.id !== targetServerId || selectedChannel.id !== targetChannelId) {
+        setChatFileError('Phòng chat đã thay đổi trong lúc tải tệp lên. Hãy gửi lại trong phòng mong muốn.');
+        return;
+      }
+    }
 
     const createdAtStr = new Date().toISOString();
     const newMsg: CommunityMessage = {
       id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-      server_id: selectedServer.id,
-      channel_id: selectedChannel.id,
+      server_id: targetServerId,
+      channel_id: targetChannelId,
       user_id: currentUser?.id || 'guest',
       username: currentUser?.username || 'operative',
       display_name: myServerDisplayName,
@@ -9222,15 +9257,40 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       content: clean,
       track_embed: attachCurrentTrack ? currentTrack : null,
       image_url: pendingChatImage || null,
+      file_attachment: fileAttachment,
       created_at: createdAtStr,
     };
+
+    if (fileAttachment && currentUser?.id && targetServerId !== 'srv_none') {
+      try {
+        await pushCloudDirectMessage({
+          id: newMsg.id,
+          room_id: `spytify_srv_chat_${targetServerId}`,
+          sender_id: currentUser.id,
+          receiver_id: targetChannelId,
+          sender_username: newMsg.username,
+          sender_display_name: newMsg.display_name,
+          sender_avatar: newMsg.avatar,
+          content: newMsg.content,
+          track_embed: newMsg.track_embed,
+          image_url: newMsg.image_url || null,
+          file_attachment: fileAttachment,
+          created_at: createdAtStr,
+          sent_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        setChatFileError(error instanceof Error ? error.message : 'Không thể lưu tin nhắn có tệp.');
+        return;
+      }
+    }
 
     await appendServerMessage(newMsg);
     setInputText('');
     setAttachCurrentTrack(false);
     setPendingChatImage(null);
+    setPendingChatFile(null);
 
-    if (activeChannelRef.current) {
+    if (activeChannelRef.current && selectedServer.id === targetServerId) {
       activeChannelRef.current.send({
         type: 'broadcast',
         event: 'new_message',
@@ -9242,19 +9302,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       type: 'broadcast',
       event: 'server_message_notify',
       payload: {
-        serverId: selectedServer.id,
-        channelId: selectedChannel.id,
+        serverId: targetServerId,
+        channelId: targetChannelId,
         senderId: currentUser?.id || 'guest',
         message: newMsg,
       },
     });
 
-    if (currentUser?.id && selectedServer.id !== 'srv_none') {
+    if (currentUser?.id && targetServerId !== 'srv_none' && !fileAttachment) {
       pushCloudDirectMessage({
         id: newMsg.id,
-        room_id: `spytify_srv_chat_${selectedServer.id}`,
+        room_id: `spytify_srv_chat_${targetServerId}`,
         sender_id: currentUser.id,
-        receiver_id: selectedChannel.id,
+        receiver_id: targetChannelId,
         sender_username: newMsg.username,
         sender_display_name: newMsg.display_name,
         sender_avatar: newMsg.avatar,
@@ -9284,6 +9344,44 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       console.warn('Failed to compress image:', err);
     }
     if (e.target) e.target.value = '';
+  };
+
+  const handleSelectChatFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setChatFileError(null);
+    if (file.size > MAX_CHAT_FILE_SIZE) {
+      setPendingChatFile(null);
+      setChatFileError('Tệp vượt quá giới hạn 1 MiB.');
+    } else {
+      setPendingChatFile(file);
+    }
+    e.target.value = '';
+  };
+
+  const handleDownloadChatFile = async (
+    attachment: CommunityFileAttachment,
+    serverId: string,
+    channelId: string
+  ) => {
+    setChatFileError(null);
+    try {
+      const expectedPathPrefix = `${encodeURIComponent(serverId)}/${encodeURIComponent(channelId)}/`;
+      if (!attachment.storage_path.startsWith(expectedPathPrefix)) {
+        throw new Error('Tệp không thuộc kênh chat này.');
+      }
+      const blob = await downloadChatFile(attachment.storage_path);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = attachment.name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      setChatFileError(error instanceof Error ? error.message : 'Không tải được tệp xuống.');
+    }
   };
 
   const handleSelectDmImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -10080,13 +10178,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </span>
                   )}
                   {srvUnreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 z-20 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#040407] shadow-md pointer-events-none">
+                    <span
+                      className="absolute -bottom-1 -right-1 z-30 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#040407] shadow-md pointer-events-none"
+                      title={`${srvUnreadCount} tin nhắn chưa đọc`}
+                      aria-label={`${srvUnreadCount} tin nhắn chưa đọc`}
+                    >
                       {srvUnreadCount > 99 ? '99+' : srvUnreadCount}
                     </span>
                   )}
                   {connectedVoiceServerId === srv.id && connectedVoiceChannel && (
                     <span
-                      className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-black flex items-center justify-center border-2 border-[#040407] shadow-md shadow-emerald-500/50 animate-pulse pointer-events-none"
+                      className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-emerald-500 text-black flex items-center justify-center border-2 border-[#040407] shadow-md shadow-emerald-500/50 animate-pulse pointer-events-none"
                       title="Đang trong phòng thoại tại máy chủ này"
                     >
                       <Volume2 className="w-2.5 h-2.5 stroke-[2.5]" />
@@ -13184,6 +13286,36 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             />
                           </div>
                         )}
+                        {msg.file_attachment && (
+                          <div className={`mt-2 flex max-w-sm items-center gap-3 rounded-xl border p-3 ${
+                            isLight ? 'border-slate-200 bg-slate-50' : 'border-white/10 bg-[#15151d]'
+                          }`}>
+                            <FileText className="h-5 w-5 shrink-0 text-cyan-400" />
+                            <div className="min-w-0 flex-1">
+                              <p className={`truncate text-xs font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                {msg.file_attachment.name}
+                              </p>
+                              <p className="text-[10px] text-zinc-500">
+                                {formatChatFileSize(msg.file_attachment.size)}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadChatFile(
+                                msg.file_attachment!,
+                                msg.server_id || selectedServer.id,
+                                msg.channel_id
+                              )}
+                              className={`shrink-0 rounded-lg p-2 transition-colors ${
+                                isLight ? 'text-slate-600 hover:bg-slate-200' : 'text-zinc-300 hover:bg-white/10'
+                              }`}
+                              title="Tải tệp xuống"
+                              aria-label={`Tải ${msg.file_attachment.name} xuống`}
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                       </div>
                     </React.Fragment>
@@ -13469,6 +13601,33 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 </div>
               )}
 
+              {pendingChatFile && (
+                <div className={`mb-2 flex max-w-sm items-center gap-2 rounded-lg border px-3 py-2 ${
+                  isLight ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-white/10 bg-[#12121a] text-zinc-300'
+                }`}>
+                  <Paperclip className="h-4 w-4 shrink-0 text-cyan-400" />
+                  <span className="min-w-0 flex-1 truncate text-xs">{pendingChatFile.name}</span>
+                  <span className="shrink-0 text-[10px] text-zinc-500">
+                    {formatChatFileSize(pendingChatFile.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingChatFile(null);
+                      setChatFileError(null);
+                    }}
+                    className="shrink-0 rounded p-1 text-zinc-500 hover:text-red-400"
+                    title="Bỏ tệp đính kèm"
+                    aria-label="Bỏ tệp đính kèm"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              {chatFileError && (
+                <p role="alert" className="mb-2 text-xs text-red-400">{chatFileError}</p>
+              )}
+
               {attachCurrentTrack && currentTrack && (
                 <div className={`mb-2 p-1.5 px-3 rounded-lg border text-xs font-mono flex items-center justify-between ${
                   isLight ? 'bg-[#f8fafc] border-[#cbd5e1] text-[#334155]' : 'bg-[#12121a] border-[#242434] text-[#aaa]'
@@ -13494,6 +13653,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   onChange={handleSelectChatImage}
                   className="hidden"
                 />
+                <input
+                  ref={chatFileInputRef}
+                  type="file"
+                  onChange={handleSelectChatFile}
+                  className="hidden"
+                />
                 <button
                   type="button"
                   onClick={() => chatImageInputRef.current?.click()}
@@ -13507,6 +13672,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   title="Gửi file ảnh lên kênh chat"
                 >
                   <ImageIcon className="w-4 h-4" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => chatFileInputRef.current?.click()}
+                  disabled={isUploadingChatFile}
+                  className={`p-2 rounded-xl border transition-colors cursor-pointer flex-shrink-0 disabled:opacity-50 ${
+                    pendingChatFile
+                      ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
+                      : isLight
+                      ? 'bg-[#f1f5f9] border-[#cbd5e1] text-[#64748b] hover:text-[#0f172a]'
+                      : 'bg-[#101016] border-[#222230] text-[#777] hover:text-white'
+                  }`}
+                  title="Đính kèm tệp (tối đa 1 MiB)"
+                  aria-label="Đính kèm tệp (tối đa 1 MiB)"
+                >
+                  <Paperclip className="w-4 h-4" />
                 </button>
 
                 {currentTrack && (
@@ -13636,14 +13818,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                 <button
                   type="submit"
-                  disabled={!inputText.trim() && !attachCurrentTrack && !pendingChatImage}
+                  disabled={isUploadingChatFile || (!inputText.trim() && !attachCurrentTrack && !pendingChatImage && !pendingChatFile)}
                   className="p-2.5 rounded-xl text-black font-bold flex items-center justify-center transition-all cursor-pointer disabled:opacity-40"
                   style={{
                     backgroundColor: accentColor,
                     color: accentColor === '#FFFFFF' ? '#000000' : '#FFFFFF',
                   }}
                 >
-                  <Send className="w-4 h-4" />
+                  {isUploadingChatFile ? <span className="text-[9px] font-bold">...</span> : <Send className="w-4 h-4" />}
                 </button>
               </form>
             </div>

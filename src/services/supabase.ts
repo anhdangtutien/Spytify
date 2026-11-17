@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { invoke } from '@tauri-apps/api/core';
-import { UserAlbum, Track, HistoryItem, User } from '../types';
+import { UserAlbum, Track, HistoryItem, User, CommunityFileAttachment } from '../types';
 
 // System default Supabase credentials (baked in for smooth out-of-the-box sync)
 const DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || 'https://qibsrzgbyclzzayfkeei.supabase.co';
@@ -165,9 +165,13 @@ ALTER TABLE public.spytify_albums ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.spytify_favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.spytify_history ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public read-write for spytify_profiles" ON public.spytify_profiles;
 CREATE POLICY "Allow public read-write for spytify_profiles" ON public.spytify_profiles FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_albums" ON public.spytify_albums;
 CREATE POLICY "Allow public read-write for spytify_albums" ON public.spytify_albums FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_favorites" ON public.spytify_favorites;
 CREATE POLICY "Allow public read-write for spytify_favorites" ON public.spytify_favorites FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_history" ON public.spytify_history;
 CREATE POLICY "Allow public read-write for spytify_history" ON public.spytify_history FOR ALL USING (true) WITH CHECK (true);
 
 -- Bảng lưu tin nhắn riêng (Direct Messages 1-1), tự động giới hạn tối đa 80 tin nhắn gần nhất mỗi phòng
@@ -186,8 +190,80 @@ CREATE TABLE IF NOT EXISTS public.spytify_direct_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_spytify_dm_room_sent ON public.spytify_direct_messages(room_id, sent_at DESC);
 ALTER TABLE public.spytify_direct_messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages;
 CREATE POLICY "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages FOR ALL USING (true) WITH CHECK (true);
+
+-- Private storage for files shared in server chat (maximum 1 MiB per file)
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('spytify-chat-files', 'spytify-chat-files', false, 1048576)
+ON CONFLICT (id) DO UPDATE SET public = false, file_size_limit = 1048576;
+
+DROP POLICY IF EXISTS "Spytify chat files read" ON storage.objects;
+CREATE POLICY "Spytify chat files read" ON storage.objects
+FOR SELECT TO anon, authenticated
+USING (bucket_id = 'spytify-chat-files');
+
+DROP POLICY IF EXISTS "Spytify chat files upload" ON storage.objects;
+CREATE POLICY "Spytify chat files upload" ON storage.objects
+FOR INSERT TO anon, authenticated
+WITH CHECK (bucket_id = 'spytify-chat-files');
 `;
+
+export const MAX_CHAT_FILE_SIZE = 1024 * 1024;
+const CHAT_FILES_BUCKET = 'spytify-chat-files';
+const FILE_ATTACHMENT_CONTENT_PREFIX = '\u001fspytify-file-v1:';
+
+export async function uploadChatFile(
+  serverId: string,
+  channelId: string,
+  file: File
+): Promise<CommunityFileAttachment> {
+  if (file.size > MAX_CHAT_FILE_SIZE) {
+    throw new Error('Tệp vượt quá giới hạn 1 MiB.');
+  }
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error('Chưa kết nối được Supabase để tải tệp lên.');
+  }
+
+  const safeName = file.name.replace(/[\\/\u0000-\u001f]/g, '_').slice(0, 180) || 'file';
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const storagePath = `${encodeURIComponent(serverId)}/${encodeURIComponent(channelId)}/${id}-${safeName}`;
+  const { error } = await client.storage.from(CHAT_FILES_BUCKET).upload(storagePath, file, {
+    contentType: file.type || 'application/octet-stream',
+    upsert: false,
+  });
+  if (error) {
+    const setupHint = /bucket not found/i.test(error.message)
+      ? ' Hãy chạy lại SQL cài đặt Supabase trong phần Cài đặt.'
+      : '';
+    throw new Error(`Không tải được tệp lên: ${error.message}.${setupHint}`);
+  }
+
+  return {
+    name: file.name,
+    mime_type: file.type || 'application/octet-stream',
+    size: file.size,
+    storage_path: storagePath,
+  };
+}
+
+export async function downloadChatFile(storagePath: string): Promise<Blob> {
+  if (!storagePath || storagePath.startsWith('/') || storagePath.split('/').includes('..')) {
+    throw new Error('Đường dẫn tệp không hợp lệ.');
+  }
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error('Chưa kết nối được Supabase để tải tệp xuống.');
+  }
+  const { data, error } = await client.storage.from(CHAT_FILES_BUCKET).download(storagePath);
+  if (error || !data) {
+    throw new Error(`Không tải được tệp: ${error?.message || 'Không tìm thấy tệp.'}`);
+  }
+  return data;
+}
 
 export async function testSupabaseConnection(): Promise<{ success: boolean; message: string }> {
   const client = getSupabaseClient();
@@ -493,8 +569,42 @@ export interface CloudDirectMessageRow {
   content: string;
   track_embed?: Track | null;
   image_url?: string | null;
+  file_attachment?: CommunityFileAttachment | null;
   created_at: string;
   sent_at?: string;
+}
+
+function encodeCloudMessageContent(msg: CloudDirectMessageRow): string {
+  if (!msg.file_attachment) return msg.content;
+  return `${FILE_ATTACHMENT_CONTENT_PREFIX}${JSON.stringify({
+    content: msg.content,
+    file_attachment: msg.file_attachment,
+  })}`;
+}
+
+function decodeCloudMessage(row: CloudDirectMessageRow): CloudDirectMessageRow {
+  if (!row.content.startsWith(FILE_ATTACHMENT_CONTENT_PREFIX)) return row;
+  try {
+    const payload = JSON.parse(row.content.slice(FILE_ATTACHMENT_CONTENT_PREFIX.length));
+    if (
+      typeof payload.content !== 'string' ||
+      typeof payload.file_attachment?.name !== 'string' ||
+      typeof payload.file_attachment?.mime_type !== 'string' ||
+      typeof payload.file_attachment?.storage_path !== 'string' ||
+      typeof payload.file_attachment?.size !== 'number' ||
+      payload.file_attachment.size < 0 ||
+      payload.file_attachment.size > MAX_CHAT_FILE_SIZE
+    ) {
+      return row;
+    }
+    return {
+      ...row,
+      content: payload.content,
+      file_attachment: payload.file_attachment as CommunityFileAttachment,
+    };
+  } catch {
+    return row;
+  }
 }
 
 /**
@@ -511,7 +621,7 @@ export async function fetchCloudDirectMessages(roomId: string): Promise<CloudDir
       .order('sent_at', { ascending: false })
       .limit(MAX_CHAT_MESSAGES_LIMIT);
     if (error || !data) return [];
-    return (data as CloudDirectMessageRow[]).reverse();
+    return (data as CloudDirectMessageRow[]).reverse().map(decodeCloudMessage);
   } catch {
     return [];
   }
@@ -526,14 +636,16 @@ export async function fetchIncomingCloudDirectMessages(receiverId: string): Prom
   try {
     const { data, error } = await client
       .from('spytify_direct_messages')
-      .select('*')
+      .select('id, room_id, sender_id, receiver_id, sender_username, sender_display_name, content, track_embed, created_at, sent_at')
       .eq('receiver_id', receiverId)
+      .like('room_id', 'dm_%')
+      .neq('sender_id', receiverId)
       .order('sent_at', { ascending: false })
       .limit(MAX_CHAT_MESSAGES_LIMIT);
     if (error || !data) return [];
     return (data as CloudDirectMessageRow[])
-      .filter(r => r.room_id && r.room_id.startsWith('dm_') && r.sender_id !== receiverId)
-      .reverse();
+      .reverse()
+      .map(decodeCloudMessage);
   } catch {
     return [];
   }
@@ -544,27 +656,34 @@ export async function fetchIncomingCloudDirectMessages(receiverId: string): Prom
  */
 export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promise<void> {
   const client = getSupabaseClient();
-  if (!client || !msg.room_id) return;
+  if (!client) throw new Error('Chưa kết nối được Supabase.');
+  if (!msg.room_id) throw new Error('Phòng chat không hợp lệ.');
   try {
+    const row = { ...msg };
+    delete row.file_attachment;
     let { error } = await client.from('spytify_direct_messages').upsert(
       {
-        ...msg,
+        ...row,
+        content: encodeCloudMessageContent(msg),
         sent_at: msg.sent_at || new Date().toISOString(),
       },
       { onConflict: 'id' }
     );
-    if (error && msg.image_url) {
-      const { image_url: _, ...withoutImg } = msg;
+    if (error && Object.prototype.hasOwnProperty.call(msg, 'image_url')) {
+      const withoutOptionalFields = { ...msg };
+      delete withoutOptionalFields.image_url;
+      delete withoutOptionalFields.file_attachment;
       const res = await client.from('spytify_direct_messages').upsert(
         {
-          ...withoutImg,
+          ...withoutOptionalFields,
+          content: encodeCloudMessageContent(msg),
           sent_at: msg.sent_at || new Date().toISOString(),
         },
         { onConflict: 'id' }
       );
       error = res.error;
     }
-    if (error) return;
+    if (error) throw new Error(error.message);
 
     // Giữ tối đa 80 tin nhắn gần nhất cho mỗi room_id để tránh quá tải database
     const { data: oldRows } = await client
@@ -578,7 +697,9 @@ export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promis
       const idsToDelete = oldRows.map((r: any) => r.id);
       await client.from('spytify_direct_messages').delete().in('id', idsToDelete);
     }
-  } catch {}
+  } catch (error) {
+    throw error instanceof Error ? error : new Error('Không lưu được tin nhắn lên Supabase.');
+  }
 }
 
 // ──────────────── CLOUD PROFILES & FOLLOW / FRIEND REQUEST SYNC ────────────────
@@ -591,7 +712,7 @@ export interface CloudPublicProfile {
 }
 
 /**
- * Fetches all registered user profiles (including latest cloud avatars) from spytify_profiles
+ * Fetches profile metadata without avatar blobs to keep periodic cloud sync egress small.
  */
 export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
   const client = getSupabaseClient();
@@ -599,14 +720,14 @@ export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
   try {
     const { data, error } = await client
       .from('spytify_profiles')
-      .select('id, username, display_name, avatar')
+      .select('id, username, display_name')
       .limit(200);
     if (error || !data) return [];
     return data.map((row: any) => ({
       id: row.id,
       username: row.username || 'operative',
       display_name: row.display_name || row.username || 'Operative',
-      avatar: row.avatar || null,
+      avatar: null,
     }));
   } catch {
     return [];
@@ -636,7 +757,7 @@ export async function fetchCloudFollowGraph(userId: string): Promise<{
   try {
     const { data, error } = await client
       .from('spytify_direct_messages')
-      .select('*')
+      .select('sender_id, receiver_id, sender_username, sender_display_name, created_at')
       .eq('room_id', FOLLOW_GRAPH_ROOM_ID)
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
 
@@ -654,7 +775,7 @@ export async function fetchCloudFollowGraph(userId: string): Promise<{
           targetId: row.receiver_id,
           followerUsername: row.sender_username || 'operative',
           followerDisplayName: row.sender_display_name || row.sender_username || 'Operative',
-          followerAvatar: row.sender_avatar || null,
+          followerAvatar: null,
           createdAt: row.created_at || '',
         });
       }

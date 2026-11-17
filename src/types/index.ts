@@ -214,6 +214,14 @@ export interface CommunityMessage {
   created_at: string;
   track_embed?: Track | null;
   image_url?: string | null;
+  file_attachment?: CommunityFileAttachment | null;
+}
+
+export interface CommunityFileAttachment {
+  name: string;
+  mime_type: string;
+  size: number;
+  storage_path: string;
 }
 
 export interface StageSession {
