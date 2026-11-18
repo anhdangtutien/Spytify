@@ -1,4 +1,4 @@
-# 🕵️‍♂️ Spytify — Spy Music (v1.0.7 alpha)
+# 🕵️‍♂️ Spytify — Spy Music (v1.0.8 alpha)
 
 <div align="center">
 
