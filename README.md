@@ -1,8 +1,8 @@
-# 🕵️‍♂️ Spytify — Spy Music (v1.0.8 alpha)
+# 🕵️‍♂️ Spytify — Spy Music (v1.0.9 alpha)
 
 <div align="center">
 
-![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.0.7_alpha-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
+![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.0.9_alpha-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
 ![Tauri v2](https://img.shields.io/badge/TAURI-v2-FFC131?style=for-the-badge&logo=tauri&logoColor=black)
 ![React 19](https://img.shields.io/badge/REACT_19-CYBER_HUD-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![Rust Engine](https://img.shields.io/badge/RUST_ENGINE-NATIVE_SORT_FILTER-DEA584?style=for-the-badge&logo=rust&logoColor=black)
@@ -13,6 +13,24 @@
 [Download Releases](https://github.com/anhdangtutien/Spytify/releases) • [English](#-english) • [Tiếng Việt](#-tiếng-việt)
 
 </div>
+
+---
+
+## 🇬🇧 English — What's New in v1.0.9 alpha
+
+Spytify 1.0.9 fixes default Supabase URL sanitization and login handling:
+- **☁️ Supabase URL Sanitization**: Cleans trailing `/rest/v1/` and slashes from default connection URLs automatically.
+- **👤 Username Prefix Normalization**: Strips `@` prefix automatically during login.
+- **🎙️ Realtime Voice Call Signaling**: Restores WebRTC signaling over Supabase Realtime Broadcast.
+
+---
+
+## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.9 alpha
+
+Spytify 1.0.9 sửa lỗi làm sạch URL Supabase mặc định và chuẩn hóa đăng nhập:
+- **☁️ Tự động làm sạch URL Supabase**: Cắt bỏ `/rest/v1/` và dấu gạch chéo cuối tự động, tránh lỗi 404 khi kết nối.
+- **👤 Chuẩn hóa Username**: Tự động loại bỏ tiền tố `@` khi đăng nhập (@username hoặc username đều hoạt động).
+- **🎙️ Tín hiệu phòng thoại Realtime**: Khôi phục signaling WebRTC cho Voice Call và Screen Share qua Supabase Realtime Broadcast.
 
 ---
 

@@ -56,7 +56,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Spytify v1.0.8: tự động inject biến môi trường Supabase từ GitHub Secrets khi build, hỗ trợ bảng lưu trữ cộng đồng chuyên biệt và tối ưu đồng bộ đa thiết bị.'
+          releaseBody: 'Spytify v1.0.9: sửa lỗi làm sạch URL Supabase mặc định, hỗ trợ đăng nhập username có tiền tố @ và tối ưu hóa Realtime signaling cho phòng thoại Voice Call.'
           releaseDraft: false
           prerelease: false
 
@@ -114,7 +114,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Spytify v1.0.8: tự động inject biến môi trường Supabase từ GitHub Secrets khi build, hỗ trợ bảng lưu trữ cộng đồng chuyên biệt và tối ưu đồng bộ đa thiết bị. macOS Universal hỗ trợ Apple Silicon và Intel.'
+          releaseBody: 'Spytify v1.0.9: sửa lỗi làm sạch URL Supabase mặc định, hỗ trợ đăng nhập username có tiền tố @ và tối ưu hóa Realtime signaling cho phòng thoại Voice Call. macOS Universal hỗ trợ Apple Silicon và Intel.'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin
