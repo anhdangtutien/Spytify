@@ -55,7 +55,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Spytify v1.0.7: sửa đồng bộ avatar, tiểu sử và suy nghĩ/trạng thái giữa các thiết bị thông qua Supabase.'
+          releaseBody: 'Spytify v1.0.8: tự động inject biến môi trường Supabase từ GitHub Secrets khi build, hỗ trợ bảng lưu trữ cộng đồng chuyên biệt và tối ưu đồng bộ đa thiết bị.'
           releaseDraft: false
           prerelease: false
 
@@ -112,7 +112,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Spytify v1.0.7: sửa đồng bộ avatar, tiểu sử và suy nghĩ/trạng thái giữa các thiết bị thông qua Supabase. macOS Universal hỗ trợ Apple Silicon và Intel.'
+          releaseBody: 'Spytify v1.0.8: tự động inject biến môi trường Supabase từ GitHub Secrets khi build, hỗ trợ bảng lưu trữ cộng đồng chuyên biệt và tối ưu đồng bộ đa thiết bị. macOS Universal hỗ trợ Apple Silicon và Intel.'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin

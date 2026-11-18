@@ -2,8 +2,8 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { invoke } from '@tauri-apps/api/core';
 import { UserAlbum, Track, HistoryItem, User, CommunityFileAttachment } from '../types';
 
-const DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || 'https://ggfbbmdyughnhrmyrwea.supabase.co/rest/v1/';
-const DEFAULT_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_v6t5_lUSc8snoAtuntaWKQ_TBTh4nUT';
+const DEFAULT_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const DEFAULT_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export interface SupabaseConfig {
   url: string;
@@ -194,15 +194,65 @@ CREATE TABLE IF NOT EXISTS public.spytify_direct_messages (
 ALTER TABLE public.spytify_direct_messages ADD COLUMN IF NOT EXISTS image_url TEXT;
 CREATE INDEX IF NOT EXISTS idx_spytify_dm_room_sent ON public.spytify_direct_messages(room_id, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_spytify_dm_receiver_sent ON public.spytify_direct_messages(receiver_id, sent_at DESC);
+CREATE TABLE IF NOT EXISTS public.spytify_community_servers (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    server_data JSONB NOT NULL,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.spytify_community_servers ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_spytify_community_servers_owner ON public.spytify_community_servers(owner_id);
+
+CREATE TABLE IF NOT EXISTS public.spytify_community_messages (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    sender_username TEXT,
+    sender_display_name TEXT,
+    sender_avatar TEXT,
+    content TEXT NOT NULL,
+    track_embed JSONB,
+    image_url TEXT,
+    file_attachment JSONB,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now()),
+    sent_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now())
+);
+CREATE INDEX IF NOT EXISTS idx_spytify_community_messages_room_sent ON public.spytify_community_messages(server_id, channel_id, sent_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.spytify_community_invites (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    receiver_id TEXT NOT NULL,
+    invite_data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now())
+);
+CREATE INDEX IF NOT EXISTS idx_spytify_community_invites_receiver ON public.spytify_community_invites(receiver_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_spytify_community_invites_sender ON public.spytify_community_invites(sender_id, updated_at DESC);
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_profiles TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_albums TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_favorites TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_history TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_direct_messages TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_community_servers TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_community_messages TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_community_invites TO anon, authenticated;
 ALTER TABLE public.spytify_direct_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spytify_community_servers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spytify_community_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spytify_community_invites ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages;
 CREATE POLICY "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_community_servers" ON public.spytify_community_servers;
+CREATE POLICY "Allow public read-write for spytify_community_servers" ON public.spytify_community_servers FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_community_messages" ON public.spytify_community_messages;
+CREATE POLICY "Allow public read-write for spytify_community_messages" ON public.spytify_community_messages FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_community_invites" ON public.spytify_community_invites;
+CREATE POLICY "Allow public read-write for spytify_community_invites" ON public.spytify_community_invites FOR ALL USING (true) WITH CHECK (true);
 
 -- Private storage for files shared in server chat (maximum 1 MiB per file)
 INSERT INTO storage.buckets (id, name, public, file_size_limit)
@@ -606,6 +656,14 @@ export interface CloudDirectMessageRow {
   sent_at?: string;
 }
 
+const SERVER_CHAT_ROOM_PREFIX = 'spytify_srv_chat_';
+
+function getServerIdFromChatRoom(roomId: string): string | null {
+  if (!roomId.startsWith(SERVER_CHAT_ROOM_PREFIX)) return null;
+  const serverId = roomId.slice(SERVER_CHAT_ROOM_PREFIX.length);
+  return serverId || null;
+}
+
 function encodeCloudMessageContent(msg: CloudDirectMessageRow): string {
   if (!msg.file_attachment) return msg.content;
   return `${FILE_ATTACHMENT_CONTENT_PREFIX}${JSON.stringify({
@@ -646,14 +704,53 @@ export async function fetchCloudDirectMessages(roomId: string): Promise<CloudDir
   const client = getSupabaseClient();
   if (!client || !roomId) return [];
   try {
-    const { data, error } = await client
+    const { data: legacyData, error: legacyError } = await client
       .from('spytify_direct_messages')
       .select('*')
       .eq('room_id', roomId)
       .order('sent_at', { ascending: false })
       .limit(MAX_CHAT_MESSAGES_LIMIT);
-    if (error || !data) return [];
-    return (data as CloudDirectMessageRow[]).reverse().map(decodeCloudMessage);
+    if (legacyError) {
+      console.warn('Legacy cloud chat history fetch failed:', legacyError);
+    }
+
+    const legacyRows = ((legacyData || []) as CloudDirectMessageRow[]).map(decodeCloudMessage);
+    const serverId = getServerIdFromChatRoom(roomId);
+    if (!serverId) return legacyRows.reverse();
+
+    const { data: communityData, error: communityError } = await client
+      .from('spytify_community_messages')
+      .select('*')
+      .eq('server_id', serverId)
+      .order('sent_at', { ascending: false })
+      .limit(MAX_CHAT_MESSAGES_LIMIT);
+    if (communityError) {
+      console.warn('Community cloud chat history fetch failed; using legacy messages:', communityError);
+    }
+
+    const mergedById = new Map<string, CloudDirectMessageRow>();
+    legacyRows.forEach(row => mergedById.set(row.id, row));
+    (communityData || []).forEach((row: any) => {
+      mergedById.set(row.id, {
+        id: row.id,
+        room_id: roomId,
+        sender_id: row.sender_id,
+        receiver_id: row.channel_id,
+        sender_username: row.sender_username || 'operative',
+        sender_display_name: row.sender_display_name || row.sender_username || 'Operative',
+        sender_avatar: row.sender_avatar || null,
+        content: row.content,
+        track_embed: row.track_embed || null,
+        image_url: row.image_url || null,
+        file_attachment: row.file_attachment || null,
+        created_at: row.created_at || '',
+        sent_at: row.sent_at || undefined,
+      });
+    });
+
+    return Array.from(mergedById.values())
+      .sort((a, b) => Date.parse(a.sent_at || a.created_at) - Date.parse(b.sent_at || b.created_at))
+      .slice(-MAX_CHAT_MESSAGES_LIMIT);
   } catch {
     return [];
   }
@@ -697,43 +794,92 @@ export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promis
   if (!client) throw new Error('Chưa kết nối được Supabase.');
   if (!msg.room_id) throw new Error('Phòng chat không hợp lệ.');
   try {
+    const sentAt = msg.sent_at || new Date().toISOString();
     const row = { ...msg };
     delete row.file_attachment;
-    let { error } = await client.from('spytify_direct_messages').upsert(
+    let legacyResult = await client.from('spytify_direct_messages').upsert(
       {
         ...row,
         content: encodeCloudMessageContent(msg),
-        sent_at: msg.sent_at || new Date().toISOString(),
+        sent_at: sentAt,
       },
       { onConflict: 'id' }
     );
-    if (error && Object.prototype.hasOwnProperty.call(msg, 'image_url')) {
+    if (legacyResult.error && Object.prototype.hasOwnProperty.call(msg, 'image_url')) {
       const withoutOptionalFields = { ...msg };
       delete withoutOptionalFields.image_url;
       delete withoutOptionalFields.file_attachment;
-      const res = await client.from('spytify_direct_messages').upsert(
+      legacyResult = await client.from('spytify_direct_messages').upsert(
         {
           ...withoutOptionalFields,
           content: encodeCloudMessageContent(msg),
-          sent_at: msg.sent_at || new Date().toISOString(),
+          sent_at: sentAt,
         },
         { onConflict: 'id' }
       );
-      error = res.error;
     }
-    if (error) throw new Error(error.message);
 
-    // Giữ tối đa 80 tin nhắn gần nhất cho mỗi room_id để tránh quá tải database
-    const { data: oldRows } = await client
-      .from('spytify_direct_messages')
-      .select('id')
-      .eq('room_id', msg.room_id)
-      .order('sent_at', { ascending: false })
-      .range(MAX_CHAT_MESSAGES_LIMIT, MAX_CHAT_MESSAGES_LIMIT + 100);
+    const serverId = getServerIdFromChatRoom(msg.room_id);
+    let communityWriteSucceeded = false;
+    let communityErrorMessage: string | null = null;
+    if (serverId) {
+      const { error } = await client.from('spytify_community_messages').upsert(
+        {
+          id: msg.id,
+          server_id: serverId,
+          channel_id: msg.receiver_id,
+          sender_id: msg.sender_id,
+          sender_username: msg.sender_username,
+          sender_display_name: msg.sender_display_name,
+          sender_avatar: msg.sender_avatar || null,
+          content: msg.content,
+          track_embed: msg.track_embed || null,
+          image_url: msg.image_url || null,
+          file_attachment: msg.file_attachment || null,
+          created_at: msg.created_at,
+          sent_at: sentAt,
+        },
+        { onConflict: 'id' }
+      );
+      communityWriteSucceeded = !error;
+      communityErrorMessage = error?.message || null;
+    }
 
-    if (oldRows && oldRows.length > 0) {
-      const idsToDelete = oldRows.map((r: any) => r.id);
-      await client.from('spytify_direct_messages').delete().in('id', idsToDelete);
+    if (legacyResult.error) {
+      console.warn('Legacy cloud chat save failed:', legacyResult.error);
+    }
+    if (communityErrorMessage) {
+      console.warn('Community cloud chat save failed:', communityErrorMessage);
+    }
+    if (legacyResult.error && !communityWriteSucceeded) {
+      throw new Error(legacyResult.error.message);
+    }
+
+    if (!legacyResult.error) {
+      const { data: oldRows } = await client
+        .from('spytify_direct_messages')
+        .select('id')
+        .eq('room_id', msg.room_id)
+        .order('sent_at', { ascending: false })
+        .range(MAX_CHAT_MESSAGES_LIMIT, MAX_CHAT_MESSAGES_LIMIT + 100);
+
+      if (oldRows && oldRows.length > 0) {
+        const idsToDelete = oldRows.map((r: any) => r.id);
+        await client.from('spytify_direct_messages').delete().in('id', idsToDelete);
+      }
+    }
+
+    if (serverId && communityWriteSucceeded) {
+      const { data: oldCommunityRows } = await client
+        .from('spytify_community_messages')
+        .select('id')
+        .eq('server_id', serverId)
+        .order('sent_at', { ascending: false })
+        .range(MAX_CHAT_MESSAGES_LIMIT, MAX_CHAT_MESSAGES_LIMIT + 100);
+      if (oldCommunityRows && oldCommunityRows.length > 0) {
+        const idsToDelete = oldCommunityRows.map((r: any) => r.id);
+        await client.from('spytify_community_messages').delete().in('id', idsToDelete);
+      }
     }
   } catch (error) {
     throw error instanceof Error ? error : new Error('Không lưu được tin nhắn lên Supabase.');
@@ -945,7 +1091,22 @@ export async function pushCloudServer(server: any): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client || !server?.id || server.id === 'srv_none') return false;
   try {
-    const { error } = await client.from('spytify_direct_messages').upsert(
+    const sentAt = new Date().toISOString();
+    const { error: communityError } = await client.from('spytify_community_servers').upsert(
+      {
+        id: server.id,
+        owner_id: server.owner_id || 'usr_me',
+        server_data: server,
+        deleted: false,
+        updated_at: sentAt,
+      },
+      { onConflict: 'id' }
+    );
+    if (communityError) {
+      console.warn('Dedicated community server save failed:', communityError);
+    }
+
+    const { error: legacyError } = await client.from('spytify_direct_messages').upsert(
       {
         id: `srv_reg_${server.id}`,
         room_id: SERVERS_REGISTRY_ROOM_ID,
@@ -956,12 +1117,14 @@ export async function pushCloudServer(server: any): Promise<boolean> {
         sender_avatar: server.icon || '🎧',
         content: JSON.stringify(server),
         created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        sent_at: new Date().toISOString(),
+        sent_at: sentAt,
       },
       { onConflict: 'id' }
     );
-    if (error) throw error;
-    return true;
+    if (legacyError) {
+      console.warn('Legacy cloud server save failed:', legacyError);
+    }
+    return !communityError || !legacyError;
   } catch (error) {
     console.warn('Supabase cloud server sync failed:', error);
     return false;
@@ -971,12 +1134,24 @@ export async function pushCloudServer(server: any): Promise<boolean> {
 export async function deleteCloudServer(serverId: string): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !serverId) return;
-  try {
-    await client
-      .from('spytify_direct_messages')
-      .delete()
-      .eq('id', `srv_reg_${serverId}`);
-  } catch {}
+  const updatedAt = new Date().toISOString();
+  const { error: communityError } = await client.from('spytify_community_servers').upsert(
+    {
+      id: serverId,
+      owner_id: '',
+      server_data: { id: serverId, deleted: true },
+      deleted: true,
+      updated_at: updatedAt,
+    },
+    { onConflict: 'id' }
+  );
+  const { error: legacyError } = await client
+    .from('spytify_direct_messages')
+    .delete()
+    .eq('id', `srv_reg_${serverId}`);
+  if (communityError) console.warn('Cloud server deletion marker failed:', communityError);
+  if (legacyError) console.warn('Legacy cloud server deletion failed:', legacyError);
+  if (communityError && legacyError) throw new Error(communityError.message);
 }
 
 export async function fetchCloudServerById(serverId: string): Promise<any | null> {
@@ -984,13 +1159,30 @@ export async function fetchCloudServerById(serverId: string): Promise<any | null
   if (!client || !serverId) return null;
   try {
     const cleanId = serverId.trim().replace(/^spytify:\/\/station\/join\//i, '').trim();
+    const { data: communityRow, error: communityError } = await client
+      .from('spytify_community_servers')
+      .select('server_data, deleted')
+      .eq('id', cleanId)
+      .maybeSingle();
+    if (communityError) {
+      console.warn('Dedicated community server fetch failed; trying legacy registry:', communityError);
+    } else if (communityRow) {
+      if (communityRow.deleted) return null;
+      const server =
+        typeof communityRow.server_data === 'string'
+          ? JSON.parse(communityRow.server_data)
+          : communityRow.server_data;
+      return server?.id ? server : null;
+    }
+
     const { data, error } = await client
       .from('spytify_direct_messages')
       .select('content')
       .eq('id', `srv_reg_${cleanId}`)
       .maybeSingle();
     if (error || !data?.content) return null;
-    return JSON.parse(data.content);
+    const server = JSON.parse(data.content);
+    return server?.deleted ? null : server;
   } catch {
     return null;
   }
@@ -1009,39 +1201,74 @@ export async function fetchCloudServerMembershipAudit(
   const client = getSupabaseClient();
   if (!client || !userId) return { activeServers: [], removedServerIds: [] };
   try {
-    let query = client
+    let communityQuery = client
+      .from('spytify_community_servers')
+      .select('id, server_data, deleted, updated_at');
+    let legacyQuery = client
       .from('spytify_direct_messages')
       .select('content, sent_at')
       .eq('room_id', SERVERS_REGISTRY_ROOM_ID);
-    if (since) query = query.gt('sent_at', since);
-    const { data, error } = await query.order('sent_at', { ascending: true });
-    if (error || !data) {
-      console.warn('Supabase server registry sync failed:', error);
-      return { activeServers: [], removedServerIds: [] };
+    if (since) {
+      communityQuery = communityQuery.gt('updated_at', since);
+      legacyQuery = legacyQuery.gt('sent_at', since);
     }
+
+    const [communityResult, legacyResult] = await Promise.all([
+      communityQuery.order('updated_at', { ascending: true }),
+      legacyQuery.order('sent_at', { ascending: true }),
+    ]);
+    if (communityResult.error) {
+      console.warn('Dedicated community server registry fetch failed:', communityResult.error);
+    }
+    if (legacyResult.error) {
+      console.warn('Legacy community server registry fetch failed:', legacyResult.error);
+    }
+
+    const serversById = new Map<string, { server: any; timestamp: string; deleted: boolean }>();
+    const addServerRecord = (server: any, timestamp?: string, deleted = false) => {
+      if (!server?.id || server.id === 'srv_none') return;
+      const updatedAt = timestamp || '';
+      const existing = serversById.get(server.id);
+      if (!existing || updatedAt >= existing.timestamp) {
+        serversById.set(server.id, { server, timestamp: updatedAt, deleted });
+      }
+    };
+
+    (legacyResult.data || []).forEach(row => {
+      if (!row?.content) return;
+      try {
+        addServerRecord(JSON.parse(row.content), row.sent_at || undefined);
+      } catch (error) {
+        console.warn('Could not parse a legacy community server record:', error);
+      }
+    });
+    (communityResult.data || []).forEach(row => {
+      const server =
+        typeof row.server_data === 'string' ? JSON.parse(row.server_data) : row.server_data;
+      addServerRecord(server, row.updated_at || undefined, Boolean(row.deleted));
+    });
+
     const activeServers: any[] = [];
     const removedServerIds: string[] = [];
     let syncCursor: string | undefined;
-    for (const row of data) {
-      if (row?.sent_at && (!syncCursor || row.sent_at > syncCursor)) syncCursor = row.sent_at;
-      if (!row?.content) continue;
-      try {
-        const srv = JSON.parse(row.content);
-        if (!srv?.id || srv.id === 'srv_none') continue;
-        const isOwner = srv.owner_id === userId;
-        const isKicked = Array.isArray(srv.kicked_ids) && srv.kicked_ids.includes(userId);
-        const isMember = Array.isArray(srv.member_ids) && srv.member_ids.includes(userId);
-        const isMod = Array.isArray(srv.moderator_ids) && srv.moderator_ids.includes(userId);
-        if (!isOwner && isKicked) {
-          removedServerIds.push(srv.id);
-          continue;
-        }
-        if (isOwner || isMember || isMod) {
-          activeServers.push(srv);
-        } else {
-          removedServerIds.push(srv.id);
-        }
-      } catch {}
+    for (const [serverId, record] of serversById) {
+      const { server, timestamp, deleted } = record;
+      if (timestamp && (!syncCursor || timestamp > syncCursor)) syncCursor = timestamp;
+      if (deleted || server.deleted) {
+        removedServerIds.push(serverId);
+        continue;
+      }
+      const isOwner = server.owner_id === userId;
+      const isKicked = Array.isArray(server.kicked_ids) && server.kicked_ids.includes(userId);
+      const isMember = Array.isArray(server.member_ids) && server.member_ids.includes(userId);
+      const isMod = Array.isArray(server.moderator_ids) && server.moderator_ids.includes(userId);
+      if (!isOwner && isKicked) {
+        removedServerIds.push(server.id);
+      } else if (isOwner || isMember || isMod) {
+        activeServers.push(server);
+      } else {
+        removedServerIds.push(server.id);
+      }
     }
     return { activeServers, removedServerIds, syncCursor };
   } catch (error) {
@@ -1060,7 +1287,24 @@ export async function pushCloudServerInvite(invite: CloudServerInvite): Promise<
   if (!client || !invite?.serverId || !invite?.targetUserId) return;
   try {
     const rowId = `srv_inv_${invite.serverId}_${invite.targetUserId}`;
-    await client.from('spytify_direct_messages').upsert(
+    const updatedAt = new Date().toISOString();
+    const { error: communityError } = await client.from('spytify_community_invites').upsert(
+      {
+        id: rowId,
+        server_id: invite.serverId,
+        sender_id: invite.inviterId,
+        receiver_id: invite.targetUserId,
+        invite_data: { ...invite, id: rowId },
+        created_at: invite.createdAt,
+        updated_at: updatedAt,
+      },
+      { onConflict: 'id' }
+    );
+    if (communityError) {
+      console.warn('Dedicated community invite save failed:', communityError);
+    }
+
+    const { error: legacyError } = await client.from('spytify_direct_messages').upsert(
       {
         id: rowId,
         room_id: SERVER_INVITES_ROOM_ID,
@@ -1071,22 +1315,35 @@ export async function pushCloudServerInvite(invite: CloudServerInvite): Promise<
         sender_avatar: invite.inviterAvatar || null,
         content: JSON.stringify({ ...invite, id: rowId }),
         created_at: invite.createdAt,
-        sent_at: new Date().toISOString(),
+        sent_at: updatedAt,
       },
       { onConflict: 'id' }
     );
-  } catch {}
+    if (legacyError) console.warn('Legacy community invite save failed:', legacyError);
+    if (communityError && legacyError) throw new Error(communityError.message);
+  } catch (error) {
+    console.warn('Supabase community invite sync failed:', error);
+    throw error;
+  }
 }
 
 export async function removeCloudServerInvite(serverId: string, targetUserId: string): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !serverId || !targetUserId) return;
-  try {
-    await client
-      .from('spytify_direct_messages')
-      .delete()
-      .eq('id', `srv_inv_${serverId}_${targetUserId}`);
-  } catch {}
+  const rowId = `srv_inv_${serverId}_${targetUserId}`;
+  const [communityResult, legacyResult] = await Promise.all([
+    client.from('spytify_community_invites').delete().eq('id', rowId),
+    client.from('spytify_direct_messages').delete().eq('id', rowId),
+  ]);
+  if (communityResult.error) {
+    console.warn('Dedicated community invite removal failed:', communityResult.error);
+  }
+  if (legacyResult.error) {
+    console.warn('Legacy community invite removal failed:', legacyResult.error);
+  }
+  if (communityResult.error && legacyResult.error) {
+    throw new Error(communityResult.error.message);
+  }
 }
 
 export async function fetchCloudServerInvites(
@@ -1095,27 +1352,51 @@ export async function fetchCloudServerInvites(
   const client = getSupabaseClient();
   if (!client || !userId) return { incoming: [], outgoing: [] };
   try {
-    const { data, error } = await client
-      .from('spytify_direct_messages')
-      .select('sender_id, receiver_id, content')
-      .eq('room_id', SERVER_INVITES_ROOM_ID)
-      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
-    if (error || !data) return { incoming: [], outgoing: [] };
+    const [communityResult, legacyResult] = await Promise.all([
+      client
+        .from('spytify_community_invites')
+        .select('id, sender_id, receiver_id, invite_data')
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
+      client
+        .from('spytify_direct_messages')
+        .select('sender_id, receiver_id, content')
+        .eq('room_id', SERVER_INVITES_ROOM_ID)
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
+    ]);
+    if (communityResult.error) {
+      console.warn('Dedicated community invite fetch failed:', communityResult.error);
+    }
+    if (legacyResult.error) {
+      console.warn('Legacy community invite fetch failed:', legacyResult.error);
+    }
+
+    const invitesById = new Map<string, CloudServerInvite>();
+    (legacyResult.data || []).forEach(row => {
+      if (!row?.content) return;
+      try {
+        const invite = JSON.parse(row.content) as CloudServerInvite;
+        if (invite?.id) invitesById.set(invite.id, invite);
+      } catch (error) {
+        console.warn('Could not parse a legacy community invite:', error);
+      }
+    });
+    (communityResult.data || []).forEach(row => {
+      const invite =
+        typeof row.invite_data === 'string'
+          ? JSON.parse(row.invite_data)
+          : row.invite_data;
+      if (invite?.id) invitesById.set(invite.id, invite as CloudServerInvite);
+    });
+
     const incoming: CloudServerInvite[] = [];
     const outgoing: CloudServerInvite[] = [];
-    for (const row of data as any[]) {
-      if (!row?.content) continue;
-      try {
-        const parsed: CloudServerInvite = JSON.parse(row.content);
-        if (row.receiver_id === userId) {
-          incoming.push(parsed);
-        } else if (row.sender_id === userId) {
-          outgoing.push(parsed);
-        }
-      } catch {}
-    }
+    invitesById.forEach(invite => {
+      if (invite.targetUserId === userId) incoming.push(invite);
+      else if (invite.inviterId === userId) outgoing.push(invite);
+    });
     return { incoming, outgoing };
-  } catch {
+  } catch (error) {
+    console.warn('Supabase community invite fetch failed:', error);
     return { incoming: [], outgoing: [] };
   }
 }

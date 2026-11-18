@@ -88,18 +88,68 @@ CREATE INDEX IF NOT EXISTS idx_spytify_dm_room_sent
 CREATE INDEX IF NOT EXISTS idx_spytify_dm_receiver_sent
     ON public.spytify_direct_messages(receiver_id, sent_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.spytify_community_servers (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    server_data JSONB NOT NULL,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.spytify_community_servers
+    ADD COLUMN IF NOT EXISTS deleted BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_spytify_community_servers_owner
+    ON public.spytify_community_servers(owner_id);
+
+CREATE TABLE IF NOT EXISTS public.spytify_community_messages (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    sender_username TEXT,
+    sender_display_name TEXT,
+    sender_avatar TEXT,
+    content TEXT NOT NULL,
+    track_embed JSONB,
+    image_url TEXT,
+    file_attachment JSONB,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now()),
+    sent_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now())
+);
+CREATE INDEX IF NOT EXISTS idx_spytify_community_messages_room_sent
+    ON public.spytify_community_messages(server_id, channel_id, sent_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.spytify_community_invites (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL,
+    sender_id TEXT NOT NULL,
+    receiver_id TEXT NOT NULL,
+    invite_data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT timezone('utc'::text, now())
+);
+CREATE INDEX IF NOT EXISTS idx_spytify_community_invites_receiver
+    ON public.spytify_community_invites(receiver_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_spytify_community_invites_sender
+    ON public.spytify_community_invites(sender_id, updated_at DESC);
+
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_profiles TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_albums TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_favorites TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_history TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_direct_messages TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_community_servers TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_community_messages TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.spytify_community_invites TO anon, authenticated;
 
 ALTER TABLE public.spytify_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.spytify_albums ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.spytify_favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.spytify_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.spytify_direct_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spytify_community_servers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spytify_community_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.spytify_community_invites ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow public read-write for spytify_profiles" ON public.spytify_profiles;
 CREATE POLICY "Allow public read-write for spytify_profiles"
@@ -116,6 +166,15 @@ CREATE POLICY "Allow public read-write for spytify_history"
 DROP POLICY IF EXISTS "Allow public read-write for spytify_direct_messages" ON public.spytify_direct_messages;
 CREATE POLICY "Allow public read-write for spytify_direct_messages"
     ON public.spytify_direct_messages FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_community_servers" ON public.spytify_community_servers;
+CREATE POLICY "Allow public read-write for spytify_community_servers"
+    ON public.spytify_community_servers FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_community_messages" ON public.spytify_community_messages;
+CREATE POLICY "Allow public read-write for spytify_community_messages"
+    ON public.spytify_community_messages FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public read-write for spytify_community_invites" ON public.spytify_community_invites;
+CREATE POLICY "Allow public read-write for spytify_community_invites"
+    ON public.spytify_community_invites FOR ALL USING (true) WITH CHECK (true);
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit)
 VALUES ('spytify-chat-files', 'spytify-chat-files', false, 1048576)

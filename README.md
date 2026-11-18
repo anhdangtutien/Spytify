@@ -16,6 +16,22 @@
 
 ---
 
+## 🇬🇧 English — What's New in v1.0.8 alpha
+
+Spytify 1.0.8 fixes cloud database credentials injection in CI builds and optimizes community servers:
+- **☁️ Automated Supabase CI Injection**: Automatically injects credentials from GitHub Secrets into client build bundle.
+- **🛡️ Dedicated Community Tables**: Direct message, community server, and invite storage optimizations.
+
+---
+
+## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.8 alpha
+
+Spytify 1.0.8 sửa cơ chế inject thông tin Supabase từ CI khi build và tối ưu hóa hệ thống máy chủ cộng đồng:
+- **☁️ Tự động nạp cấu hình Supabase**: Tự động inject credentials từ GitHub Secrets vào bộ cài ứng dụng.
+- **🛡️ Tối ưu hóa bảng cộng đồng**: Cải thiện đồng bộ máy chủ Spy Jam, tin nhắn và lời mời tham gia server.
+
+---
+
 ## 🇬🇧 English — What's New in v1.0.7 alpha
 
 Spytify 1.0.7 improves cross-device profile synchronization, alongside the personalized Spy Jam features introduced in 1.0.6:
