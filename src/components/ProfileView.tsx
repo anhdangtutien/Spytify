@@ -1505,6 +1505,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <span>{getTranslation(language, 'settings.customSupabase')}</span>
                   {showSupabaseSettings ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopySql}
+                  className="py-2.5 px-3 rounded-xl bg-[#0c0c12] hover:bg-[#15151e] border border-[#222230] text-xs font-semibold text-[#aaa] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
+                  title="Sao chép toàn bộ mã SQL khởi tạo cơ sở dữ liệu Supabase"
+                >
+                  {copiedSql ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-cyan-400" />}
+                  <span>
+                    {copiedSql
+                      ? getTranslation(language, 'settings.copiedSql')
+                      : getTranslation(language, 'settings.copySql')}
+                  </span>
+                </button>
               </div>
 
               {cloudStatusMsg && (
