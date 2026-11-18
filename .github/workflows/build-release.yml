@@ -43,8 +43,9 @@ jobs:
       - name: Create .env file for Vite build
         shell: bash
         run: |
-          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" >> .env
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" > .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}" >> .env
+          cp .env .env.production
 
       - name: Build Windows Installer
         uses: tauri-apps/tauri-action@v0
@@ -100,8 +101,9 @@ jobs:
       - name: Create .env file for Vite build
         shell: bash
         run: |
-          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" >> .env
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" > .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}" >> .env
+          cp .env .env.production
 
       - name: Build macOS Application & DMG
         uses: tauri-apps/tauri-action@v0
@@ -177,8 +179,9 @@ jobs:
       - name: Create .env file for Vite build
         shell: bash
         run: |
-          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" >> .env
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" > .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}" >> .env
+          cp .env .env.production
 
       - name: Initialize & Build Android APK
         run: |

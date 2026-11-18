@@ -121,15 +121,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       setLoading(true);
       try {
         let user: User | null = null;
+        const rawIdentifier = identifier.trim();
+        const cleanUsername = rawIdentifier.replace(/^@+/, '');
         try {
           user = await invoke<User>('auth_login', {
-            username: identifier.trim(),
+            username: cleanUsername,
             password,
           });
         } catch (localErr) {
           // If not found in local SQLite, attempt cloud login from Supabase!
           if (isSupabaseConfigured()) {
-            user = await cloudLoginUser(identifier.trim(), password);
+            user = await cloudLoginUser(rawIdentifier, password);
           }
           if (!user) throw localErr;
         }

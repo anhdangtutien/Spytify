@@ -13,9 +13,17 @@ export interface SupabaseConfig {
 export function cleanSupabaseUrl(raw: string): string {
   if (!raw) return '';
   let clean = raw.trim();
+  clean = clean.replace(/^["']|["']$/g, '').trim();
   clean = clean.replace(/\/+$/, '');
   clean = clean.replace(/\/rest\/v1\/?$/, '');
   return clean.replace(/\/+$/, '');
+}
+
+export function cleanSupabaseKey(raw: string): string {
+  if (!raw) return '';
+  let clean = raw.trim();
+  clean = clean.replace(/^["']|["']$/g, '').trim();
+  return clean;
 }
 
 /**
@@ -29,13 +37,13 @@ export function getStoredSupabaseConfig(): SupabaseConfig {
   if (customUrl && customKey && !customUrl.includes('example-spytify')) {
     return {
       url: cleanSupabaseUrl(customUrl),
-      anonKey: customKey.trim(),
+      anonKey: cleanSupabaseKey(customKey),
     };
   }
 
   return {
-    url: DEFAULT_URL,
-    anonKey: DEFAULT_ANON_KEY,
+    url: cleanSupabaseUrl(DEFAULT_URL),
+    anonKey: cleanSupabaseKey(DEFAULT_ANON_KEY),
   };
 }
 
@@ -429,10 +437,11 @@ export async function cloudLoginUser(identifier: string, passwordPlain: string):
 
   try {
     const cleanId = identifier.trim().toLowerCase();
+    const cleanUsername = cleanId.replace(/^@+/, '');
     const { data: profile, error } = await client
       .from('spytify_profiles')
       .select('*')
-      .or(`username.ilike.${cleanId},email.ilike.${cleanId}`)
+      .or(`username.ilike.${cleanUsername},email.ilike.${cleanId}`)
       .maybeSingle();
 
     if (error || !profile) {
