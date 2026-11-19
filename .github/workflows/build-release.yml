@@ -45,6 +45,12 @@ jobs:
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" > .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}" >> .env
+          echo "VITE_LIVEKIT_URL=${{ secrets.VITE_LIVEKIT_URL }}" >> .env
+          echo "VITE_LIVEKIT_API_KEY=${{ secrets.VITE_LIVEKIT_API_KEY }}" >> .env
+          echo "VITE_LIVEKIT_API_SECRET=${{ secrets.VITE_LIVEKIT_API_SECRET }}" >> .env
+          echo "VITE_LIVEKIT_BACKUP_URL=${{ secrets.VITE_LIVEKIT_BACKUP_URL }}" >> .env
+          echo "VITE_LIVEKIT_BACKUP_API_KEY=${{ secrets.VITE_LIVEKIT_BACKUP_API_KEY }}" >> .env
+          echo "VITE_LIVEKIT_BACKUP_API_SECRET=${{ secrets.VITE_LIVEKIT_BACKUP_API_SECRET }}" >> .env
           cp .env .env.production
 
       - name: Build Windows Installer
@@ -56,7 +62,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__'
-          releaseBody: 'Spytify v1.1.0: tối ưu giao diện màn hình lớn, khắc phục cuộn chuột lồng nhau trên danh sách thẻ nghệ sĩ, đồng bộ thanh âm lượng toàn diện và nâng cấp trải nghiệm Artist Mix.'
+          releaseBody: 'Spytify v1.1.1: Tích hợp hệ thống quản trị từ xa (Remote Config Listener), hỗ trợ LiveKit SFU đa cụm (Primary + Backup Failover), phát sóng thông báo toàn mạng Realtime và cải tiến hiệu năng phòng thoại.'
           releaseDraft: false
           prerelease: false
 
@@ -103,6 +109,12 @@ jobs:
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" > .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}" >> .env
+          echo "VITE_LIVEKIT_URL=${{ secrets.VITE_LIVEKIT_URL }}" >> .env
+          echo "VITE_LIVEKIT_API_KEY=${{ secrets.VITE_LIVEKIT_API_KEY }}" >> .env
+          echo "VITE_LIVEKIT_API_SECRET=${{ secrets.VITE_LIVEKIT_API_SECRET }}" >> .env
+          echo "VITE_LIVEKIT_BACKUP_URL=${{ secrets.VITE_LIVEKIT_BACKUP_URL }}" >> .env
+          echo "VITE_LIVEKIT_BACKUP_API_KEY=${{ secrets.VITE_LIVEKIT_BACKUP_API_KEY }}" >> .env
+          echo "VITE_LIVEKIT_BACKUP_API_SECRET=${{ secrets.VITE_LIVEKIT_BACKUP_API_SECRET }}" >> .env
           cp .env .env.production
 
       - name: Build macOS Application & DMG
@@ -114,7 +126,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__'
-          releaseBody: 'Spytify v1.1.0: tối ưu giao diện màn hình lớn, khắc phục cuộn chuột lồng nhau trên danh sách thẻ nghệ sĩ, đồng bộ thanh âm lượng toàn diện và nâng cấp trải nghiệm Artist Mix. macOS Universal hỗ trợ Apple Silicon và Intel.'
+          releaseBody: 'Spytify v1.1.1: Tích hợp hệ thống quản trị từ xa (Remote Config Listener), hỗ trợ LiveKit SFU đa cụm (Primary + Backup Failover), phát sóng thông báo toàn mạng Realtime. Hỗ trợ macOS Universal (Apple Silicon & Intel).'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin
@@ -181,6 +193,9 @@ jobs:
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL || secrets.SUPABASE_URL }}" > .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}" >> .env
+          echo "VITE_LIVEKIT_URL=${{ secrets.VITE_LIVEKIT_URL }}" >> .env
+          echo "VITE_LIVEKIT_API_KEY=${{ secrets.VITE_LIVEKIT_API_KEY }}" >> .env
+          echo "VITE_LIVEKIT_API_SECRET=${{ secrets.VITE_LIVEKIT_API_SECRET }}" >> .env
           cp .env .env.production
 
       - name: Initialize & Build Android APK

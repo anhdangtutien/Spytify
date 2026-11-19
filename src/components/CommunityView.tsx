@@ -52,6 +52,7 @@ import {
 import { LanguageCode, getTranslation } from '../locales/i18n';
 import { getContrastTextColor } from '../utils/trackUtils';
 import { SpyJamIcon } from './Icons';
+import { livekitVoice } from '../services/livekit';
 
 const isTauriRuntime = () =>
   typeof window !== 'undefined' &&
@@ -9532,6 +9533,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       setConnectedVoiceServerId(targetServerId);
       playAudioChime('join');
 
+      // Tự động kết nối LiveKit SFU (Cloud Voice Engine) với cơ chế xoay vòng
+      const lkSrvRoom = `spytify_srv_${targetServerId}_${channelIdToConnect}`;
+      livekitVoice.joinRoom(
+        lkSrvRoom,
+        myId,
+        myServerDisplayName || currentUser?.display_name || currentUser?.username || 'Spy',
+        { micEnabled: !isMuted, cameraEnabled: hasLiveCamera }
+      ).catch(() => {});
+
       // Phát sóng trạng thái tham gia cuộc gọi qua Supabase!
       myVoiceParticipantRef.current = myParticipant;
       rtcSendRef.current?.('voice_presence', { action: 'join', participant: myParticipant });
@@ -9599,6 +9609,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       screenStreamRef.current = stream;
       const myId = myParticipantIdRef.current;
       setIsScreenSharing(true);
+      livekitVoice.setScreenShareEnabled(true).catch(() => {});
       if (myVoiceParticipantRef.current) {
         myVoiceParticipantRef.current = { ...myVoiceParticipantRef.current, isScreenSharing: true };
       }
@@ -9658,6 +9669,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       screenStreamRef.current = null;
     }
     setIsScreenSharing(false);
+    livekitVoice.setScreenShareEnabled(false).catch(() => {});
     if (myVoiceParticipantRef.current) {
       myVoiceParticipantRef.current = { ...myVoiceParticipantRef.current, isScreenSharing: false };
     }
@@ -9700,6 +9712,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         cameraStreamRef.current = null;
       }
       setIsCameraOn(false);
+      livekitVoice.setCameraEnabled(false);
       setVoiceParticipants(prev =>
         prev.map(p => (p.id === myId ? { ...p, isCameraOn: false } : p))
       );
@@ -9738,6 +9751,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         }
         cameraStreamRef.current = stream;
         setIsCameraOn(true);
+        livekitVoice.setCameraEnabled(true);
         setVoiceParticipants(prev =>
           prev.map(p => (p.id === myId ? { ...p, isCameraOn: true } : p))
         );
@@ -9801,6 +9815,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         cameraStreamRef.current = null;
       }
       setIsCameraOn(false);
+      livekitVoice.setCameraEnabled(false);
     }
     const myId = myParticipantIdRef.current;
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -9816,6 +9831,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     outboundStreamRef.current = null;
     myVoiceParticipantRef.current = null;
     voiceServerIdRef.current = '';
+
+    // Rời phòng LiveKit SFU
+    livekitVoice.leaveRoom();
 
     // Giữ phát nhạc nền 24/7 liên tục khi chuyển phòng hoặc rời voice call
 
@@ -9905,6 +9923,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     const myId = myParticipantIdRef.current;
     setIsMuted(prev => {
       const next = !prev;
+      livekitVoice.setMicrophoneEnabled(!next);
       if (micStreamRef.current) {
         micStreamRef.current.getAudioTracks().forEach(t => {
           t.enabled = !next;
@@ -9923,7 +9942,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleToggleDeafen = () => {
-    setIsDeafened(prev => !prev);
+    setIsDeafened(prev => {
+      const next = !prev;
+      livekitVoice.setDeafened(next);
+      return next;
+    });
   };
 
   // ──────── AUDIO CONTROL HELPERS (VOLUME, CHIME, MIC TEST) ────────
@@ -10796,6 +10819,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setConnectedVoiceServerId('dm_private');
     setConnectedVoiceChannel(dmVoiceChId);
     playAudioChime('join');
+
+    // Tự động kết nối LiveKit SFU (Cloud Voice Engine) cho cuộc gọi riêng 1-1
+    const lkDmRoomName = `spytify_dm_${dmVoiceChId}`;
+    livekitVoice.joinRoom(
+      lkDmRoomName,
+      currentUser.id,
+      currentUser.display_name || currentUser.username || 'Spy',
+      { micEnabled: !isMuted, cameraEnabled: isCameraOn }
+    ).catch(() => {});
 
     // Phát tín hiệu cuộc gọi đến / xác nhận bắt máy qua kênh Realtime toàn cục cho bạn bè (trừ AI Bot)
     if (!ACTIVE_BOT_IDS.has(friend.id)) {

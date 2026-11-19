@@ -2,7 +2,7 @@
   "name": "spytify",
   "private": true,
   "license": "UNLICENSED",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,8 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-opener": "^2",
+    "livekit-client": "^2.24.1",
+    "livekit-server-sdk": "^2.20.0",
     "lucide-react": "^1.72.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

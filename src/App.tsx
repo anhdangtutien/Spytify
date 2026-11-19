@@ -25,6 +25,7 @@ import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, Recomme
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './components/Icons';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
+import { initRemoteConfigSync, RemoteBroadcastNotification } from './services/remoteConfigListener';
 import spytifyLogo from './assets/spytify-logo.png';
 
 export default function App() {
@@ -105,8 +106,19 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
-  // Initialize Close to Tray & Background Update Check on startup
+  // Realtime Remote Config & Broadcast Banner
+  const [remoteBroadcast, setRemoteBroadcast] = useState<RemoteBroadcastNotification | null>(null);
+  const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(false);
+
+  // Initialize Close to Tray, Background Update Check & Remote Config Sync
   useEffect(() => {
+    initRemoteConfigSync();
+
+    const handleBroadcastEvent = (e: any) => {
+      setRemoteBroadcast(e.detail || null);
+      setIsBroadcastDismissed(false);
+    };
+    window.addEventListener('spytify:remote-broadcast', handleBroadcastEvent);
     const savedCloseToTray = localStorage.getItem('spytify_close_to_tray');
     const enabled = savedCloseToTray !== 'false';
     invoke('set_close_to_tray', { enabled }).catch(err => {
@@ -126,7 +138,10 @@ export default function App() {
       }
     }, 3500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('spytify:remote-broadcast', handleBroadcastEvent);
+    };
   }, []);
 
   // Automatically scan & load saved local music folder and download directory on startup
@@ -4068,6 +4083,43 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         />
 
         <main className="flex-1 flex flex-col overflow-hidden bg-[#000000]">
+          {/* Admin Realtime Broadcast Banner */}
+          {remoteBroadcast && !isBroadcastDismissed && (
+            <div
+              className={`px-4 py-2 text-xs flex items-center justify-between border-b transition-all z-50 animate-fadeIn ${
+                remoteBroadcast.type === 'alert'
+                  ? 'bg-rose-950/80 text-rose-200 border-rose-500/40'
+                  : remoteBroadcast.type === 'warning'
+                  ? 'bg-amber-950/80 text-amber-200 border-amber-500/40'
+                  : remoteBroadcast.type === 'update'
+                  ? 'bg-purple-950/80 text-purple-200 border-purple-500/40'
+                  : 'bg-cyan-950/80 text-cyan-200 border-cyan-500/40'
+              }`}
+            >
+              <div className="flex items-center gap-2 overflow-hidden truncate">
+                <span className="font-bold shrink-0">{remoteBroadcast.title}:</span>
+                <span className="truncate opacity-90">{remoteBroadcast.content}</span>
+                {remoteBroadcast.actionUrl && (
+                  <a
+                    href={remoteBroadcast.actionUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline font-bold shrink-0 hover:text-white ml-1"
+                  >
+                    Xem ngay &rarr;
+                  </a>
+                )}
+              </div>
+              <button
+                onClick={() => setIsBroadcastDismissed(true)}
+                className="p-1 hover:opacity-100 opacity-70 cursor-pointer ml-3 shrink-0"
+                title="Đóng thông báo"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Header Bar — Minimalist */}
           <header className="h-12 px-4 sm:px-6 flex items-center justify-between border-b border-[#141416] bg-black/95 z-50">
             <div className="flex items-center gap-2.5 text-xs font-medium text-[#888]">
