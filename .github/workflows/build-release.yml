@@ -55,8 +55,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
         with:
           tagName: v__VERSION__
-          releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Spytify v1.0.9: sửa lỗi làm sạch URL Supabase mặc định, hỗ trợ đăng nhập username có tiền tố @ và tối ưu hóa Realtime signaling cho phòng thoại Voice Call.'
+          releaseName: 'Spytify v__VERSION__'
+          releaseBody: 'Spytify v1.1.0: tối ưu giao diện màn hình lớn, khắc phục cuộn chuột lồng nhau trên danh sách thẻ nghệ sĩ, đồng bộ thanh âm lượng toàn diện và nâng cấp trải nghiệm Artist Mix.'
           releaseDraft: false
           prerelease: false
 
@@ -113,8 +113,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
         with:
           tagName: v__VERSION__
-          releaseName: 'Spytify v__VERSION__ alpha'
-          releaseBody: 'Spytify v1.0.9: sửa lỗi làm sạch URL Supabase mặc định, hỗ trợ đăng nhập username có tiền tố @ và tối ưu hóa Realtime signaling cho phòng thoại Voice Call. macOS Universal hỗ trợ Apple Silicon và Intel.'
+          releaseName: 'Spytify v__VERSION__'
+          releaseBody: 'Spytify v1.1.0: tối ưu giao diện màn hình lớn, khắc phục cuộn chuột lồng nhau trên danh sách thẻ nghệ sĩ, đồng bộ thanh âm lượng toàn diện và nâng cấp trải nghiệm Artist Mix. macOS Universal hỗ trợ Apple Silicon và Intel.'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin

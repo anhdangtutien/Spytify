@@ -1,9 +1,9 @@
 ﻿import React, { useState } from 'react';
 import { 
-  Search, FolderPlus, HardDrive, Heart, Sparkles, User as UserIcon, LogIn, Flame, Layers,
-  PanelLeftClose, PanelLeftOpen, Wand2, Zap
+  Search, FolderPlus, HardDrive, Heart, Sparkles, User as UserIcon, LogIn, Home, Layers,
+  PanelLeftClose, PanelLeftOpen, Wand2, Zap, AudioLines
 } from 'lucide-react';
-import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, SpytifyBrandLogo } from './Icons';
+import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, SpytifyBrandLogo, ModernHomeIcon } from './Icons';
 import { ViewType, User } from '../types';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 import { CURRENT_VERSION } from '../services/updater';
@@ -68,7 +68,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     label: string,
     icon: React.ReactNode,
     badge?: React.ReactNode,
-    dotIndicator?: string,
   ) => {
     const isActive = currentView === view;
 
@@ -89,18 +88,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <div className="relative flex items-center justify-center">
             <span style={{ color: isActive ? accentColor : '#777788' }}>{icon}</span>
-            {dotIndicator && (
-              <span
-                className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: dotIndicator }}
-              />
-            )}
-            {view === 'ai_mix' && (
-              <span 
-                className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: accentColor }}
-              />
-            )}
           </div>
         </button>
       );
@@ -196,22 +183,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Main Nav */}
       <div className={`space-y-0.5 ${isCollapsed ? 'p-2' : 'p-3'}`}>
-        {navItem('library', getTranslation(language, 'nav.trending'), <Flame className="w-4 h-4" />)}
+        {navItem('library', getTranslation(language, 'nav.trending'), <ModernHomeIcon className="w-4 h-4" active={currentView === 'library'} />)}
         {navItem('search', getTranslation(language, 'nav.search'), <Search className="w-4 h-4" />)}
         {navItem('community', getTranslation(language, 'nav.community'), <SpyJamIcon className="w-4 h-4" />)}
         {navItem('albums', getTranslation(language, 'nav.myAlbums'), <Layers className="w-4 h-4" />,
           <span className="text-[10px] text-[#666] font-mono">{albumCount}</span>
         )}
-        {navItem('ai_mix', getTranslation(language, 'nav.aiMix'), <Wand2 className="w-4 h-4" />,
+        {navItem('ai_mix', getTranslation(language, 'nav.aiMix'), <AudioLines className="w-4 h-4" />,
           <span 
-            className="text-[9px] px-1.5 py-0.2 rounded font-mono border"
+            className="text-[8.5px] px-1.5 py-0.2 rounded-full font-mono font-black border flex items-center shadow-sm"
             style={{ 
               color: accentColor, 
               backgroundColor: `${accentColor}15`, 
               borderColor: `${accentColor}30` 
             }}
           >
-            AI
+            DJ
           </span>
         )}
       </div>
@@ -238,20 +225,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-[10px] text-[#666] font-mono">{localTrackCount}</span>
         )}
         {navItem('youtube', 'YouTube', <YoutubeIcon className="w-4 h-4" />,
-          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accentColor }}></span>,
-          accentColor
+          <span className="text-[8.5px] px-1.5 py-0.2 rounded font-mono font-bold bg-red-600/15 text-red-500 border border-red-500/30">YT</span>
         )}
         {navItem('soundcloud', 'SoundCloud', <SoundCloudIcon className="w-4 h-4" />,
-          <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>,
-          '#fb923c'
+          <span className="text-[8.5px] px-1.5 py-0.2 rounded font-mono font-bold bg-orange-500/15 text-orange-400 border border-orange-500/30">SC</span>
         )}
         {navItem('audius', 'Audius (320k)', <AudiusIcon className="w-4 h-4 text-white" />,
-          <span className="w-1.5 h-1.5 rounded-full bg-white"></span>,
-          '#ffffff'
+          <span className="text-[8.5px] px-1.5 py-0.2 rounded font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">320k</span>
         )}
         {navItem('favorites', getTranslation(language, 'nav.favorites'), <Heart className="w-4 h-4" style={{ color: accentColor }} />,
-          <span className="text-[10px] text-[#666] font-mono">{favoritesCount}</span>,
-          accentColor
+          <span className="text-[10px] text-[#666] font-mono">{favoritesCount}</span>
         )}
       </div>
 

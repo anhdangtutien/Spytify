@@ -3,7 +3,7 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
-  ChevronDown, ChevronUp, Disc, Activity
+  ChevronDown, ChevronUp, Disc, Activity, Sliders
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -43,6 +43,9 @@ interface PlayerBarProps {
   sleepTimerMinutes?: number | null;
   sleepTimerRemainingSecs?: number | null;
   onSetSleepTimer?: (minutes: number | null) => void;
+  crossfadeDuration?: number;
+  onUpdateCrossfadeDuration?: (durationSecs: number) => void;
+  isCrossfading?: boolean;
   language?: LanguageCode;
   isNextTrackPopupEnabled?: boolean;
   onToggleNextTrackPopupEnabled?: () => void;
@@ -66,6 +69,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   sleepTimerMinutes = null,
   sleepTimerRemainingSecs = null,
   onSetSleepTimer,
+  crossfadeDuration = 5,
+  onUpdateCrossfadeDuration,
+  isCrossfading = false,
   language = 'vi',
   isNextTrackPopupEnabled = true,
   onToggleNextTrackPopupEnabled,
@@ -78,6 +84,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState(0);
   const [showTimerMenu, setShowTimerMenu] = useState(false);
+  const [showCrossfadeMenu, setShowCrossfadeMenu] = useState(false);
   const [customMinutesInput, setCustomMinutesInput] = useState('');
 
   const formatTimerRemaining = () => {
@@ -893,6 +900,95 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </div>
         )}
 
+        {/* Crossfade Songs Toggle & Menu */}
+        {onUpdateCrossfadeDuration && (
+          <div className="relative">
+            <button
+              onClick={() => setShowCrossfadeMenu(p => !p)}
+              title={
+                isCrossfading
+                  ? getTranslation(language, 'player.crossfadeActive')
+                  : `${getTranslation(language, 'player.crossfade')}: ${crossfadeDuration > 0 ? `${crossfadeDuration}s` : getTranslation(language, 'settings.crossfadeOff')}`
+              }
+              style={crossfadeDuration > 0 ? {
+                color: accentColor,
+                backgroundColor: `${accentColor}18`,
+                borderColor: `${accentColor}50`,
+                boxShadow: `0 0 10px ${accentColor}30`,
+              } : undefined}
+              className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 relative ${
+                crossfadeDuration > 0
+                  ? ''
+                  : 'text-[#666] hover:text-white border-transparent'
+              } ${isCrossfading ? 'animate-pulse' : ''}`}
+            >
+              <Sliders className="w-4 h-4" />
+              {crossfadeDuration > 0 && (
+                <span className="text-[10px] font-mono font-bold leading-none">
+                  {crossfadeDuration}s
+                </span>
+              )}
+              {isCrossfading && (
+                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                  <span
+                    className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                  <span
+                    className="relative inline-flex rounded-full h-2 w-2"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                </span>
+              )}
+            </button>
+
+            {/* Crossfade Popup Menu */}
+            {showCrossfadeMenu && (
+              <div 
+                className="absolute bottom-12 right-0 w-60 p-2.5 rounded-xl bg-[#0c0c12] border border-[#22222e] shadow-2xl z-50 select-none"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#1c1c28]">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
+                    <Sliders className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                    {getTranslation(language, 'player.crossfade')}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
+                    {crossfadeDuration > 0 ? `${crossfadeDuration}s` : getTranslation(language, 'settings.crossfadeOff')}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  {[
+                    { sec: 0, label: getTranslation(language, 'settings.crossfadeOff') },
+                    { sec: 3, label: '3s' },
+                    { sec: 5, label: `5s (${getTranslation(language, 'settings.crossfadeRecommended')})` },
+                    { sec: 8, label: '8s' },
+                    { sec: 12, label: '12s' },
+                  ].map(opt => {
+                    const isSelected = crossfadeDuration === opt.sec;
+                    return (
+                      <button
+                        key={opt.sec}
+                        onClick={() => {
+                          onUpdateCrossfadeDuration(opt.sec);
+                          setShowCrossfadeMenu(false);
+                        }}
+                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
+                          isSelected ? 'bg-white/10 text-white font-bold' : 'text-[#888] hover:text-white hover:bg-[#161622]'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Visualizer Toggle */}
         <button
           onClick={onToggleVisualizer}
@@ -916,27 +1012,50 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         {currentTrack && getSourceBadge(currentTrack.source)}
 
         {/* Volume Slider */}
-        <div className="flex items-center gap-2">
-          <button onClick={handleMuteToggle} className="text-[#777] hover:text-white transition-colors cursor-pointer">
-            {volume === 0 ? <VolumeX className="w-4 h-4" style={{ color: accentColor }} /> : <Volume2 className="w-4 h-4" />}
-          </button>
-          <div className={`relative flex items-center ${isCompact ? 'w-14 sm:w-16' : 'w-20'} h-4 group cursor-pointer transition-all`}>
-            <div 
-              className="absolute w-full h-[4px] rounded-full group-hover:h-[6px] transition-all overflow-hidden border border-black/5"
-              style={{ backgroundColor: themeMode === 'light' ? '#cbd5e1' : '#1f1f28' }}
-            >
-              <div 
-                className="h-full transition-colors rounded-full" 
-                style={{ width: `${volume * 100}%`, backgroundColor: accentColor }} 
-              />
+        {(() => {
+          const safeVolume = Math.max(0, Math.min(1, typeof volume === 'number' && !isNaN(volume) ? volume : 0.8));
+          return (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleMuteToggle}
+                title={safeVolume === 0 ? 'Bật âm lượng' : 'Tắt tiếng'}
+                className="text-[#777] hover:text-white transition-colors cursor-pointer"
+              >
+                {safeVolume === 0 ? <VolumeX className="w-4 h-4" style={{ color: accentColor }} /> : <Volume2 className="w-4 h-4" />}
+              </button>
+              <div
+                title={`Âm lượng: ${Math.round(safeVolume * 100)}%`}
+                onWheel={(e) => {
+                  e.preventDefault();
+                  const step = e.deltaY < 0 ? 0.05 : -0.05;
+                  const next = Math.max(0, Math.min(1, Math.round((safeVolume + step) * 100) / 100));
+                  onVolumeChange(next);
+                }}
+                className={`relative flex items-center ${isCompact ? 'w-14 sm:w-16' : 'w-20'} h-4 group cursor-pointer transition-all`}
+              >
+                <div 
+                  className="absolute w-full h-[4px] rounded-full group-hover:h-[6px] transition-all overflow-hidden border border-black/5"
+                  style={{ backgroundColor: themeMode === 'light' ? '#cbd5e1' : '#1f1f28' }}
+                >
+                  <div 
+                    className="h-full transition-colors rounded-full" 
+                    style={{ width: `${safeVolume * 100}%`, backgroundColor: accentColor }} 
+                  />
+                </div>
+                {/* Thumb handle on hover */}
+                <div
+                  className="absolute w-2.5 h-2.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none -translate-x-1/2 shadow-md border border-white"
+                  style={{ left: `${safeVolume * 100}%`, backgroundColor: accentColor, boxShadow: `0 0 6px ${accentColor}` }}
+                />
+                <input
+                  type="range" min={0} max={1} step={0.01} value={safeVolume}
+                  onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                  className="absolute w-full opacity-0 h-full cursor-pointer"
+                />
+              </div>
             </div>
-            <input
-              type="range" min={0} max={1} step={0.01} value={volume}
-              onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-              className="absolute w-full opacity-0 h-full cursor-pointer"
-            />
-          </div>
-        </div>
+          );
+        })()}
 
         {/* Minimize Button in any view */}
         {(onToggleMinimize || onMinimize) && (

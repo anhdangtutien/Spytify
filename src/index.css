@@ -37,6 +37,62 @@
   background: rgba(255, 255, 255, 0.35);
 }
 
+/* No Scrollbar Utility */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Slider / Thanh cuộn: Ẩn mặc định, chỉ hiện khi hover vào vùng container */
+.hover-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.25s ease;
+}
+
+.hover-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.hover-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.hover-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent !important;
+  border-radius: 9999px;
+  transition: background 0.25s ease;
+}
+
+/* Khi hover vào container thì thanh trượt / slider mới hiện */
+.hover-scrollbar:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.hover-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25) !important;
+}
+
+.hover-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.light-mode .hover-scrollbar:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
+}
+
+.light-mode .hover-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.25) !important;
+}
+
+.light-mode .hover-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
 /* Spy Classified Dynamic Accent: Adapts to User Theme Color */
 .accent-red {
   color: var(--accent-color, #ff2a55) !important;

@@ -167,8 +167,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
   ];
 
   return (
-    <div className="flex-1 max-w-4xl pb-16">
-      <div className="max-w-2xl mb-6">
+    <div className="flex-1 w-full pb-16">
+      <div className="w-full max-w-4xl xl:max-w-5xl mb-6">
         <h2 className="text-lg font-bold tracking-tight text-white mb-3">
           {getTranslation(language, 'search.title')}
         </h2>
@@ -319,7 +319,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           <h3 className="text-xs font-bold text-white mb-2 uppercase tracking-wider font-mono">
             {getTranslation(language, 'nav.localMusic')} ({filteredLocal.length})
           </h3>
-          <div className="space-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
             {filteredLocal.map(t => {
               const isActive = currentTrack?.id === t.id;
               return (
@@ -327,12 +327,12 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   key={t.id}
                   onClick={() => onTrackSelect(t)}
                   style={isActive ? { borderColor: `${accentColor}`, backgroundColor: `${accentColor}14`, boxShadow: `0 0 14px ${accentColor}30` } : undefined}
-                  className={`card-hover-accent flex items-center justify-between p-2 rounded-lg bg-[#0c0c10] hover:bg-[#14141a] border transition-all cursor-pointer group ${
+                  className={`card-hover-accent flex items-center justify-between p-2.5 rounded-xl bg-[#0c0c10] hover:bg-[#14141a] border transition-all cursor-pointer group ${
                     isActive ? '' : 'border-[#161620]'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#181820] flex-shrink-0 flex items-center justify-center text-[#555] border border-[#222]">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#181820] flex-shrink-0 flex items-center justify-center text-[#555] border border-[#222]">
                       {t.cover_art ? (
                         <img
                           src={optimizeThumbnailUrl(t.cover_art, t.path_or_url || t.id)}
@@ -345,7 +345,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                         <Music className="w-4 h-4" />
                       )}
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1 pr-1">
                       <p 
                         className="card-title-accent text-xs font-semibold text-white transition-colors truncate"
                         style={isActive ? { color: accentColor } : undefined}
@@ -355,7 +355,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       <p className="text-[11px] text-[#777] truncate">{t.artist}</p>
                     </div>
                   </div>
-                  <Play className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Play className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                 </div>
               );
             })}
@@ -369,7 +369,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
           <h3 className="text-xs font-bold text-white mb-3 uppercase tracking-wider font-mono">
             Online Results ({results.length})
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
             {results.map((r, i) => {
               const isMatchCurrent = currentTrack && (
                 r.url_or_id === currentTrack.path_or_url ||

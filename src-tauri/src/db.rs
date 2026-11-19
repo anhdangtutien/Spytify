@@ -94,6 +94,9 @@ impl DatabaseManager {
         // Soft migrations if columns do not exist
         let _ = conn.execute("ALTER TABLE users ADD COLUMN google_id TEXT", []);
         let _ = conn.execute("ALTER TABLE users ADD COLUMN email TEXT", []);
+        let _ = conn.execute("ALTER TABLE users ADD COLUMN two_factor_secret TEXT", []);
+        let _ = conn.execute("ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE users ADD COLUMN two_factor_scope TEXT DEFAULT 'both'", []);
         let _ = conn.execute("ALTER TABLE playback_history ADD COLUMN path_or_url TEXT", []);
         let _ = conn.execute("ALTER TABLE playback_history ADD COLUMN track_json TEXT", []);
 
@@ -234,6 +237,9 @@ impl DatabaseManager {
             avatar: None,
             created_at: "Vừa xong".to_string(),
             email: email_clean,
+            two_factor_enabled: Some(false),
+            two_factor_secret: None,
+            two_factor_scope: Some("both".to_string()),
         })
     }
 
@@ -243,11 +249,13 @@ impl DatabaseManager {
 
         // Support login by either username OR email!
         let mut stmt = conn
-            .prepare("SELECT id, username, password_hash, salt, display_name, avatar, created_at, email FROM users WHERE username = ?1 OR email = ?1")
+            .prepare("SELECT id, username, password_hash, salt, display_name, avatar, created_at, email, two_factor_enabled, two_factor_secret, two_factor_scope FROM users WHERE username = ?1 OR email = ?1")
             .map_err(|e| e.to_string())?;
 
         let user_row = stmt
             .query_row(params![clean_id], |row| {
+                let two_factor_int: Option<i32> = row.get(8)?;
+                let scope: Option<String> = row.get(10).ok().flatten();
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -257,11 +265,14 @@ impl DatabaseManager {
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, String>(6)?,
                     row.get::<_, Option<String>>(7)?,
+                    two_factor_int.map(|v| v == 1).unwrap_or(false),
+                    row.get::<_, Option<String>>(9)?,
+                    scope.unwrap_or_else(|| "both".to_string()),
                 ))
             })
             .map_err(|_| "Tài khoản / Email hoặc mật khẩu không chính xác".to_string())?;
 
-        let (id, uname, stored_hash, salt, display_name, avatar, created_at, email) = user_row;
+        let (id, uname, stored_hash, salt, display_name, avatar, created_at, email, two_factor_enabled, two_factor_secret, two_factor_scope) = user_row;
         let input_hash = Self::hash_password(password, &salt);
 
         if input_hash != stored_hash {
@@ -275,6 +286,9 @@ impl DatabaseManager {
             avatar,
             created_at,
             email,
+            two_factor_enabled: Some(two_factor_enabled),
+            two_factor_secret,
+            two_factor_scope: Some(two_factor_scope),
         })
     }
 
@@ -290,10 +304,12 @@ impl DatabaseManager {
 
         // 1. Check if user exists by google_id or email
         let mut stmt = conn
-            .prepare("SELECT id, username, display_name, avatar, created_at, email FROM users WHERE google_id = ?1 OR email = ?2")
+            .prepare("SELECT id, username, display_name, avatar, created_at, email, two_factor_enabled, two_factor_secret, two_factor_scope FROM users WHERE google_id = ?1 OR email = ?2")
             .map_err(|e| e.to_string())?;
 
         let existing = stmt.query_row(params![google_id, clean_email], |row| {
+            let two_factor_int: Option<i32> = row.get(6)?;
+            let scope: Option<String> = row.get(8).ok().flatten();
             Ok(User {
                 id: row.get(0)?,
                 username: row.get(1)?,
@@ -301,6 +317,9 @@ impl DatabaseManager {
                 avatar: row.get(3)?,
                 created_at: row.get(4)?,
                 email: row.get(5)?,
+                two_factor_enabled: Some(two_factor_int.map(|v| v == 1).unwrap_or(false)),
+                two_factor_secret: row.get(7)?,
+                two_factor_scope: Some(scope.unwrap_or_else(|| "both".to_string())),
             })
         });
 
@@ -345,6 +364,9 @@ impl DatabaseManager {
                     avatar: avatar.map(|s| s.to_string()),
                     created_at: "Vừa xong".to_string(),
                     email: Some(clean_email),
+                    two_factor_enabled: Some(false),
+                    two_factor_secret: None,
+                    two_factor_scope: Some("both".to_string()),
                 })
             }
             Err(e) => Err(e.to_string()),
@@ -391,6 +413,9 @@ impl DatabaseManager {
             avatar: avatar.map(|s| s.to_string()),
             created_at: "Đồng bộ từ Cloud".to_string(),
             email: email.map(|s| s.to_string()),
+            two_factor_enabled: Some(false),
+            two_factor_secret: None,
+            two_factor_scope: Some("both".to_string()),
         })
     }
 
@@ -405,10 +430,12 @@ impl DatabaseManager {
     pub fn get_user_by_id(&self, user_id: &str) -> Result<Option<User>, String> {
         let conn = self.conn.lock().map_err(|e| e.to_string())?;
         let mut stmt = conn
-            .prepare("SELECT id, username, display_name, avatar, created_at, email FROM users WHERE id = ?1")
+            .prepare("SELECT id, username, display_name, avatar, created_at, email, two_factor_enabled, two_factor_secret, two_factor_scope FROM users WHERE id = ?1")
             .map_err(|e| e.to_string())?;
 
         let res = stmt.query_row(params![user_id], |row| {
+            let two_factor_int: Option<i32> = row.get(6)?;
+            let scope: Option<String> = row.get(8).ok().flatten();
             Ok(User {
                 id: row.get(0)?,
                 username: row.get(1)?,
@@ -416,11 +443,107 @@ impl DatabaseManager {
                 avatar: row.get(3)?,
                 created_at: row.get(4)?,
                 email: row.get(5)?,
+                two_factor_enabled: Some(two_factor_int.map(|v| v == 1).unwrap_or(false)),
+                two_factor_secret: row.get(7)?,
+                two_factor_scope: Some(scope.unwrap_or_else(|| "both".to_string())),
             })
         });
 
         match res {
             Ok(u) => Ok(Some(u)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn get_all_local_users(&self) -> Result<Vec<User>, String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT id, username, display_name, avatar, created_at, email, two_factor_enabled, two_factor_secret, two_factor_scope FROM users ORDER BY created_at DESC")
+            .map_err(|e| e.to_string())?;
+
+        let user_iter = stmt
+            .query_map([], |row| {
+                let two_factor_int: Option<i32> = row.get(6)?;
+                let scope: Option<String> = row.get(8).ok().flatten();
+                Ok(User {
+                    id: row.get(0)?,
+                    username: row.get(1)?,
+                    display_name: row.get(2)?,
+                    avatar: row.get(3)?,
+                    created_at: row.get(4)?,
+                    email: row.get(5)?,
+                    two_factor_enabled: Some(two_factor_int.map(|v| v == 1).unwrap_or(false)),
+                    two_factor_secret: row.get(7)?,
+                    two_factor_scope: Some(scope.unwrap_or_else(|| "both".to_string())),
+                })
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut users = Vec::new();
+        for u in user_iter {
+            if let Ok(user) = u {
+                users.push(user);
+            }
+        }
+        Ok(users)
+    }
+
+    pub fn set_two_factor(&self, user_id: &str, secret: &str, enabled: bool, scope: Option<&str>) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let enabled_int = if enabled { 1 } else { 0 };
+        let scope_str = scope.unwrap_or("both");
+        conn.execute(
+            "UPDATE users SET two_factor_secret = ?1, two_factor_enabled = ?2, two_factor_scope = ?3 WHERE id = ?4",
+            params![secret, enabled_int, scope_str, user_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn set_two_factor_scope(&self, user_id: &str, scope: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE users SET two_factor_scope = ?1 WHERE id = ?2",
+            params![scope, user_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_user_2fa(&self, user_id: &str) -> Result<(bool, Option<String>, Option<String>), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT two_factor_enabled, two_factor_secret, two_factor_scope FROM users WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
+        let res = stmt.query_row(params![user_id], |row| {
+            let enabled: Option<i32> = row.get(0)?;
+            let secret: Option<String> = row.get(1)?;
+            let scope: Option<String> = row.get(2).ok().flatten();
+            Ok((enabled.unwrap_or(0) == 1, secret, scope))
+        });
+        match res {
+            Ok(v) => Ok(v),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok((false, None, None)),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    pub fn get_user_2fa_by_identifier(&self, identifier: &str) -> Result<Option<(String, String, bool, Option<String>)>, String> {
+        let clean_id = identifier.trim().to_lowercase();
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT id, username, two_factor_enabled, two_factor_secret FROM users WHERE LOWER(username) = ?1 OR LOWER(email) = ?1")
+            .map_err(|e| e.to_string())?;
+        let res = stmt.query_row(params![clean_id], |row| {
+            let id: String = row.get(0)?;
+            let uname: String = row.get(1)?;
+            let enabled: Option<i32> = row.get(2)?;
+            let secret: Option<String> = row.get(3)?;
+            Ok((id, uname, enabled.unwrap_or(0) == 1, secret))
+        });
+        match res {
+            Ok(v) => Ok(Some(v)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(e.to_string()),
         }
@@ -434,6 +557,21 @@ impl DatabaseManager {
         )
         .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    pub fn update_password(&self, user_id: &str, new_password_plain: &str) -> Result<(String, String), String> {
+        if new_password_plain.len() < 6 {
+            return Err("Mật khẩu mới phải từ 6 ký tự trở lên".to_string());
+        }
+        let salt = Uuid::new_v4().to_string();
+        let password_hash = Self::hash_password(new_password_plain, &salt);
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE users SET password_hash = ?1, salt = ?2 WHERE id = ?3",
+            rusqlite::params![password_hash, salt, user_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok((password_hash, salt))
     }
 
     pub fn get_favorites(&self, user_id: &str) -> Result<Vec<Track>, String> {
@@ -663,6 +801,47 @@ impl DatabaseManager {
         conn.execute("DELETE FROM server_chat_messages WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    pub fn delete_channel_chat_messages(&self, server_id: &str, channel_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM server_chat_messages WHERE server_id = ?1 AND channel_id = ?2",
+            params![server_id, channel_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_all_server_chat_messages(&self, server_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM server_chat_messages WHERE server_id = ?1",
+            params![server_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn purge_expired_server_messages(&self, server_id: &str, hours: u32) -> Result<usize, String> {
+        if hours == 0 {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().map_err(|e| e.to_string())?;
+        let threshold_ms = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64)
+            - (hours as i64 * 3600 * 1000);
+
+        let deleted = conn.execute(
+            "DELETE FROM server_chat_messages 
+             WHERE server_id = ?1 AND created_order < ?2",
+            params![server_id, threshold_ms],
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok(deleted)
     }
 }
 

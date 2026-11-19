@@ -91,7 +91,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   };
 
   return (
-    <div className="flex-1 p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto select-none space-y-6">
+    <div className="flex-1 w-full pb-16 select-none space-y-6">
       {/* ─── MODAL TẠO ALBUM MỚI ────────────────────────────────────────── */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -439,64 +439,126 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               </div>
             ) : (
               <div className="space-y-1">
-                {cleanAlbumTracks.map((track, idx) => (
-                  <div
-                    key={track.id}
-                    className="p-2.5 rounded-xl bg-[#09090c] hover:bg-[#121218] border border-[#161620] flex items-center justify-between gap-3 group transition-colors"
-                  >
+                {cleanAlbumTracks.map((track, idx) => {
+                  const isCurrent = Boolean(
+                    currentTrack && (
+                      currentTrack.id === track.id ||
+                      (currentTrack.path_or_url && currentTrack.path_or_url === track.path_or_url) ||
+                      (currentTrack.title.trim().toLowerCase() === track.title.trim().toLowerCase() &&
+                       currentTrack.artist.trim().toLowerCase() === track.artist.trim().toLowerCase())
+                    )
+                  );
+
+                  return (
                     <div
-                      onClick={() => onPlayTrack(track, cleanAlbumTracks)}
-                      className="flex items-center gap-3 overflow-hidden flex-1 cursor-pointer"
+                      key={track.id}
+                      style={isCurrent ? {
+                        borderColor: accentColor,
+                        backgroundColor: `${accentColor}14`,
+                        boxShadow: `0 0 14px ${accentColor}25`
+                      } : undefined}
+                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 group transition-all ${
+                        isCurrent
+                          ? 'bg-[#12121c]'
+                          : 'bg-[#09090c] hover:bg-[#121218] border-[#161620]'
+                      }`}
                     >
-                      <span className="w-5 text-center text-xs font-mono text-[#555] group-hover:text-white">
-                        {idx + 1}
-                      </span>
-                      <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#161620] flex-shrink-0 relative">
-                        {track.cover_art ? (
-                          <img
-                            src={optimizeThumbnailUrl(track.cover_art, track.path_or_url || track.id)}
-                            alt={track.title}
-                            referrerPolicy="no-referrer"
-                            onError={(e) => handleImageError(e, track.path_or_url || track.id)}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[#555]">
-                            <Music className="w-4 h-4" />
+                      <div
+                        onClick={() => {
+                          if (isCurrent) {
+                            onTogglePlay();
+                          } else {
+                            onPlayTrack(track, cleanAlbumTracks);
+                          }
+                        }}
+                        className="flex items-center gap-3 overflow-hidden flex-1 cursor-pointer"
+                      >
+                        {/* Col 1: Play state / Number / Equalizer Wave Animation */}
+                        <div className="w-5 flex items-center justify-center flex-shrink-0">
+                          {isCurrent && isPlaying ? (
+                            <div className="flex items-end justify-center gap-[2.5px] h-3.5">
+                              <span 
+                                className="w-[3px] rounded-full animate-[pulse_0.8s_ease-in-out_infinite] h-3.5"
+                                style={{ backgroundColor: accentColor }} 
+                              />
+                              <span 
+                                className="w-[3px] rounded-full animate-[pulse_1.2s_ease-in-out_infinite_200ms] h-2" 
+                                style={{ backgroundColor: accentColor }} 
+                              />
+                              <span 
+                                className="w-[3px] rounded-full animate-[pulse_0.9s_ease-in-out_infinite_400ms] h-3" 
+                                style={{ backgroundColor: accentColor }} 
+                              />
+                            </div>
+                          ) : (
+                            <span 
+                              className={`text-xs font-mono ${isCurrent ? 'font-bold' : 'text-[#555] group-hover:text-white'}`}
+                              style={{ color: isCurrent ? accentColor : undefined }}
+                            >
+                              {idx + 1}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Thumbnail */}
+                        <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#161620] flex-shrink-0 relative">
+                          {track.cover_art ? (
+                            <img
+                              src={optimizeThumbnailUrl(track.cover_art, track.path_or_url || track.id)}
+                              alt={track.title}
+                              referrerPolicy="no-referrer"
+                              onError={(e) => handleImageError(e, track.path_or_url || track.id)}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[#555]">
+                              <Music className="w-4 h-4" />
+                            </div>
+                          )}
+                          <div className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${
+                            isCurrent ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                          }`}>
+                            {isCurrent && isPlaying ? (
+                              <div className="flex items-center gap-0.5">
+                                <span className="w-1 h-3 bg-white rounded-xs" />
+                                <span className="w-1 h-3 bg-white rounded-xs" />
+                              </div>
+                            ) : (
+                              <Play className="w-3.5 h-3.5 fill-current text-white" />
+                            )}
                           </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Play className="w-3.5 h-3.5 fill-current text-white" />
+                        </div>
+
+                        {/* Title & Artist */}
+                        <div className="overflow-hidden min-w-0 flex-1">
+                          <p 
+                            className="text-xs font-semibold truncate transition-colors"
+                            style={{ color: isCurrent ? accentColor : 'white' }}
+                          >
+                            {track.title}
+                          </p>
+                          <p className="text-[11px] text-[#8e8e9f] truncate">{track.artist}</p>
                         </div>
                       </div>
-                      <div className="overflow-hidden">
-                        <p 
-                          className="text-xs font-semibold text-white truncate transition-colors"
-                          style={{ color: currentTrack?.id === track.id ? accentColor : undefined }}
+
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-[10px] text-[#666] font-mono uppercase px-2 py-0.5 rounded bg-[#14141c]">
+                          {track.source}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveTrackFromAlbum(selectedAlbum.id, track.id);
+                          }}
+                          className="p-1.5 text-[#555] hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
+                          title={getTranslation(language, 'album.removeTrack')}
                         >
-                          {track.title}
-                        </p>
-                        <p className="text-[11px] text-[#8e8e9f] truncate">{track.artist}</p>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <span className="text-[10px] text-[#666] font-mono uppercase px-2 py-0.5 rounded bg-[#14141c]">
-                        {track.source}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveTrackFromAlbum(selectedAlbum.id, track.id);
-                        }}
-                        className="p-1.5 text-[#555] hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
-                        title={getTranslation(language, 'album.removeTrack')}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -558,7 +620,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
               {albums.map((album) => {
                 const coverArt = album.cover_art || (album.tracks.length > 0 ? album.tracks[0].cover_art : null);
 

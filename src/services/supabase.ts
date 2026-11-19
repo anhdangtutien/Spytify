@@ -408,7 +408,7 @@ export async function cloudRegisterUser(
       email: email || null,
       password_hash: passwordHash,
       salt: salt,
-      avatar: existingProfile ? existingProfile.avatar : user.avatar || null,
+      avatar: user.avatar || existingProfile?.avatar || null,
       ...(existingProfile
         ? { bio: existingProfile.bio, thought: existingProfile.thought }
         : user.bio !== undefined
@@ -424,6 +424,143 @@ export async function cloudRegisterUser(
     return true;
   } catch (err) {
     console.error('Supabase cloudRegisterUser error:', err);
+    return false;
+  }
+}
+
+/**
+ * Searches for a user profile by email in Supabase Cloud
+ */
+export async function cloudFindUserByEmail(email: string): Promise<{ id: string; username: string; display_name: string; email: string } | null> {
+  const client = getSupabaseClient();
+  if (!client || !email) return null;
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    const { data, error } = await client
+      .from('spytify_profiles')
+      .select('id, username, display_name, email')
+      .ilike('email', cleanEmail)
+      .maybeSingle();
+    if (error || !data) return null;
+    return {
+      id: data.id,
+      username: data.username || cleanEmail.split('@')[0],
+      display_name: data.display_name || data.username || 'Operative',
+      email: data.email || cleanEmail,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Searches for a user profile by username or email in Supabase Cloud
+ */
+export async function cloudFindUserByUsernameOrEmail(identifier: string): Promise<{
+  id: string;
+  username: string;
+  display_name: string;
+  email: string;
+  two_factor_enabled?: boolean;
+  two_factor_secret?: string | null;
+  two_factor_scope?: 'both' | 'login' | 'reset_password' | null;
+} | null> {
+  const client = getSupabaseClient();
+  if (!client || !identifier) return null;
+  try {
+    const clean = identifier.trim().toLowerCase();
+    const isEmail = clean.includes('@');
+    const query = client
+      .from('spytify_profiles')
+      .select('id, username, display_name, email, two_factor_enabled, two_factor_secret, two_factor_scope');
+    const { data, error } = isEmail
+      ? await query.ilike('email', clean).maybeSingle()
+      : await query.ilike('username', clean).maybeSingle();
+    if (error || !data) return null;
+    return {
+      id: data.id,
+      username: data.username || clean,
+      display_name: data.display_name || data.username || 'Operative',
+      email: data.email || (isEmail ? clean : ''),
+      two_factor_enabled: data.two_factor_enabled,
+      two_factor_secret: data.two_factor_secret,
+      two_factor_scope: data.two_factor_scope,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Updates password hash and salt for a user in Supabase Cloud
+ */
+export async function cloudResetUserPassword(userId: string, passwordHash: string, salt: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client || !userId) return false;
+  try {
+    const { error } = await client
+      .from('spytify_profiles')
+      .update({
+        password_hash: passwordHash,
+        salt: salt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    return !error;
+  } catch (err) {
+    console.error('Failed to reset cloud password:', err);
+    return false;
+  }
+}
+
+/**
+ * Updates 2FA status in Supabase Cloud
+ */
+export async function cloudSetTwoFactor(
+  userId: string,
+  secret: string,
+  enabled: boolean,
+  scope: 'both' | 'login' | 'reset_password' = 'both'
+): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client || !userId) return false;
+  try {
+    const { error } = await client
+      .from('spytify_profiles')
+      .update({
+        two_factor_secret: secret,
+        two_factor_enabled: enabled,
+        two_factor_scope: scope,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    return !error;
+  } catch (err) {
+    console.warn('Could not update 2FA in Supabase:', err);
+    return false;
+  }
+}
+
+/**
+ * Updates 2FA scope in Supabase Cloud ('both' | 'login' | 'reset_password')
+ */
+export async function cloudSetTwoFactorScope(
+  userId: string,
+  scope: 'both' | 'login' | 'reset_password'
+): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client || !userId) return false;
+  try {
+    const { error } = await client
+      .from('spytify_profiles')
+      .update({
+        two_factor_scope: scope,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+    return !error;
+  } catch (err) {
+    console.warn('Could not update 2FA scope in Supabase:', err);
     return false;
   }
 }
@@ -473,6 +610,19 @@ export async function cloudLoginUser(identifier: string, passwordPlain: string):
       avatar: profile.avatar || null,
     });
 
+    if (profile.two_factor_enabled && profile.two_factor_secret) {
+      const scope = profile.two_factor_scope || 'both';
+      await invoke('auth_set_two_factor', {
+        userId: profile.id,
+        secret: profile.two_factor_secret,
+        enabled: true,
+        scope,
+      }).catch(console.warn);
+      importedUser.two_factor_enabled = true;
+      importedUser.two_factor_secret = profile.two_factor_secret;
+      importedUser.two_factor_scope = scope;
+    }
+
     return importedUser;
   } catch (err) {
     console.error('Supabase cloudLoginUser error:', err);
@@ -505,6 +655,25 @@ export async function cloudSyncPush(userId: string, data: Partial<CloudUserData>
     if (Object.keys(profilePayload).length > 2) {
       const { error } = await client.from('spytify_profiles').upsert(profilePayload, { onConflict: 'id' });
       if (error) throw error;
+
+      // Phát broadcast cập nhật profile/avatar ngay lập tức đến toàn bộ mạng lưới đang online
+      if (data.avatar !== undefined || data.displayName || data.bio !== undefined || data.thought !== undefined) {
+        try {
+          const socialCh = client.channel('spytify_global_social');
+          socialCh.send({
+            type: 'broadcast',
+            event: 'user_presence',
+            payload: {
+              id: userId,
+              username: data.username,
+              display_name: data.displayName,
+              avatar: data.avatar,
+              bio: data.bio,
+              thought: data.thought,
+            },
+          });
+        } catch {}
+      }
     }
 
     // 2. Sync Albums
@@ -919,14 +1088,14 @@ export async function fetchAllCloudProfiles(): Promise<CloudPublicProfile[]> {
   try {
     const { data, error } = await client
       .from('spytify_profiles')
-      .select('id, username, display_name, bio, thought')
-      .limit(200);
+      .select('id, username, display_name, avatar, bio, thought')
+      .limit(500);
     if (error || !data) return [];
     return data.map((row: any) => ({
       id: row.id,
       username: row.username || 'operative',
       display_name: row.display_name || row.username || 'Operative',
-      avatar: null,
+      avatar: row.avatar || null,
       bio: row.bio || null,
       thought: row.thought || null,
     }));
@@ -1144,6 +1313,18 @@ export async function deleteCloudServer(serverId: string): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !serverId) return;
   const updatedAt = new Date().toISOString();
+
+  // 1. Xóa toàn bộ tin nhắn chat thuộc máy chủ này trong Supabase Cloud để giải phóng dung lượng
+  try {
+    await client
+      .from('spytify_community_messages')
+      .delete()
+      .eq('server_id', serverId);
+  } catch (err) {
+    console.warn('Could not purge cloud messages for deleted server:', err);
+  }
+
+  // 2. Đánh dấu xóa server để thông báo Realtime cho các client khác
   const { error: communityError } = await client.from('spytify_community_servers').upsert(
     {
       id: serverId,
@@ -1154,10 +1335,21 @@ export async function deleteCloudServer(serverId: string): Promise<void> {
     },
     { onConflict: 'id' }
   );
+
+  // 3. Đánh dấu bản ghi legacy registry là deleted để các client cũ/mới biết và tự động gỡ khỏi danh sách máy chủ
   const { error: legacyError } = await client
     .from('spytify_direct_messages')
-    .delete()
-    .eq('id', `srv_reg_${serverId}`);
+    .upsert(
+      {
+        id: `srv_reg_${serverId}`,
+        room_id: SERVERS_REGISTRY_ROOM_ID,
+        sender_id: 'system',
+        receiver_id: serverId,
+        content: JSON.stringify({ id: serverId, deleted: true }),
+        sent_at: updatedAt,
+      },
+      { onConflict: 'id' }
+    );
   if (communityError) console.warn('Cloud server deletion marker failed:', communityError);
   if (legacyError) console.warn('Legacy cloud server deletion failed:', legacyError);
   if (communityError && legacyError) throw new Error(communityError.message);
@@ -1267,9 +1459,9 @@ export async function fetchCloudServerMembershipAudit(
         removedServerIds.push(serverId);
         continue;
       }
-      const isOwner = server.owner_id === userId;
+      const isOwner = server.owner_id === userId || (server.owner_id === 'usr_me' && Array.isArray(server.member_ids) && server.member_ids.includes(userId));
       const isKicked = Array.isArray(server.kicked_ids) && server.kicked_ids.includes(userId);
-      const isMember = Array.isArray(server.member_ids) && server.member_ids.includes(userId);
+      const isMember = Array.isArray(server.member_ids) && (server.member_ids.includes(userId) || server.member_ids.includes('usr_me'));
       const isMod = Array.isArray(server.moderator_ids) && server.moderator_ids.includes(userId);
       if (!isOwner && isKicked) {
         removedServerIds.push(server.id);
@@ -1409,6 +1601,142 @@ export async function fetchCloudServerInvites(
     return { incoming: [], outgoing: [] };
   }
 }
+
+/**
+ * Xóa toàn bộ tin nhắn thuộc một kênh khi kênh đó bị xóa
+ */
+export async function deleteCloudChannelMessages(serverId: string, channelId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client) return;
+  try {
+    await client
+      .from('spytify_community_messages')
+      .delete()
+      .eq('server_id', serverId)
+      .eq('channel_id', channelId);
+  } catch (err) {
+    console.warn('Could not delete cloud channel messages:', err);
+  }
+}
+
+/**
+ * Tự động dọn dẹp các tin nhắn cũ hơn số giờ quy định trong Supabase Cloud (6h, 12h, 24h)
+ */
+export async function purgeCloudExpiredMessages(serverId: string, hours: number): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !serverId || hours <= 0) return;
+  try {
+    const thresholdIso = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+    await client
+      .from('spytify_community_messages')
+      .delete()
+      .eq('server_id', serverId)
+      .lt('created_at', thresholdIso);
+  } catch (err) {
+    console.warn('Could not purge cloud expired messages:', err);
+  }
+}
+
+/**
+ * Tự động xóa các tin nhắn riêng 1-1 cũ hơn số giờ quy định trong Supabase Cloud (6h, 12h, 24h)
+ */
+export async function purgeCloudExpiredDirectMessages(roomId: string, hours: number): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !roomId || (!hours && hours !== -1)) return;
+  try {
+    const durationMs = hours === -1 ? 30 * 1000 : hours * 3600 * 1000;
+    const thresholdIso = new Date(Date.now() - durationMs).toISOString();
+    await client
+      .from('spytify_direct_messages')
+      .delete()
+      .eq('room_id', roomId)
+      .lt('sent_at', thresholdIso);
+  } catch (err) {
+    console.warn('Could not purge cloud expired direct messages:', err);
+  }
+}
+
+/**
+ * Cập nhật cấu hình tự động hủy tin nhắn riêng (0, 6h, 12h, 24h) lên Supabase Cloud
+ */
+export async function pushCloudDmAutoDelete(roomId: string, hours: number): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !roomId) return;
+  try {
+    await client.from('spytify_direct_messages').upsert({
+      id: `dm_autodel_${roomId}`,
+      room_id: `settings_${roomId}`,
+      sender_id: 'system',
+      receiver_id: roomId,
+      content: JSON.stringify({ roomId, autoDeleteHours: hours }),
+      sent_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+  } catch (err) {
+    console.warn('Could not push cloud DM auto-delete setting:', err);
+  }
+}
+
+/**
+ * Lấy cấu hình tự động hủy tin nhắn riêng từ Supabase Cloud
+ */
+export async function fetchCloudDmAutoDelete(roomId: string): Promise<number> {
+  const client = getSupabaseClient();
+  if (!client || !roomId) return 0;
+  try {
+    const { data, error } = await client
+      .from('spytify_direct_messages')
+      .select('content')
+      .eq('id', `dm_autodel_${roomId}`)
+      .maybeSingle();
+    if (error || !data?.content) return 0;
+    const parsed = JSON.parse(data.content);
+    return Number(parsed.autoDeleteHours) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Xóa một tin nhắn riêng cụ thể trên Supabase Cloud
+ */
+export async function deleteCloudDirectMessage(messageId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !messageId) return;
+  try {
+    await client.from('spytify_direct_messages').delete().eq('id', messageId);
+  } catch (err) {
+    console.warn('Could not delete cloud direct message:', err);
+  }
+}
+
+/**
+ * Chỉnh sửa nội dung một tin nhắn riêng cụ thể trên Supabase Cloud
+ */
+export async function editCloudDirectMessage(messageId: string, content: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !messageId) return;
+  try {
+    await client.from('spytify_direct_messages').update({ content }).eq('id', messageId);
+  } catch (err) {
+    console.warn('Could not edit cloud direct message:', err);
+  }
+}
+
+/**
+ * Xóa toàn bộ tin nhắn trong một phòng chat riêng 1-1 trên Supabase Cloud
+ */
+export async function clearCloudDirectMessages(roomId: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !roomId) return;
+  try {
+    await client.from('spytify_direct_messages').delete().eq('room_id', roomId);
+  } catch (err) {
+    console.warn('Could not clear cloud direct messages:', err);
+  }
+}
+
+
+
 
 
 

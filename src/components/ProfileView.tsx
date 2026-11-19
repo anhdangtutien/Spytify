@@ -9,13 +9,19 @@ import {
   Cloud, CloudLightning, Key, ChevronDown, ChevronUp, Globe, Languages,
   Folder, FolderOpen, FolderDown, Copy, CheckCheck, ExternalLink, Zap, Power, Monitor,
   Mic, Volume2, Sliders, RotateCcw, Volume1, Search, Edit3, ChevronRight,
-  ShieldCheck, CheckCircle2, UserCheck, AlertCircle, Info, Lock
+  ShieldCheck, CheckCircle2, UserCheck, AlertCircle, Info, Lock,
+  QrCode, Smartphone, KeyRound, ShieldAlert, AlertTriangle
 } from 'lucide-react';
 import { 
   getStoredSupabaseConfig, getCustomSupabaseConfig, saveStoredSupabaseConfig, resetToDefaultSupabase,
-  isSupabaseConfigured, cloudSyncPush, cloudSyncPull, SUPABASE_SCHEMA_SQL, testSupabaseConnection
+  isSupabaseConfigured, cloudSyncPush, cloudSyncPull, SUPABASE_SCHEMA_SQL, testSupabaseConnection,
+  cloudSetTwoFactor,
+  cloudSetTwoFactorScope,
+  cloudResetUserPassword
 } from '../services/supabase';
+import { generateTotpSecret, getOtpAuthUrl, getQrCodeImageUrl, verifyTotp } from '../services/totp';
 import { checkGitHubUpdate, CURRENT_VERSION, UpdateInfo } from '../services/updater';
+import { openWebsite, getWebsiteUrl, setWebsiteUrl, DEFAULT_WEBSITE_URL } from '../services/website';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from '../locales/i18n';
 
 interface ProfileViewProps {
@@ -38,6 +44,10 @@ interface ProfileViewProps {
   onUpdateAlbums: (albums: UserAlbum[]) => void;
   screenShareFps: 30 | 60 | 90;
   onScreenShareFpsChange: (fps: 30 | 60 | 90) => void;
+  crossfadeDuration?: number;
+  onUpdateCrossfadeDuration?: (durationSecs: number) => void;
+  volume?: number;
+  onVolumeChange?: (volume: number) => void;
 }
 
 // 8 Curated Spy / Classified Theme Colors
@@ -106,7 +116,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateAlbums,
   screenShareFps,
   onScreenShareFpsChange,
+  crossfadeDuration = 5,
+  onUpdateCrossfadeDuration,
+  volume,
+  onVolumeChange,
 }) => {
+  const [currentCrossfade, setCurrentCrossfade] = useState<number>(() => {
+    try {
+      const v = localStorage.getItem('spytify_crossfade_duration');
+      return v !== null ? parseInt(v, 10) : crossfadeDuration;
+    } catch {
+      return crossfadeDuration;
+    }
+  });
+
+  useEffect(() => {
+    setCurrentCrossfade(crossfadeDuration);
+  }, [crossfadeDuration]);
+
+  const handleUpdateCrossfade = (secs: number) => {
+    setCurrentCrossfade(secs);
+    try {
+      localStorage.setItem('spytify_crossfade_duration', String(secs));
+    } catch {}
+    onUpdateCrossfadeDuration?.(secs);
+  };
   const [stats, setStats] = useState<UserStats>({ total_played: 0, favorite_count: 0, top_artist: null });
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -220,6 +254,271 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [showSupabaseSettings, setShowSupabaseSettings] = useState(false);
   const [isCloudSyncing, setIsCloudSyncing] = useState(false);
   const [cloudStatusMsg, setCloudStatusMsg] = useState<string | null>(null);
+
+  // Google Authenticator 2FA State
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>(() => currentUser?.two_factor_enabled || false);
+  const [twoFactorScope, setTwoFactorScope] = useState<'both' | 'login' | 'reset_password'>(
+    () => (currentUser?.two_factor_scope as 'both' | 'login' | 'reset_password') || 'both'
+  );
+  const [show2FaModal, setShow2FaModal] = useState(false);
+  const [secret2Fa, setSecret2Fa] = useState('');
+  const [code2FaInput, setCode2FaInput] = useState('');
+  const [copiedSecret, setCopiedSecret] = useState(false);
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
+
+  // Popup xác nhận hủy 2FA
+  const [showDisable2FaConfirmModal, setShowDisable2FaConfirmModal] = useState(false);
+
+  // Popup Đổi / Reset Mật Khẩu
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [changePasswordVerifyMode, setChangePasswordVerifyMode] = useState<'password' | 'authenticator'>('password');
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [changePasswordTotpInput, setChangePasswordTotpInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmNewPasswordInput, setConfirmNewPasswordInput] = useState('');
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState<string | null>(null);
+
+  // Sync 2FA state from SQLite on component mount
+  useEffect(() => {
+    if (currentUser?.id) {
+      invoke<[boolean, string | null, string | null]>('auth_get_user_2fa', { userId: currentUser.id })
+        .then(([enabled, secret, scope]) => {
+          setTwoFactorEnabled(enabled);
+          const currentScope = (scope as 'both' | 'login' | 'reset_password') || 'both';
+          setTwoFactorScope(currentScope);
+          if (currentUser) {
+            currentUser.two_factor_enabled = enabled;
+            if (secret) currentUser.two_factor_secret = secret;
+            currentUser.two_factor_scope = currentScope;
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentUser?.id]);
+
+  const handleUpdate2FaScope = async (scope: 'both' | 'login' | 'reset_password') => {
+    if (!currentUser?.id) return;
+    setTwoFactorScope(scope);
+    try {
+      await invoke('auth_set_two_factor_scope', {
+        userId: currentUser.id,
+        scope,
+      });
+      if (isSupabaseConfigured()) {
+        await cloudSetTwoFactorScope(currentUser.id, scope);
+      }
+      if (currentUser) {
+        currentUser.two_factor_scope = scope;
+        try {
+          const stored = localStorage.getItem('soundify_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.two_factor_scope = scope;
+            localStorage.setItem('soundify_user', JSON.stringify(parsed));
+          }
+        } catch {}
+      }
+    } catch (err: any) {
+      console.warn('Could not update 2FA scope:', err);
+    }
+  };
+
+  const handleOpen2FaSetup = () => {
+    const newSecret = generateTotpSecret(16);
+    setSecret2Fa(newSecret);
+    setCode2FaInput('');
+    setTwoFactorError(null);
+    setCopiedSecret(false);
+    setShow2FaModal(true);
+  };
+
+  const handleCopySecret = () => {
+    if (secret2Fa) {
+      navigator.clipboard.writeText(secret2Fa);
+      setCopiedSecret(true);
+      setTimeout(() => setCopiedSecret(false), 2500);
+    }
+  };
+
+  const handleConfirm2FaSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser?.id || !secret2Fa) return;
+    setTwoFactorError(null);
+    setTwoFactorLoading(true);
+
+    try {
+      const isValid = await verifyTotp(code2FaInput, secret2Fa);
+      if (!isValid) {
+        setTwoFactorError(getTranslation(language, 'auth.invalidCode') || 'Mã xác nhận gồm 6 chữ số không đúng hoặc đã hết hạn!');
+        setTwoFactorLoading(false);
+        return;
+      }
+
+      // Save to SQLite
+      await invoke('auth_set_two_factor', {
+        userId: currentUser.id,
+        secret: secret2Fa,
+        enabled: true,
+        scope: twoFactorScope,
+      });
+
+      // Save to Supabase Cloud if configured
+      if (isSupabaseConfigured()) {
+        await cloudSetTwoFactor(currentUser.id, secret2Fa, true, twoFactorScope);
+      }
+
+      setTwoFactorEnabled(true);
+      if (currentUser) {
+        currentUser.two_factor_enabled = true;
+        currentUser.two_factor_secret = secret2Fa;
+        currentUser.two_factor_scope = twoFactorScope;
+        try {
+          const stored = localStorage.getItem('soundify_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.two_factor_enabled = true;
+            parsed.two_factor_secret = secret2Fa;
+            parsed.two_factor_scope = twoFactorScope;
+            localStorage.setItem('soundify_user', JSON.stringify(parsed));
+          }
+        } catch {}
+      }
+
+      setShow2FaModal(false);
+      alert('🎉 Đã kích hoạt Google Authenticator (2FA) thành công! Tài khoản của bạn được bảo mật tuyệt đối.');
+    } catch (err: any) {
+      setTwoFactorError(err?.message || 'Không thể kích hoạt 2FA lúc này.');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const handleConfirmDisable2Fa = async () => {
+    if (!currentUser?.id) return;
+    try {
+      await invoke('auth_set_two_factor', {
+        userId: currentUser.id,
+        secret: '',
+        enabled: false,
+        scope: 'both',
+      });
+      if (isSupabaseConfigured()) {
+        await cloudSetTwoFactor(currentUser.id, '', false, 'both');
+      }
+      setTwoFactorEnabled(false);
+      setShowDisable2FaConfirmModal(false);
+      if (currentUser) {
+        currentUser.two_factor_enabled = false;
+        currentUser.two_factor_secret = undefined;
+        try {
+          const stored = localStorage.getItem('soundify_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.two_factor_enabled = false;
+            delete parsed.two_factor_secret;
+            localStorage.setItem('soundify_user', JSON.stringify(parsed));
+          }
+        } catch {}
+      }
+    } catch (err: any) {
+      alert('Không thể tắt 2FA: ' + (err?.message || String(err)));
+    }
+  };
+
+  const handleOpenChangePasswordModal = () => {
+    setCurrentPasswordInput('');
+    setChangePasswordTotpInput('');
+    setNewPasswordInput('');
+    setConfirmNewPasswordInput('');
+    setChangePasswordError(null);
+    setChangePasswordSuccess(null);
+    setChangePasswordVerifyMode(twoFactorEnabled ? 'authenticator' : 'password');
+    setShowChangePasswordModal(true);
+  };
+
+  const handleSaveNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangePasswordError(null);
+    setChangePasswordSuccess(null);
+    if (!currentUser?.id) return;
+
+    if (newPasswordInput.length < 6) {
+      setChangePasswordError('Mật khẩu mới phải có tối thiểu 6 ký tự.');
+      return;
+    }
+    if (newPasswordInput !== confirmNewPasswordInput) {
+      setChangePasswordError('Xác nhận mật khẩu mới không khớp.');
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    try {
+      // 1. Xác thực danh tính
+      if (changePasswordVerifyMode === 'authenticator') {
+        // Xác thực qua Google Authenticator
+        let secret = secret2Fa || currentUser.two_factor_secret;
+        if (!secret) {
+          try {
+            const check = await invoke<[boolean, string | null, string | null]>('auth_get_user_2fa', { userId: currentUser.id });
+            if (check && check[1]) secret = check[1];
+          } catch {}
+        }
+        if (!secret) {
+          throw new Error('Chưa tìm thấy khóa bí mật 2FA của tài khoản này.');
+        }
+        const isValid = await verifyTotp(changePasswordTotpInput.trim(), secret);
+        if (!isValid) {
+          throw new Error('Mã Google Authenticator (6 chữ số) không chính xác hoặc đã hết hạn.');
+        }
+      } else {
+        // Xác thực qua mật khẩu hiện tại
+        if (!currentPasswordInput) {
+          throw new Error('Vui lòng nhập mật khẩu hiện tại của bạn.');
+        }
+        const creds = await invoke<[string, string] | null>('auth_get_credentials', { userId: currentUser.id });
+        if (creds) {
+          const [storedHash, salt] = creds;
+          const inputHash = await invoke<string>('auth_hash_password', { password: currentPasswordInput, salt });
+          if (inputHash !== storedHash) {
+            throw new Error('Mật khẩu hiện tại không chính xác.');
+          }
+        }
+      }
+
+      // 2. Cập nhật mật khẩu mới vào SQLite
+      const [newHash, newSalt] = await invoke<[string, string]>('auth_update_password', {
+        userId: currentUser.id,
+        newPassword: newPasswordInput,
+      });
+
+      // 3. Đồng bộ mật khẩu mới lên Supabase Cloud
+      if (isSupabaseConfigured()) {
+        await cloudResetUserPassword(currentUser.id, newHash, newSalt);
+      }
+
+      setChangePasswordSuccess('🎉 Đổi mật khẩu thành công!');
+      setTimeout(() => {
+        setShowChangePasswordModal(false);
+        setCurrentPasswordInput('');
+        setChangePasswordTotpInput('');
+        setNewPasswordInput('');
+        setConfirmNewPasswordInput('');
+        setChangePasswordSuccess(null);
+      }, 1500);
+    } catch (err: any) {
+      setChangePasswordError(err?.message || 'Không thể đổi mật khẩu lúc này.');
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  };
+
+  // Vercel Landing Page Website State
+  const [siteUrl, setSiteUrl] = useState(() => getWebsiteUrl());
+  const [isEditingSiteUrl, setIsEditingSiteUrl] = useState(false);
+  const [tempSiteUrl, setTempSiteUrl] = useState(siteUrl);
 
   // Voice & Audio Settings State (Mic & Speaker)
   const [voiceMicVolume, setVoiceMicVolume] = useState<number>(() => {
@@ -907,22 +1206,117 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => alert(getTranslation(language, 'settings.passwordChangeHelp'))}
+                    onClick={handleOpenChangePasswordModal}
                     className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-mono font-bold text-zinc-300 hover:text-white cursor-pointer transition-colors"
                   >
-                    {getTranslation(language, 'settings.edit')}
+                    Đổi mật khẩu
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
-                  <div>
-                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.twoFactor')}</p>
-                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.twoFactorDescription')}</p>
+                <div className="pb-3 border-b border-[#1c1c28]">
+                  <div className="flex items-center justify-between">
+                    <div className="pr-4">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.twoFactor')}</p>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                          Google Authenticator
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#777] font-mono mt-0.5">
+                        Bảo mật tài khoản bằng mã xác thực 6 số (RFC 6238 TOTP)
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {twoFactorEnabled ? (
+                        <>
+                          <span className="text-xs font-mono text-emerald-400 font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            {getTranslation(language, 'settings.activated')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowDisable2FaConfirmModal(true)}
+                            className="px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-mono transition-colors cursor-pointer border border-red-500/20"
+                          >
+                            Tắt 2FA
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleOpen2FaSetup}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-black transition-all cursor-pointer shadow-sm hover:scale-105 flex items-center gap-1.5"
+                          style={{ backgroundColor: accentColor }}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Kích hoạt 2FA</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-xs font-mono text-emerald-400 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {getTranslation(language, 'settings.activated')}
-                  </span>
+
+                  {/* Tùy chọn phạm vi 2FA: Đăng nhập / Reset Password / Cả hai */}
+                  {twoFactorEnabled && (
+                    <div className="mt-3.5 pt-3 border-t border-white/5 space-y-2 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Áp dụng xác thực 2FA khi:</span>
+                        </span>
+                        <span className="text-[9px] font-mono text-zinc-500">
+                          (Nhấn để đổi phạm vi bảo vệ)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {([
+                          {
+                            id: 'both' as const,
+                            title: 'Cả hai (Khuyên dùng)',
+                            desc: 'Đăng nhập & Đặt lại mật khẩu',
+                          },
+                          {
+                            id: 'login' as const,
+                            title: 'Chỉ khi đăng nhập',
+                            desc: 'Reset pass dùng mã gửi về Email',
+                          },
+                          {
+                            id: 'reset_password' as const,
+                            title: 'Chỉ khi đặt lại mật khẩu',
+                            desc: 'Đăng nhập bằng pass thường',
+                          },
+                        ]).map(item => {
+                          const isSelected = twoFactorScope === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => handleUpdate2FaScope(item.id)}
+                              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between group ${
+                                isSelected
+                                  ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+                                  : 'bg-[#12121c] border-[#222234] text-zinc-400 hover:text-white hover:bg-white/5'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1 mb-1">
+                                <span className={`text-xs font-bold ${isSelected ? 'text-cyan-300' : 'text-zinc-200'}`}>
+                                  {item.title}
+                                </span>
+                                {isSelected ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                ) : (
+                                  <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0 group-hover:border-white/40" />
+                                )}
+                              </div>
+                              <p className="text-[10px] text-zinc-500 leading-tight">
+                                {item.desc}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -933,53 +1327,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <span className="text-xs font-mono text-cyan-400 font-bold">{getTranslation(language, 'settings.currentDevice')}</span>
                 </div>
               </div>
-            </div>
-
-            {/* Khởi Động & Ứng Dụng Windows Card */}
-            <div>
-              <h3 className={`text-sm font-bold mb-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                {getTranslation(language, 'settings.desktopStartup')}
-              </h3>
-              <div className={`p-4 rounded-2xl border ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-                    >
-                      <Zap className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className={`text-xs font-bold ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
-                        {getTranslation(language, 'settings.launchWithWindows')}
-                      </p>
-                      <p className="text-[11px] text-[#777] mt-0.5">
-                        {launchOnStartup
-                          ? getTranslation(language, 'settings.launchEnabled')
-                          : getTranslation(language, 'settings.launchDisabled')}
-                      </p>
-                      {launchStartupMsg && (
-                        <p className="text-[10px] font-mono text-cyan-400 mt-1">{launchStartupMsg}</p>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={isTogglingStartup}
-                    onClick={() => handleToggleLaunchOnStartup(!launchOnStartup)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 ${
-                      launchOnStartup ? 'bg-emerald-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        launchOnStartup ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-
             </div>
           </div>
         )}
@@ -1271,6 +1618,45 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+              {/* Master Music Volume Slider */}
+              {onVolumeChange !== undefined && (
+                <div className="p-4 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="w-4 h-4 text-cyan-400" />
+                        <span className="text-xs font-bold text-white">Âm lượng phát nhạc chính (Master)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded">
+                          {Math.round((volume ?? 0.8) * 100)}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onVolumeChange(0.8)}
+                          title={getTranslation(language, 'settings.resetVolume')}
+                          className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={volume ?? 0.8}
+                      onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between mt-3 pt-1">
+                    <span className="text-[10px] text-[#555] font-mono">0% - 100% • Đồng bộ trực tiếp với PlayerBar</span>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Mic Volume */}
                 <div className="p-4 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col justify-between">
@@ -1381,6 +1767,67 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       {fps} FPS
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Spotify-style Crossfade Songs */}
+              <div className="p-4 rounded-xl bg-[#0e0e14] border border-[#1e1e28] space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0 text-emerald-400">
+                      <Sliders className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-white">
+                          {getTranslation(language, 'settings.crossfade')}
+                        </p>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
+                          {currentCrossfade > 0 ? `${currentCrossfade}s` : getTranslation(language, 'settings.crossfadeOff')}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-[#777] font-mono mt-0.5">
+                        {getTranslation(language, 'settings.crossfadeDesc')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { sec: 0, label: getTranslation(language, 'settings.crossfadeOff') },
+                      { sec: 3, label: '3s' },
+                      { sec: 5, label: `5s (${getTranslation(language, 'settings.crossfadeRecommended')})` },
+                      { sec: 8, label: '8s' },
+                      { sec: 12, label: '12s' },
+                    ].map(opt => (
+                      <button
+                        key={opt.sec}
+                        type="button"
+                        onClick={() => handleUpdateCrossfade(opt.sec)}
+                        className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer ${
+                          currentCrossfade === opt.sec
+                            ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm'
+                            : 'bg-[#14141c] border-[#22222e] text-[#888] hover:text-white hover:border-[#333344]'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Range Slider for custom 0-12s precision */}
+                <div className="pt-2 flex items-center gap-4">
+                  <span className="text-[10px] font-mono text-[#555] w-14">0s (Tắt)</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="12"
+                    step="1"
+                    value={currentCrossfade}
+                    onChange={(e) => handleUpdateCrossfade(parseInt(e.target.value, 10))}
+                    className="flex-1 h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                  />
+                  <span className="text-[10px] font-mono text-[#555] w-8 text-right">12s</span>
                 </div>
               </div>
             </div>
@@ -1504,20 +1951,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <Key className="w-3.5 h-3.5" />
                   <span>{getTranslation(language, 'settings.customSupabase')}</span>
                   {showSupabaseSettings ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCopySql}
-                  className="py-2.5 px-3 rounded-xl bg-[#0c0c12] hover:bg-[#15151e] border border-[#222230] text-xs font-semibold text-[#aaa] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
-                  title="Sao chép toàn bộ mã SQL khởi tạo cơ sở dữ liệu Supabase"
-                >
-                  {copiedSql ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-cyan-400" />}
-                  <span>
-                    {copiedSql
-                      ? getTranslation(language, 'settings.copiedSql')
-                      : getTranslation(language, 'settings.copySql')}
-                  </span>
                 </button>
               </div>
 
@@ -1786,6 +2219,57 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </span>
                 </button>
               </div>
+
+              {/* Spytify Vercel Website Card */}
+              <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-cyan-950/40 text-cyan-400 border border-cyan-500/30"
+                  >
+                    <Globe className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-bold text-white">{getTranslation(language, 'website.title')}</p>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/50 text-cyan-300 border border-cyan-500/30">
+                        Vercel Live
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#777] mt-0.5">
+                      Trang web giới thiệu ứng dụng, tính năng Spytify và tải trực tiếp file cài đặt.
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[10px] font-mono text-cyan-400 truncate max-w-[280px]">
+                        {siteUrl}
+                      </span>
+                      {siteUrl !== DEFAULT_WEBSITE_URL && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWebsiteUrl(DEFAULT_WEBSITE_URL);
+                            setSiteUrl(DEFAULT_WEBSITE_URL);
+                            setTempSiteUrl(DEFAULT_WEBSITE_URL);
+                          }}
+                          className="text-[9px] text-[#666] hover:text-[#aaa] underline cursor-pointer"
+                        >
+                          (Đặt lại mặc định)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => openWebsite(siteUrl)}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-cyan-500 hover:bg-cyan-400 text-black shadow-md hover:scale-105"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{getTranslation(language, 'website.btnOpen')}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1980,6 +2464,323 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Google Authenticator (2FA) Setup Modal */}
+      {show2FaModal && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#0e0e14] border border-[#222230] rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1c1c28] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Thiết lập Google Authenticator (2FA)</h3>
+                  <p className="text-[10px] text-zinc-400 font-mono">Bảo vệ tài khoản @{currentUser.username}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShow2FaModal(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs text-zinc-300">
+              <div className="p-3 rounded-xl bg-black/50 border border-white/5 space-y-1">
+                <p className="font-semibold text-white flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-cyan-500 text-black text-[10px] font-bold flex items-center justify-center">1</span>
+                  Tải app Authenticator
+                </p>
+                <p className="text-[11px] text-zinc-400 pl-5">
+                  Tải <strong className="text-white">Google Authenticator</strong> hoặc <strong className="text-white">Microsoft Authenticator</strong> từ App Store / Google Play về điện thoại.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-black/50 border border-white/5 space-y-2">
+                <p className="font-semibold text-white flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-cyan-500 text-black text-[10px] font-bold flex items-center justify-center">2</span>
+                  Quét mã QR hoặc nhập khóa thủ công
+                </p>
+                
+                {/* QR Code */}
+                <div className="flex justify-center py-2">
+                  <div className="p-2.5 rounded-xl bg-white shadow-md flex items-center justify-center">
+                    <img
+                      src={getQrCodeImageUrl(getOtpAuthUrl(currentUser.username, secret2Fa, 'Spytify'), 180)}
+                      alt="2FA QR Code"
+                      className="w-[160px] h-[160px] object-contain"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono text-zinc-400">Khóa bí mật (Secret Key) để nhập thủ công:</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      readOnly
+                      value={secret2Fa}
+                      className="flex-1 py-1 px-2.5 rounded-lg bg-[#07070a] border border-[#262634] text-xs text-cyan-300 font-mono tracking-wider select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopySecret}
+                      className="px-2.5 py-1 rounded-lg bg-[#181824] hover:bg-[#222232] border border-[#303044] text-[11px] text-white flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      {copiedSecret ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedSecret ? 'Đã sao chép' : 'Sao chép'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 3: Enter 6 digit code */}
+              <form onSubmit={handleConfirm2FaSetup} className="space-y-3">
+                <div className="p-3 rounded-xl bg-black/50 border border-white/5 space-y-1.5">
+                  <label className="font-semibold text-white flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-cyan-500 text-black text-[10px] font-bold flex items-center justify-center">3</span>
+                    Nhập mã 6 chữ số từ app để xác nhận:
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="000000"
+                    value={code2FaInput}
+                    onChange={(e) => setCode2FaInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full py-2 px-3 text-center text-lg font-mono tracking-[0.3em] font-bold rounded-lg bg-[#07070a] border border-cyan-500/40 text-cyan-400 outline-none focus:border-cyan-400"
+                    autoFocus
+                  />
+                </div>
+
+                {twoFactorError && (
+                  <p className="text-xs text-red-400 font-mono flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{twoFactorError}</span>
+                  </p>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1c1c28]">
+                  <button
+                    type="button"
+                    onClick={() => setShow2FaModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={code2FaInput.length !== 6 || twoFactorLoading}
+                    className="px-5 py-2 rounded-xl text-xs font-bold text-black bg-cyan-400 hover:bg-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+                  >
+                    {twoFactorLoading ? 'Đang kiểm tra...' : 'Xác nhận & Kích hoạt'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Modal xác nhận hủy 2FA */}
+      {showDisable2FaConfirmModal && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-[#0e0e14] border border-red-500/30 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-white">Tắt xác thực 2 lớp (2FA)?</h3>
+                <p className="text-[11px] text-zinc-400 font-mono">Tài khoản @{currentUser.username}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed bg-black/40 p-3 rounded-xl border border-white/5">
+              Khi tắt xác thực 2 lớp, tài khoản của bạn sẽ không còn được bảo vệ bởi mã từ ứng dụng <strong className="text-white">Google Authenticator</strong>. Bất kỳ ai có mật khẩu đều có thể đăng nhập hoặc đặt lại mật khẩu trực tiếp.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1c1c28]">
+              <button
+                type="button"
+                onClick={() => setShowDisable2FaConfirmModal(false)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-zinc-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                Giữ lại 2FA
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDisable2Fa}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-500 hover:bg-red-600 transition-all cursor-pointer shadow-lg shadow-red-500/20"
+              >
+                Xác nhận tắt 2FA
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Modal Đổi / Reset Mật Khẩu trực tiếp */}
+      {showChangePasswordModal && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-[#0e0e14] border border-[#222230] rounded-2xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1c1c28] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                  <KeyRound className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Đổi mật khẩu tài khoản</h3>
+                  <p className="text-[10px] text-zinc-400 font-mono">@{currentUser.username}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePasswordModal(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {changePasswordError && (
+              <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{changePasswordError}</span>
+              </div>
+            )}
+
+            {changePasswordSuccess && (
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                <span>{changePasswordSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveNewPassword} className="space-y-3.5">
+              {/* Nếu tài khoản có 2FA, cho phép chọn cách xác minh */}
+              {twoFactorEnabled && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">
+                    Phương thức xác minh danh tính:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setChangePasswordVerifyMode('authenticator')}
+                      className={`p-2 rounded-xl text-left border text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                        changePasswordVerifyMode === 'authenticator'
+                          ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-bold'
+                          : 'bg-[#121218] border-white/10 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>Google Authenticator</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChangePasswordVerifyMode('password')}
+                      className={`p-2 rounded-xl text-left border text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                        changePasswordVerifyMode === 'password'
+                          ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-bold'
+                          : 'bg-[#121218] border-white/10 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <Lock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>Mật khẩu hiện tại</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Input xác minh */}
+              {twoFactorEnabled && changePasswordVerifyMode === 'authenticator' ? (
+                <div>
+                  <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                    Mã xác thực Google Authenticator (6 chữ số):
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    required
+                    placeholder="000000"
+                    value={changePasswordTotpInput}
+                    onChange={(e) => setChangePasswordTotpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full py-2 px-3 bg-[#07070a] text-cyan-400 font-mono tracking-widest text-center font-bold text-base rounded-xl border border-cyan-500/40 focus:border-cyan-400 outline-none transition-colors"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                    Mật khẩu hiện tại:
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={currentPasswordInput}
+                    onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-cyan-400 outline-none transition-colors"
+                  />
+                </div>
+              )}
+
+              {/* Mật khẩu mới */}
+              <div>
+                <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                  Mật khẩu mới (tối thiểu 6 ký tự):
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  placeholder="Nhập mật khẩu mới..."
+                  className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-cyan-400 outline-none transition-colors"
+                />
+              </div>
+
+              {/* Xác nhận mật khẩu mới */}
+              <div>
+                <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                  Nhập lại mật khẩu mới:
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={confirmNewPasswordInput}
+                  onChange={(e) => setConfirmNewPasswordInput(e.target.value)}
+                  placeholder="Xác nhận mật khẩu mới..."
+                  className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-cyan-400 outline-none transition-colors"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1c1c28]">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePasswordModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={changePasswordLoading || newPasswordInput.length < 6 || !confirmNewPasswordInput}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-black bg-cyan-400 hover:bg-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+                >
+                  {changePasswordLoading ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

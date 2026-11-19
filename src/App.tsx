@@ -19,8 +19,9 @@ import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
 import { checkGitHubUpdate, UpdateInfo, CURRENT_VERSION } from './services/updater';
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
+import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle } from './utils/trackUtils';
-import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult } from './types';
+import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './components/Icons';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
@@ -196,6 +197,12 @@ export default function App() {
   const handleUpdateAccentColor = (newColor: string) => {
     setAccentColor(newColor);
     localStorage.setItem('spytify_accent_color', newColor);
+    if (currentUserRef.current?.id) {
+      localStorage.setItem(`spytify_accent_color_${currentUserRef.current.id}`, newColor);
+      if (isSupabaseConfigured()) {
+        cloudSyncPush(currentUserRef.current.id, { accentColor: newColor }).catch(() => {});
+      }
+    }
     document.documentElement.style.setProperty('--accent-color', newColor);
     showNotification(`${getTranslation(language, 'toast.colorUpdated')} ${newColor}`);
   };
@@ -235,6 +242,12 @@ export default function App() {
     const next = themeMode === 'dark' ? 'light' : 'dark';
     setThemeMode(next);
     localStorage.setItem('spytify_theme_mode', next);
+    if (currentUserRef.current?.id) {
+      localStorage.setItem(`spytify_theme_mode_${currentUserRef.current.id}`, next);
+      if (isSupabaseConfigured()) {
+        cloudSyncPush(currentUserRef.current.id, { themeMode: next }).catch(() => {});
+      }
+    }
     showNotification(next === 'light' ? getTranslation(language, 'toast.themeLight') : getTranslation(language, 'toast.themeDark'));
   };
 
@@ -570,6 +583,69 @@ export default function App() {
     showNotification(getTranslation(language, 'album.updated'));
   };
 
+  const handleSaveArtistMixAsAlbum = (mix: ArtistMix) => {
+    const userId = currentUserRef.current?.id;
+    const albumTracks: Track[] = (mix.tracks || []).map(r => {
+      const safeUrl = r.url_or_id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const deterministicId = `${r.source}_${safeUrl}`;
+      const existing = tracks.find(
+        t => t.id === deterministicId ||
+             (t.path_or_url && t.path_or_url === r.url_or_id) ||
+             (t.title.trim().toLowerCase() === r.title.trim().toLowerCase() &&
+              t.artist.trim().toLowerCase() === r.artist.trim().toLowerCase())
+      );
+      return existing || {
+        id: deterministicId,
+        title: r.title,
+        artist: r.artist,
+        album: r.album || mix.title,
+        duration_secs: r.duration_secs,
+        path_or_url: r.url_or_id,
+        cover_art: r.thumbnail || mix.cover_art,
+        source: r.source,
+      };
+    });
+
+    const albumTitle = mix.title || `${mix.artist} Album Mix`;
+    const existingIndex = albums.findIndex(
+      a => a.title.trim().toLowerCase() === albumTitle.trim().toLowerCase() ||
+           a.title.trim().toLowerCase() === `${mix.artist} Mix`.toLowerCase()
+    );
+
+    if (existingIndex >= 0) {
+      const existing = albums[existingIndex];
+      const merged = deduplicateTracks([...existing.tracks, ...albumTracks]);
+      const updated = [...albums];
+      updated[existingIndex] = {
+        ...existing,
+        cover_art: existing.cover_art || mix.cover_art,
+        tracks: merged,
+      };
+      setAlbums(updated);
+      persistAlbumsForUser(userId, updated);
+      if (userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
+      }
+      showNotification(getTranslation(language, 'toast.artistAlbumAdded', { title: albumTitle }));
+    } else {
+      const newAlbum: UserAlbum = {
+        id: 'album_artist_' + Date.now(),
+        title: albumTitle,
+        description: mix.description || `Tuyển tập những bài hát được nghe nhiều nhất của ${mix.artist}`,
+        cover_art: mix.cover_art || null,
+        tracks: deduplicateTracks(albumTracks),
+        created_at: new Date().toISOString(),
+      };
+      const updated = [newAlbum, ...albums];
+      setAlbums(updated);
+      persistAlbumsForUser(userId, updated);
+      if (userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
+      }
+      showNotification(getTranslation(language, 'toast.artistAlbumAdded', { title: albumTitle }));
+    }
+  };
+
   const handleAddTrackToAlbum = (albumId: string, track: Track) => {
     const userId = currentUserRef.current?.id;
     let wasAlreadyPresent = false;
@@ -660,7 +736,7 @@ export default function App() {
   }>({ forTrackId: null, isShuffle: false, ctx: '', track: null });
 
   const isScopedPlaylistContext = (ctx: string): boolean => {
-    return ctx === 'local' || ctx === 'favorites' || ctx === 'albums';
+    return ctx === 'local' || ctx === 'favorites' || ctx === 'albums' || ctx === 'artist_mix';
   };
 
   // Checks if a candidate track is already in any user playlist (Active Queue, Favorites, User Albums, or Local Music)
@@ -695,7 +771,7 @@ export default function App() {
       const favs = deduplicateTracks(tracksRef.current.filter(t => favoritesRef.current.has(t.id)));
       return favs.length > 0 ? favs : activeQueueRef.current;
     }
-    if (ctx === 'albums') {
+    if (ctx === 'albums' || ctx === 'artist_mix') {
       return activeQueueRef.current.length > 0 ? activeQueueRef.current : tracksRef.current;
     }
     if (activeQueueRef.current.length > 0) {
@@ -709,6 +785,9 @@ export default function App() {
     if (!queue.length) return null;
 
     const curId = cur?.id || null;
+    const curPath = cur?.path_or_url || null;
+    const curTitle = cur?.title?.trim().toLowerCase() || null;
+    const curArtist = cur?.artist?.trim().toLowerCase() || null;
     const shuf = isShuffleRef.current;
     const ctx = activeQueueContextRef.current;
     const cached = lockedPlaylistNextRef.current;
@@ -718,7 +797,7 @@ export default function App() {
       cached.forTrackId === curId &&
       cached.isShuffle === shuf &&
       cached.ctx === ctx &&
-      queue.some(t => t.id === cached.track!.id) &&
+      queue.some(t => t.id === cached.track!.id || (t.path_or_url && t.path_or_url === cached.track!.path_or_url)) &&
       (queue.length === 1 || cached.track.id !== curId)
     ) {
       return cached.track;
@@ -726,11 +805,17 @@ export default function App() {
 
     let picked: Track | null = null;
     if (shuf && queue.length > 1) {
-      const remaining = queue.filter(t => t.id !== curId);
-      picked = remaining[Math.floor(Math.random() * remaining.length)] || queue[0];
+      const remaining = queue.filter(t => t.id !== curId && (!curPath || t.path_or_url !== curPath));
+      picked = (remaining.length > 0 ? remaining : queue)[Math.floor(Math.random() * (remaining.length > 0 ? remaining.length : queue.length))];
     } else {
-      const idx = cur ? queue.findIndex(t => t.id === cur.id) : -1;
+      const idx = cur ? queue.findIndex(t => 
+        t.id === cur.id ||
+        (curPath && t.path_or_url && t.path_or_url === curPath) ||
+        (curTitle && curArtist && t.title.trim().toLowerCase() === curTitle && t.artist.trim().toLowerCase() === curArtist)
+      ) : -1;
+
       if (idx !== -1) {
+        lastPlaylistIndexRef.current = idx;
         picked = queue[(idx + 1) % queue.length];
       } else {
         picked = queue[(lastPlaylistIndexRef.current + 1) % queue.length] || queue[0];
@@ -771,15 +856,53 @@ export default function App() {
   const [showVisualizer, setShowVisualizer] = useState(true);
   const [showYoutubeVideo, setShowYoutubeVideo] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [ytVideoId, setYtVideoId] = useState<string | null>(null);
+  const [ytVideoId1, setYtVideoId1] = useState<string | null>(null);
+  const [ytVideoId2, setYtVideoId2] = useState<string | null>(null);
   const [scTrackUrl, setScTrackUrl] = useState<string | null>(null);
 
+  // Spotify-style Equal-Power Crossfade State
+  const [crossfadeDuration, setCrossfadeDuration] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('spytify_crossfade_duration');
+      return saved !== null ? Number(saved) : 5; // Default 5s like Spotify!
+    } catch {
+      return 5;
+    }
+  });
+  const crossfadeDurationRef = useRef<number>(crossfadeDuration);
+  useEffect(() => {
+    crossfadeDurationRef.current = crossfadeDuration;
+    try {
+      localStorage.setItem('spytify_crossfade_duration', String(crossfadeDuration));
+    } catch {}
+  }, [crossfadeDuration]);
+
+  const [isCrossfading, setIsCrossfading] = useState<boolean>(false);
+  const crossfadeActiveRef = useRef<boolean>(false);
+  const crossfadeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Dual-channel YouTube players
+  const ytIframe1Ref = useRef<HTMLIFrameElement | null>(null);
+  const ytIframe2Ref = useRef<HTMLIFrameElement | null>(null);
+  const activeYtChannelRef = useRef<1 | 2>(1);
   const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  const ytVideoId = activeYtChannelRef.current === 1 ? ytVideoId1 : ytVideoId2;
+  const setYtVideoId = (vid: string | null) => {
+    if (activeYtChannelRef.current === 1) setYtVideoId1(vid);
+    else setYtVideoId2(vid);
+  };
+
   const ytUnavailableTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ytHasStartedPlayingRef = useRef(false);
   const ytMusicFallbackActiveRef = useRef(false);
   const ytMusicFallbackTriedRef = useRef(false);
   const scIframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  // Dual-channel HTML5 audio elements
+  const onlineAudio1Ref = useRef<HTMLAudioElement | null>(null);
+  const onlineAudio2Ref = useRef<HTMLAudioElement | null>(null);
+  const activeAudioChannelRef = useRef<1 | 2>(1);
   const onlineAudioRef = useRef<HTMLAudioElement | null>(null);
   const currentTrackRef = useRef<Track | null>(null);
   const isPlayingRef = useRef(false);
@@ -1465,6 +1588,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
   };
 
+  const applyUserTheme = (userId: string, cloudThemeMode?: 'dark' | 'light', cloudAccentColor?: string) => {
+    // 1. Theme Mode (Dark / Light)
+    const userTheme = cloudThemeMode || (localStorage.getItem(`spytify_theme_mode_${userId}`) as 'dark' | 'light' | null);
+    if (userTheme && (userTheme === 'dark' || userTheme === 'light')) {
+      setThemeMode(userTheme);
+      localStorage.setItem('spytify_theme_mode', userTheme);
+      localStorage.setItem(`spytify_theme_mode_${userId}`, userTheme);
+    }
+    // 2. Accent Color
+    const userColor = cloudAccentColor || localStorage.getItem(`spytify_accent_color_${userId}`);
+    if (userColor && userColor.startsWith('#')) {
+      setAccentColor(userColor);
+      localStorage.setItem('spytify_accent_color', userColor);
+      localStorage.setItem(`spytify_accent_color_${userId}`, userColor);
+      document.documentElement.style.setProperty('--accent-color', userColor);
+    }
+  };
+
   // ─── RESTORE USER SESSION FROM SQLITE ──────────────────────────────────────
   useEffect(() => {
     const savedUserId = localStorage.getItem('spytify_active_user_id') || localStorage.getItem('soundify_active_user_id');
@@ -1473,6 +1614,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         .then(user => {
           if (user) {
             setCurrentUser(user);
+            applyUserTheme(user.id);
             localStorage.setItem('spytify_active_user_id', user.id);
             localStorage.setItem('soundify_active_user_id', user.id);
             loadFavoritesFromDb(user.id);
@@ -1559,6 +1701,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
+    applyUserTheme(user.id);
     localStorage.setItem('spytify_active_user_id', user.id);
     localStorage.setItem('soundify_active_user_id', user.id);
     loadFavoritesFromDb(user.id);
@@ -1723,12 +1866,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [effectiveUpcomingTrack, preloadedNextTrack, recommendMode, isShuffle, activeQueueContext, language]);
 
   // ─── AUTO-PLAY NEXT TRACK & AUTO-RECOMMEND ENGINE ──────────────────────────
-  const handleNext = useCallback(async (isManualSkip = false) => {
+  const handleNext = useCallback(async (isManualSkip = false, isCrossfade = false) => {
     if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
     if (isSkippingRef.current) return;
     isSkippingRef.current = true;
-    playStartTimestampRef.current = null;
-    accumulatedTimeRef.current = 0;
+    if (!isCrossfade) {
+      if (crossfadeTimerRef.current) {
+        clearInterval(crossfadeTimerRef.current);
+        crossfadeTimerRef.current = null;
+      }
+      crossfadeActiveRef.current = false;
+      setIsCrossfading(false);
+      playStartTimestampRef.current = null;
+      accumulatedTimeRef.current = 0;
+    }
 
     try {
       const all = getEffectiveQueue();
@@ -1750,7 +1901,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       // 1. Repeat single track mode (only when track ends naturally, not on manual skip)
       if (!isManualSkip && repeatModeRef.current === 'one' && cur) {
-        playTrackInternal(cur);
+        playTrackInternal(cur, false, false);
         return;
       }
 
@@ -1759,6 +1910,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         const curIdx = cur ? all.findIndex(t => t.id === cur.id) : -1;
         if (curIdx === -1 || curIdx >= all.length - 1) {
           setIsPlaying(false);
+          crossfadeActiveRef.current = false;
+          setIsCrossfading(false);
           return;
         }
       }
@@ -1767,7 +1920,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       if (isShuffleRef.current && all.length > 1 && recommendModeRef.current === 'off') {
         const randomTrack = getNextPlaylistTrack(cur);
         if (randomTrack) {
-          playTrackInternal(randomTrack);
+          playTrackInternal(randomTrack, false, isCrossfade);
           return;
         }
       }
@@ -1775,7 +1928,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       // 4. CHẾ ĐỘ ĐỀ XUẤT NHẠC TIẾP THEO:
       // - 'fresh' (Mới): Bài tiếp theo luôn là bài MỚI hoàn toàn nằm ngoài mọi Playlist (Yêu thích, Album, Local)
       // - 'mix' (Mix): Xen kẽ 1 bài cũ (trong Playlist đang phát) ↔ 1 bài mới hoàn toàn (ngoài Playlist)
-      if (recommendModeRef.current !== 'off') {
+      // Lưu ý: Nếu người dùng đang nghe trong Scoped Playlist (Album nghệ sĩ, Album của tôi, Nhạc yêu thích), luôn ưu tiên phát tiếp trong Album/Playlist đó!
+      const isScoped = isScopedPlaylistContext(activeQueueContextRef.current);
+      if (recommendModeRef.current !== 'off' && !isScoped) {
         const mode = recommendModeRef.current;
 
         // 4A. Nếu ở chế độ 'mix' và tới lượt phát bài CŨ trong Playlist:
@@ -1783,7 +1938,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           const nextPlaylistTrack = getNextPlaylistTrack(cur);
           if (nextPlaylistTrack) {
             mixNextIsNewRef.current = true;
-            playTrackInternal(nextPlaylistTrack);
+            playTrackInternal(nextPlaylistTrack, false, isCrossfade);
             showNotification(`🎵 Mix [${getTranslation(language, 'mode.playlistTag')}]: ${nextPlaylistTrack.title} - ${nextPlaylistTrack.artist}`);
             return;
           }
@@ -1795,7 +1950,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           preloadedNextTrackRef.current = null;
           mixNextIsNewRef.current = false;
           setTracks(prev => deduplicateTracks([...prev, next]));
-          playTrackInternal(next);
+          playTrackInternal(next, false, isCrossfade);
           const srcLabel = next.source === 'soundcloud' ? 'SoundCloud' : next.source === 'audius' ? 'Audius 320K' : 'YouTube';
           showNotification(`🌟 ${mode === 'fresh' ? getTranslation(language, 'toast.newDiscovery') : `Mix [${getTranslation(language, 'mode.newTrackTag')}]`} [${srcLabel}]: ${next.title} - ${next.artist}`);
           return;
@@ -1842,7 +1997,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
                 mixNextIsNewRef.current = false;
                 setTracks(prev => deduplicateTracks([...prev, newTrack]));
-                playTrackInternal(newTrack);
+                playTrackInternal(newTrack, false, isCrossfade);
                 const srcLabel = newTrack.source === 'soundcloud' ? 'SoundCloud' : newTrack.source === 'audius' ? 'Audius 320K' : 'YouTube';
                 showNotification(`🌟 ${mode === 'fresh' ? getTranslation(language, 'toast.newDiscovery') : `Mix [${getTranslation(language, 'mode.newTrackTag')}]`} [${srcLabel}]: ${newTrack.title} - ${newTrack.artist}`);
                 return;
@@ -1857,14 +2012,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       // 5. Default sequential next within active playlist (when recommendMode === 'off' or fallback)
       if (!cur) {
         if (all[0]) {
-          playTrackInternal(all[0]);
+          playTrackInternal(all[0], false, isCrossfade);
         }
         return;
       }
 
       const nextTrack = getNextPlaylistTrack(cur);
       if (nextTrack) {
-        playTrackInternal(nextTrack);
+        playTrackInternal(nextTrack, false, isCrossfade);
+      } else if (isCrossfade) {
+        crossfadeActiveRef.current = false;
+        setIsCrossfading(false);
       }
     } finally {
       setTimeout(() => {
@@ -1889,6 +2047,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       const trueDur = Math.max(durationRef.current || 0, track.duration_secs || 0);
 
       if (track.source === 'youtube' || track.source === 'soundcloud') {
+        if (!playStartTimestampRef.current && isPlayingRef.current) {
+          playStartTimestampRef.current = Date.now();
+        }
         if (playStartTimestampRef.current) {
           const elapsed = accumulatedTimeRef.current + (Date.now() - playStartTimestampRef.current) / 1000;
           curTime = elapsed;
@@ -1910,6 +2071,21 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
 
       if (isTrayModeRef.current) return;
+
+      // ─── SPOTIFY-STYLE EQUAL-POWER CROSSFADE TRIGGER ───
+      const cfSecs = crossfadeDurationRef.current;
+      if (
+        cfSecs > 0 &&
+        !crossfadeActiveRef.current &&
+        !isSkippingRef.current &&
+        trueDur > (cfSecs * 2) &&
+        curTime > 5 &&
+        (trueDur - curTime) <= cfSecs &&
+        (trueDur - curTime) >= 0.3
+      ) {
+        crossfadeActiveRef.current = true;
+        handleNextRef.current?.(false, true);
+      }
 
       // Update real-time countdown when 10s or less remains
       if (trueDur > 15 && curTime > 5) {
@@ -2006,30 +2182,48 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   useEffect(() => {
     const onMsg = (event: MessageEvent) => {
       try {
-        // Chỉ xử lý tin nhắn từ iframe YouTube của App chính nếu iframe tồn tại
-        if (ytIframeRef.current && event.source && event.source !== ytIframeRef.current.contentWindow) {
+        const isFrom1 = ytIframe1Ref.current && event.source === ytIframe1Ref.current.contentWindow;
+        const isFrom2 = ytIframe2Ref.current && event.source === ytIframe2Ref.current.contentWindow;
+        const isFromSc = scIframeRef.current && event.source === scIframeRef.current.contentWindow;
+
+        // Bỏ qua tin nhắn không phải từ iframe của Spytify
+        if (!isFrom1 && !isFrom2 && !isFromSc) {
           return;
         }
+
+        const ytChannel: 1 | 2 = isFrom1 ? 1 : 2;
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data) return;
 
         // YouTube events
         if (data.event === 'onReady' || (data.event === 'onStateChange' && (data.info === 1 || data.info === 3))) {
-          if (currentTrackRef.current?.source === 'youtube') {
-            const curVol = volumeRef.current;
-            if (curVol === 0) {
-              sendYtCmd('mute');
-            } else {
-              sendYtCmd('unMute');
+          if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
+            if (!crossfadeActiveRef.current) {
+              const curVol = volumeRef.current;
+              if (curVol === 0) {
+                sendYtCmd('mute', [], ytChannel);
+              } else {
+                sendYtCmd('unMute', [], ytChannel);
+              }
+              sendYtCmd('setVolume', [curVol * 100], ytChannel);
             }
-            sendYtCmd('setVolume', [curVol * 100]);
+            if (data.event === 'onReady' && isPlayingRef.current) {
+              sendYtCmd('playVideo', [], ytChannel);
+            }
             ytHasStartedPlayingRef.current = true;
             if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
           }
         }
 
+        // Tự động giải phóng khi video ở trạng thái CUED (info: 5)
+        if (data.event === 'onStateChange' && data.info === 5) {
+          if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube' && isPlayingRef.current) {
+            sendYtCmd('playVideo', [], ytChannel);
+          }
+        }
+
         if (data.event === 'onError') {
-          if (currentTrackRef.current?.source !== 'youtube') return;
+          if (ytChannel !== activeYtChannelRef.current || currentTrackRef.current?.source !== 'youtube') return;
           const erroredTrack = currentTrackRef.current;
           console.warn('[YouTube Player] Embed blocked or unavailable, code:', data.info, '-> Auto-resolving via YouTube Music API...');
           if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
@@ -2044,81 +2238,92 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
         if (data.event === 'onStateChange') {
-          if (currentTrackRef.current?.source !== 'youtube') return;
-          if (data.info === 1) {
-            isPlayingRef.current = true;
-            setIsPlaying(true);
-            if (!playStartTimestampRef.current) {
-              playStartTimestampRef.current = Date.now();
+          if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
+            if (data.info === 1) {
+              isPlayingRef.current = true;
+              setIsPlaying(true);
+              if (!playStartTimestampRef.current) {
+                playStartTimestampRef.current = Date.now();
+              }
+              ytHasStartedPlayingRef.current = true;
+              if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+            } else if (data.info === 3 || data.info === -1) {
+              ytHasStartedPlayingRef.current = true;
+              if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+            } else if (data.info === 2) {
+              isPlayingRef.current = false;
+              setIsPlaying(false);
+              if (playStartTimestampRef.current) {
+                accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
+                playStartTimestampRef.current = null;
+              }
+            } else if (data.info === 0) {
+              // Bỏ qua nếu crossfade đang chuyển bài chéo
+              if (!crossfadeActiveRef.current) {
+                isPlayingRef.current = false;
+                setIsPlaying(false);
+                playStartTimestampRef.current = null;
+                accumulatedTimeRef.current = 0;
+                handleNext();
+              }
             }
-            ytHasStartedPlayingRef.current = true;
-            if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-          } else if (data.info === 3 || data.info === -1) {
-            ytHasStartedPlayingRef.current = true;
-            if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-          } else if (data.info === 2) {
-            isPlayingRef.current = false;
-            setIsPlaying(false);
-            if (playStartTimestampRef.current) {
-              accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
-              playStartTimestampRef.current = null;
-            }
-          } else if (data.info === 0) {
-            isPlayingRef.current = false;
-            setIsPlaying(false);
-            playStartTimestampRef.current = null;
-            accumulatedTimeRef.current = 0;
-            handleNext();
           }
         }
         if (data.event === 'infoDelivery' && data.info) {
-          if (currentTrackRef.current?.source !== 'youtube') return;
-          const isCurLive = checkIsLiveTrack(currentTrackRef.current);
-          if (typeof data.info.currentTime === 'number') {
-            const rawCur = data.info.currentTime;
-            if (rawCur > 0) {
+          if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
+            const isCurLive = checkIsLiveTrack(currentTrackRef.current);
+            if (typeof data.info.currentTime === 'number') {
+              const rawCur = data.info.currentTime;
+              if (rawCur > 0) {
+                ytHasStartedPlayingRef.current = true;
+                if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+              }
+              // Guard against YouTube Live streams sending DVR/epoch timestamps
+              if (isCurLive || rawCur > 86400) {
+                durationRef.current = 0;
+                if (!isTrayModeRef.current) setDuration(0);
+              } else if (rawCur >= 0) {
+                currentTimeRef.current = rawCur;
+                accumulatedTimeRef.current = rawCur;
+                if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
+                if (!isTrayModeRef.current) setCurrentTime(rawCur);
+              }
+            }
+            if (typeof data.info.duration === 'number') {
+              if (isCurLive) {
+                durationRef.current = 0;
+                if (!isTrayModeRef.current) setDuration(0);
+              } else if (data.info.duration > 0 && data.info.duration < 86400) {
+                durationRef.current = data.info.duration;
+                if (!isTrayModeRef.current) setDuration(data.info.duration);
+              } else if (data.info.duration === 0) {
+                durationRef.current = 0;
+                if (!isTrayModeRef.current) setDuration(0);
+              }
+            }
+            if (data.info.playerState === 1 || data.info.playerState === 3) {
               ytHasStartedPlayingRef.current = true;
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+              if (data.info.playerState === 1) {
+                isPlayingRef.current = true;
+                if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
+                if (!isTrayModeRef.current) setIsPlaying(true);
+                if (!crossfadeActiveRef.current) {
+                  const curVol = volumeRef.current;
+                  const volPct = Math.round(curVol * 100);
+                  sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], ytChannel);
+                  sendYtCmd('setVolume', [volPct], ytChannel);
+                }
+              }
             }
-            // Guard against YouTube Live streams sending DVR/epoch timestamps
-            if (isCurLive || rawCur > 86400) {
-              durationRef.current = 0;
-              if (!isTrayModeRef.current) setDuration(0);
-            } else if (rawCur >= 0) {
-              currentTimeRef.current = rawCur;
-              accumulatedTimeRef.current = rawCur;
-              if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
-              if (!isTrayModeRef.current) setCurrentTime(rawCur);
+            if (data.info.playerState === 2) {
+              isPlayingRef.current = false;
+              if (playStartTimestampRef.current) {
+                accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
+                playStartTimestampRef.current = null;
+              }
+              if (!isTrayModeRef.current) setIsPlaying(false);
             }
-          }
-          if (typeof data.info.duration === 'number') {
-            if (isCurLive) {
-              durationRef.current = 0;
-              if (!isTrayModeRef.current) setDuration(0);
-            } else if (data.info.duration > 0 && data.info.duration < 86400) {
-              durationRef.current = data.info.duration;
-              if (!isTrayModeRef.current) setDuration(data.info.duration);
-            } else if (data.info.duration === 0) {
-              durationRef.current = 0;
-              if (!isTrayModeRef.current) setDuration(0);
-            }
-          }
-          if (data.info.playerState === 1 || data.info.playerState === 3) {
-            ytHasStartedPlayingRef.current = true;
-            if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-            if (data.info.playerState === 1) {
-              isPlayingRef.current = true;
-              if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
-              if (!isTrayModeRef.current) setIsPlaying(true);
-            }
-          }
-          if (data.info.playerState === 2) {
-            isPlayingRef.current = false;
-            if (playStartTimestampRef.current) {
-              accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
-              playStartTimestampRef.current = null;
-            }
-            if (!isTrayModeRef.current) setIsPlaying(false);
           }
         }
 
@@ -2151,11 +2356,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             }
           }
           if (scEvent === 'finish') {
-            isPlayingRef.current = false;
-            setIsPlaying(false);
-            playStartTimestampRef.current = null;
-            accumulatedTimeRef.current = 0;
-            handleNext();
+            if (!crossfadeActiveRef.current) {
+              isPlayingRef.current = false;
+              setIsPlaying(false);
+              playStartTimestampRef.current = null;
+              accumulatedTimeRef.current = 0;
+              handleNext();
+            }
           }
           if (scEvent === 'playProgress') {
             const rawPos = data.data?.currentPosition ?? data.value?.currentPosition ?? 0;
@@ -2176,19 +2383,23 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // Subscribe to YouTube iframe events and proactively sync volume after video loads
   useEffect(() => {
-    if (!ytVideoId) return;
+    const vid = activeYtChannelRef.current === 1 ? ytVideoId1 : ytVideoId2;
+    if (!vid) return;
     const syncYt = () => {
       try {
-        ytIframeRef.current?.contentWindow?.postMessage(
+        const targetIframe = activeYtChannelRef.current === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+        targetIframe?.contentWindow?.postMessage(
           JSON.stringify({ event: 'listening', id: 1 }), '*'
         );
-        const curVol = volumeRef.current;
-        if (curVol === 0) {
-          sendYtCmd('mute');
-        } else {
-          sendYtCmd('unMute');
+        if (!crossfadeActiveRef.current) {
+          const curVol = volumeRef.current;
+          if (curVol === 0) {
+            sendYtCmd('mute');
+          } else {
+            sendYtCmd('unMute');
+          }
+          sendYtCmd('setVolume', [curVol * 100]);
         }
-        sendYtCmd('setVolume', [curVol * 100]);
       } catch {}
     };
     syncYt();
@@ -2202,40 +2413,64 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       clearTimeout(timer3);
       clearTimeout(timer4);
     };
-  }, [ytVideoId]);
+  }, [ytVideoId1, ytVideoId2]);
 
-  // ─── AUDIUS & LOCAL HTML5 audio element (Native decoding for MP3, M4A, WebM, etc.) ───
+  // ─── DUAL HTML5 AUDIO ELEMENTS (CHANNEL 1 & 2 FOR SEAMLESS EQUAL-POWER CROSSFADE) ───
   useEffect(() => {
-    const audio = new Audio();
-    onlineAudioRef.current = audio;
-    const onTimeUpdate = () => {
-      if (
-        currentTrackRef.current?.source === 'audius' ||
-        currentTrackRef.current?.source === 'local' ||
-        (currentTrackRef.current?.source === 'youtube' && ytMusicFallbackActiveRef.current)
-      ) {
-        currentTimeRef.current = audio.currentTime;
-        if (audio.duration > 0 && !isNaN(audio.duration)) {
-          durationRef.current = audio.duration;
-        }
-        if (!isTrayModeRef.current) {
-          setCurrentTime(audio.currentTime);
+    const audio1 = new Audio();
+    const audio2 = new Audio();
+    onlineAudio1Ref.current = audio1;
+    onlineAudio2Ref.current = audio2;
+    onlineAudioRef.current = audio1;
+
+    const setupAudioListeners = (audio: HTMLAudioElement, channel: 1 | 2) => {
+      const onTimeUpdate = () => {
+        if (activeAudioChannelRef.current !== channel) return;
+        if (
+          currentTrackRef.current?.source === 'audius' ||
+          currentTrackRef.current?.source === 'local' ||
+          (currentTrackRef.current?.source === 'youtube' && ytMusicFallbackActiveRef.current)
+        ) {
+          currentTimeRef.current = audio.currentTime;
           if (audio.duration > 0 && !isNaN(audio.duration)) {
-            setDuration(audio.duration);
+            durationRef.current = audio.duration;
+          }
+          if (!isTrayModeRef.current) {
+            setCurrentTime(audio.currentTime);
+            if (audio.duration > 0 && !isNaN(audio.duration)) {
+              setDuration(audio.duration);
+            }
           }
         }
-      }
+      };
+
+      const onEnded = () => {
+        if (activeAudioChannelRef.current !== channel) return;
+        if (!crossfadeActiveRef.current) {
+          isPlayingRef.current = false;
+          setIsPlaying(false);
+          playStartTimestampRef.current = null;
+          accumulatedTimeRef.current = 0;
+          handleNextRef.current?.();
+        }
+      };
+
+      audio.addEventListener('timeupdate', onTimeUpdate);
+      audio.addEventListener('ended', onEnded);
+      return () => {
+        audio.pause();
+        audio.removeEventListener('timeupdate', onTimeUpdate);
+        audio.removeEventListener('ended', onEnded);
+      };
     };
-    const onEnded = () => {
-      isPlayingRef.current = false;
-      setIsPlaying(false);
-      playStartTimestampRef.current = null;
-      accumulatedTimeRef.current = 0;
-      handleNextRef.current?.();
+
+    const cleanup1 = setupAudioListeners(audio1, 1);
+    const cleanup2 = setupAudioListeners(audio2, 2);
+
+    return () => {
+      cleanup1();
+      cleanup2();
     };
-    audio.addEventListener('timeupdate', onTimeUpdate);
-    audio.addEventListener('ended', onEnded);
-    return () => { audio.pause(); audio.removeEventListener('timeupdate', onTimeUpdate); audio.removeEventListener('ended', onEnded); };
   }, []);
 
   // ─── LOCAL playback polling ───────────────────────────────────────────────
@@ -2277,9 +2512,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
-  const sendYtCmd = (func: string, args: unknown[] = []) => {
-    if (ytIframeRef.current?.contentWindow) {
-      ytIframeRef.current.contentWindow.postMessage(
+  const sendYtCmd = (func: string, args: unknown[] = [], channel?: 1 | 2) => {
+    const ch = channel ?? activeYtChannelRef.current;
+    const target = ch === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+    if (target?.contentWindow) {
+      target.contentWindow.postMessage(
         JSON.stringify({ event: 'command', func, args }), '*'
       );
     }
@@ -2352,7 +2589,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   // â”€â”€â”€ Core play function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const playTrackInternal = async (track: Track, isBackOrForward = false) => {
+  const playTrackInternal = async (track: Track, isBackOrForward = false, isCrossfade = false) => {
     // Record true previously playing track into playback history stack before switching
     if (!isBackOrForward && currentTrackRef.current && currentTrackRef.current.id !== track.id) {
       playbackHistoryStackRef.current.push(currentTrackRef.current);
@@ -2372,6 +2609,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       mixNextIsNewRef.current = false;
     }
 
+    const previousTrack = currentTrackRef.current;
     currentTrackRef.current = track;
     setCurrentTrack(track);
     currentTimeRef.current = 0;
@@ -2418,8 +2656,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const initialDur = isLiveTrack ? 0 : (track.duration_secs || 0);
     durationRef.current = initialDur;
     setDuration(initialDur);
-    isPlayingRef.current = false;
-    setIsPlaying(false);
 
     // Smart DJ always prepares upcoming tracks for seamless auto-play & immediate popup
     if (nextPreloaded) {
@@ -2441,154 +2677,287 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       fetchUpcomingForTrack(track);
     }
 
-    // Reset Wall-clock timer (start timestamp only when playback actually begins for online streams)
+    // Reset Wall-clock timer
     accumulatedTimeRef.current = 0;
-    playStartTimestampRef.current = track.source === 'youtube' ? null : Date.now();
+    playStartTimestampRef.current = Date.now();
 
     // Record history to SQLite if logged in
     if (currentUserRef.current) {
       invoke('db_add_history', { userId: currentUserRef.current.id, track }).catch(console.error);
     }
 
-    if (track.source === 'local') {
-      if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-      // Completely stop YouTube & reset video
-      sendYtCmd('stopVideo');
-      setYtVideoId(null);
-      setShowYoutubeVideo(false);
+    // ──────────────────────────────────────────────────────────────────────────
+    // CASE A: NORMAL PLAYBACK (No Crossfade — Direct Switch)
+    // ──────────────────────────────────────────────────────────────────────────
+    if (!isCrossfade) {
+      if (crossfadeTimerRef.current) {
+        clearInterval(crossfadeTimerRef.current);
+        crossfadeTimerRef.current = null;
+      }
+      crossfadeActiveRef.current = false;
+      setIsCrossfading(false);
+      isPlayingRef.current = false;
+      setIsPlaying(false);
 
-      // Completely pause & clear SoundCloud
-      sendScCmd('pause');
-      setScTrackUrl(null);
+      if (track.source === 'local') {
+        if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+        sendYtCmd('stopVideo', [], 1);
+        sendYtCmd('stopVideo', [], 2);
+        setYtVideoId1(null);
+        setYtVideoId2(null);
+        setShowYoutubeVideo(false);
+        sendScCmd('pause');
+        setScTrackUrl(null);
 
-      // 1. Play local file using native browser audio with convertFileSrc
-      let playedViaBrowser = false;
-      if (onlineAudioRef.current) {
-        try {
-          try { await invoke('stop_track'); } catch {}
-          const fileUrl = convertFileSrc(track.path_or_url);
-          onlineAudioRef.current.src = fileUrl;
-          onlineAudioRef.current.volume = volumeRef.current;
-          await onlineAudioRef.current.play();
+        activeAudioChannelRef.current = 1;
+        onlineAudioRef.current = onlineAudio1Ref.current;
+        onlineAudio2Ref.current?.pause();
+        if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
+
+        let playedViaBrowser = false;
+        if (onlineAudio1Ref.current) {
+          try {
+            try { await invoke('stop_track'); } catch {}
+            const fileUrl = convertFileSrc(track.path_or_url);
+            onlineAudio1Ref.current.src = fileUrl;
+            onlineAudio1Ref.current.volume = volumeRef.current;
+            await onlineAudio1Ref.current.play();
+            isPlayingRef.current = true;
+            setIsPlaying(true);
+            playedViaBrowser = true;
+            showNotification(`▶ ${track.title} - ${track.artist}`);
+          } catch (e) {
+            console.warn('Browser convertFileSrc play failed, fallback to Rodio:', e);
+          }
+        }
+
+        if (!playedViaBrowser) {
+          try {
+            if (onlineAudio1Ref.current) onlineAudio1Ref.current.src = '';
+            await invoke('play_track', { track });
+            try { await invoke('set_volume', { volume: volumeRef.current }); } catch {}
+            isPlayingRef.current = true;
+            setIsPlaying(true);
+            showNotification(`▶ ${track.title} - ${track.artist}`);
+          } catch (err) {
+            console.error('Rodio play_track error:', err);
+            showNotification(`${getTranslation(language, 'toast.playbackError')}: ${track.title}`);
+          }
+        }
+
+      } else if (track.source === 'youtube') {
+        try { await invoke('stop_track'); } catch {}
+        sendScCmd('pause');
+        setScTrackUrl(null);
+        onlineAudio1Ref.current?.pause();
+        if (onlineAudio1Ref.current) onlineAudio1Ref.current.src = '';
+        onlineAudio2Ref.current?.pause();
+        if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
+
+        let videoId = track.path_or_url || track.id;
+        if (videoId.startsWith('yt_')) videoId = videoId.replace('yt_', '');
+        if (videoId.includes('v=')) videoId = videoId.split('v=')[1].split('&')[0];
+        if (videoId.includes('youtu.be/')) videoId = videoId.split('youtu.be/')[1].split('?')[0];
+
+        activeYtChannelRef.current = 1;
+        sendYtCmd('stopVideo', [], 2);
+        setYtVideoId2(null);
+
+        // Kích hoạt phát video ngay lập tức (kể cả khi videoId1 không đổi)
+        if (ytVideoId1 === videoId) {
+          sendYtCmd('loadVideoById', [videoId, 0], 1);
+          sendYtCmd('playVideo', [], 1);
+        } else {
+          setYtVideoId1(videoId);
+          setTimeout(() => sendYtCmd('playVideo', [], 1), 150);
+          setTimeout(() => sendYtCmd('playVideo', [], 1), 400);
+        }
+
+        const curVol = volumeRef.current;
+        sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], 1);
+        sendYtCmd('setVolume', [curVol * 100], 1);
+        isPlayingRef.current = true;
+        setIsPlaying(true);
+        showNotification(`▶ YouTube Hi-Fi: ${track.title}`);
+
+        ytHasStartedPlayingRef.current = false;
+        if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+        // Timeout 3.5s: Tự động cứu bài bị nghẽn bằng stream trực tiếp YouTube Music API
+        ytUnavailableTimerRef.current = setTimeout(() => {
+          if (!ytHasStartedPlayingRef.current && currentTrackRef.current?.source === 'youtube') {
+            const stalledTrack = currentTrackRef.current;
+            const isLive = checkIsLiveTrack(stalledTrack);
+            if (isLive) {
+              sendYtCmd('playVideo', [], 1);
+              return;
+            }
+            fallbackToYoutubeMusicStream(stalledTrack).then((recovered) => {
+              if (!recovered && currentTrackRef.current?.id === stalledTrack.id && !ytHasStartedPlayingRef.current) {
+                showNotification('⚠️ Bài hát này không khả dụng. Tự động chuyển bài tiếp theo...');
+                setTimeout(() => {
+                  handleNext();
+                }, 1500);
+              }
+            });
+          }
+        }, 3500);
+
+      } else if (track.source === 'soundcloud') {
+        if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+        try { await invoke('stop_track'); } catch {}
+        sendYtCmd('stopVideo', [], 1);
+        sendYtCmd('stopVideo', [], 2);
+        setYtVideoId1(null);
+        setYtVideoId2(null);
+        setShowYoutubeVideo(false);
+        onlineAudio1Ref.current?.pause();
+        if (onlineAudio1Ref.current) onlineAudio1Ref.current.src = '';
+        onlineAudio2Ref.current?.pause();
+        if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
+
+        let scUrl = track.path_or_url;
+        if (!scUrl || !scUrl.startsWith('http')) {
+          showNotification(`${getTranslation(language, 'toast.findingSource')} SoundCloud: ${track.title}...`);
+          try {
+            const res = await invoke<SearchResult[]>('search_online', { query: `${track.title} ${track.artist}`, source: 'soundcloud' });
+            if (res && res.length > 0) {
+              scUrl = res[0].url_or_id;
+            }
+          } catch {}
+        }
+        if (scUrl) {
+          setScTrackUrl(scUrl);
+          sendScCmd('setVolume', volumeRef.current * 100);
           isPlayingRef.current = true;
           setIsPlaying(true);
-          playedViaBrowser = true;
-          showNotification(`▶ ${track.title} - ${track.artist}`);
+          showNotification(`▶ SoundCloud: ${track.title}`);
+        } else {
+          showNotification(getTranslation(language, 'toast.sourceNotFound'));
+        }
+
+      } else if (track.source === 'audius') {
+        try { await invoke('stop_track'); } catch {}
+        sendYtCmd('stopVideo', [], 1);
+        sendYtCmd('stopVideo', [], 2);
+        setYtVideoId1(null);
+        setYtVideoId2(null);
+        setShowYoutubeVideo(false);
+        sendScCmd('pause');
+        setScTrackUrl(null);
+
+        activeAudioChannelRef.current = 1;
+        onlineAudioRef.current = onlineAudio1Ref.current;
+        onlineAudio2Ref.current?.pause();
+        if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
+
+        let streamUrl = track.path_or_url;
+        try {
+          if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
+            const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
+            if (resolved) streamUrl = resolved;
+          }
         } catch (e) {
-          console.warn('Browser convertFileSrc play failed, fallback to Rodio:', e);
+          console.warn('Backend Audius stream resolve error:', e);
+        }
+
+        if (onlineAudio1Ref.current) {
+          onlineAudio1Ref.current.pause();
+          onlineAudio1Ref.current.removeAttribute('crossorigin');
+          onlineAudio1Ref.current.src = streamUrl;
+          onlineAudio1Ref.current.volume = volumeRef.current;
+          onlineAudio1Ref.current.load();
+          onlineAudio1Ref.current.play()
+            .then(() => {
+              isPlayingRef.current = true;
+              setIsPlaying(true);
+              showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
+            })
+            .catch(async () => {
+              try {
+                const fallback = await invoke<string>('resolve_audius_stream', { urlOrId: track.path_or_url });
+                if (fallback && fallback !== streamUrl && onlineAudio1Ref.current) {
+                  onlineAudio1Ref.current.src = fallback;
+                  onlineAudio1Ref.current.load();
+                  await onlineAudio1Ref.current.play();
+                  isPlayingRef.current = true;
+                  setIsPlaying(true);
+                  showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
+                  return;
+                }
+              } catch {}
+              showNotification(getTranslation(language, 'toast.audiusError'));
+            });
         }
       }
+      return;
+    }
 
-      // 2. If browser could not play, fallback to Rust Rodio with Symphonia
-      if (!playedViaBrowser) {
+    // ──────────────────────────────────────────────────────────────────────────
+    // CASE B: SPOTIFY-STYLE EQUAL-POWER CROSSFADE OVERLAP
+    // ──────────────────────────────────────────────────────────────────────────
+    const outSource = previousTrack?.source || 'local';
+    const outAudioChannel = activeAudioChannelRef.current;
+    const outAudio = outAudioChannel === 1 ? onlineAudio1Ref.current : onlineAudio2Ref.current;
+    const outYtChannel = activeYtChannelRef.current;
+    const outSc = outSource === 'soundcloud';
+
+    // Pick alternate incoming channels
+    const inAudioChannel: 1 | 2 = outAudioChannel === 1 ? 2 : 1;
+    const inAudio = inAudioChannel === 1 ? onlineAudio1Ref.current : onlineAudio2Ref.current;
+    const inYtChannel: 1 | 2 = outYtChannel === 1 ? 2 : 1;
+
+    // Toast notification for Spotify Crossfade
+    showNotification(`🔀 ${getTranslation(language, 'settings.crossfadingToast', { seconds: crossfadeDurationRef.current })}: ${track.title} - ${track.artist}`);
+
+    // Start incoming track with volume = 0
+    if (track.source === 'local') {
+      activeAudioChannelRef.current = inAudioChannel;
+      onlineAudioRef.current = inAudio;
+      if (inAudio) {
         try {
-          if (onlineAudioRef.current) onlineAudioRef.current.src = '';
-          await invoke('play_track', { track });
-          try { await invoke('set_volume', { volume: volumeRef.current }); } catch {}
+          const fileUrl = convertFileSrc(track.path_or_url);
+          inAudio.src = fileUrl;
+          inAudio.volume = 0;
+          await inAudio.play();
           isPlayingRef.current = true;
           setIsPlaying(true);
-          showNotification(`▶ ${track.title} - ${track.artist}`);
-        } catch (err) {
-          console.error('Rodio play_track error:', err);
-          showNotification(`${getTranslation(language, 'toast.playbackError')}: ${track.title}`);
+        } catch (e) {
+          console.warn('Crossfade local play error:', e);
         }
       }
 
     } else if (track.source === 'youtube') {
-      try { await invoke('stop_track'); } catch {}
-      // Completely pause & clear SoundCloud
-      sendScCmd('pause');
-      setScTrackUrl(null);
-
-      if (onlineAudioRef.current) {
-        onlineAudioRef.current.pause();
-        onlineAudioRef.current.src = '';
-      }
-
+      activeYtChannelRef.current = inYtChannel;
       let videoId = track.path_or_url || track.id;
       if (videoId.startsWith('yt_')) videoId = videoId.replace('yt_', '');
       if (videoId.includes('v=')) videoId = videoId.split('v=')[1].split('&')[0];
-      setYtVideoId(videoId);
-      const curVol = volumeRef.current;
-      if (curVol === 0) {
-        sendYtCmd('mute');
+      if (videoId.includes('youtu.be/')) videoId = videoId.split('youtu.be/')[1].split('?')[0];
+
+      if (inYtChannel === 1) {
+        if (ytVideoId1 === videoId) {
+          sendYtCmd('loadVideoById', [videoId, 0], 1);
+        } else {
+          setYtVideoId1(videoId);
+        }
       } else {
-        sendYtCmd('unMute');
+        if (ytVideoId2 === videoId) {
+          sendYtCmd('loadVideoById', [videoId, 0], 2);
+        } else {
+          setYtVideoId2(videoId);
+        }
       }
-      sendYtCmd('setVolume', [curVol * 100]);
+
+      sendYtCmd('setVolume', [0], inYtChannel);
+      sendYtCmd('playVideo', [], inYtChannel);
+      setTimeout(() => sendYtCmd('playVideo', [], inYtChannel), 200);
+      setTimeout(() => sendYtCmd('playVideo', [], inYtChannel), 500);
       isPlayingRef.current = true;
       setIsPlaying(true);
-      showNotification(`▶ YouTube Hi-Fi: ${track.title}`);
-
-      ytHasStartedPlayingRef.current = false;
-      if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-      ytUnavailableTimerRef.current = setTimeout(() => {
-        if (!ytHasStartedPlayingRef.current && currentTrackRef.current?.source === 'youtube') {
-          const stalledTrack = currentTrackRef.current;
-          console.warn('[YouTube Watchdog] Embed stalled after 10s...');
-          const isLive = checkIsLiveTrack(stalledTrack);
-          if (isLive) {
-            // Luồng phát sóng trực tiếp / Radio 24/7: tiếp tục gửi lệnh play mà không bỏ qua bài
-            sendYtCmd('playVideo');
-            return;
-          }
-          fallbackToYoutubeMusicStream(stalledTrack).then((recovered) => {
-            if (!recovered && currentTrackRef.current?.id === stalledTrack.id && !ytHasStartedPlayingRef.current) {
-              showNotification('⚠️ Bài hát này không khả dụng. Tự động chuyển bài tiếp theo...');
-              setTimeout(() => {
-                handleNext();
-              }, 1500);
-            }
-          });
-        }
-      }, 10000);
-
-    } else if (track.source === 'soundcloud') {
-      if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-      try { await invoke('stop_track'); } catch {}
-      // COMPLETELY STOP YOUTUBE & CLEAR VIDEO & HIDE POPUP!
-      sendYtCmd('stopVideo');
-      setYtVideoId(null);
-      setShowYoutubeVideo(false);
-
-      if (onlineAudioRef.current) {
-        onlineAudioRef.current.pause();
-        onlineAudioRef.current.src = '';
-      }
-
-      let scUrl = track.path_or_url;
-      if (!scUrl || !scUrl.startsWith('http')) {
-        // Fallback: search online on soundcloud
-        showNotification(`${getTranslation(language, 'toast.findingSource')} SoundCloud: ${track.title}...`);
-        try {
-          const res = await invoke<SearchResult[]>('search_online', { query: `${track.title} ${track.artist}`, source: 'soundcloud' });
-          if (res && res.length > 0) {
-            scUrl = res[0].url_or_id;
-          }
-        } catch {}
-      }
-      if (scUrl) {
-        setScTrackUrl(scUrl);
-        sendScCmd('setVolume', volumeRef.current * 100);
-        isPlayingRef.current = true;
-        setIsPlaying(true);
-        showNotification(`▶ SoundCloud: ${track.title}`);
-      } else {
-        showNotification(getTranslation(language, 'toast.sourceNotFound'));
-      }
+      playStartTimestampRef.current = Date.now();
 
     } else if (track.source === 'audius') {
-      try { await invoke('stop_track'); } catch {}
-      // Stop and clear YouTube completely
-      sendYtCmd('stopVideo');
-      setYtVideoId(null);
-      setShowYoutubeVideo(false);
-
-      // Stop and clear SoundCloud completely
-      sendScCmd('pause');
-      setScTrackUrl(null);
-
-      // Resolve direct stream URL if needed
+      activeAudioChannelRef.current = inAudioChannel;
+      onlineAudioRef.current = inAudio;
       let streamUrl = track.path_or_url;
       try {
         if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
@@ -2596,40 +2965,96 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           if (resolved) streamUrl = resolved;
         }
       } catch (e) {
-        console.warn('Backend Audius stream resolve error:', e);
+        console.warn('Audius stream resolve error:', e);
+      }
+      if (inAudio) {
+        inAudio.src = streamUrl;
+        inAudio.volume = 0;
+        inAudio.load();
+        inAudio.play().catch(console.warn);
+        isPlayingRef.current = true;
+        setIsPlaying(true);
       }
 
-      // Play direct 320kbps Open Stream via HTML5 Audio
-      if (onlineAudioRef.current) {
-        onlineAudioRef.current.pause();
-        onlineAudioRef.current.removeAttribute('crossorigin');
-        onlineAudioRef.current.src = streamUrl;
-        onlineAudioRef.current.volume = volumeRef.current;
-        onlineAudioRef.current.load();
-        onlineAudioRef.current.play()
-          .then(() => {
-            isPlayingRef.current = true;
-            setIsPlaying(true);
-            showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
-          })
-          .catch(async (err) => {
-            console.warn('Audius direct play error, trying backend resolve fallback:', err);
-            try {
-              const fallback = await invoke<string>('resolve_audius_stream', { urlOrId: track.path_or_url });
-              if (fallback && fallback !== streamUrl && onlineAudioRef.current) {
-                onlineAudioRef.current.src = fallback;
-                onlineAudioRef.current.load();
-                await onlineAudioRef.current.play();
-                isPlayingRef.current = true;
-                setIsPlaying(true);
-                showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
-                return;
-              }
-            } catch {}
-            showNotification(getTranslation(language, 'toast.audiusError'));
-          });
+    } else if (track.source === 'soundcloud') {
+      let scUrl = track.path_or_url;
+      if (scUrl) {
+        setScTrackUrl(scUrl);
+        sendScCmd('setVolume', 0);
+        isPlayingRef.current = true;
+        setIsPlaying(true);
       }
     }
+
+    // Launch Equal-Power Crossfade Fader Loop (50ms interval)
+    const durationMs = Math.max(1000, crossfadeDurationRef.current * 1000);
+    const startTime = Date.now();
+    setIsCrossfading(true);
+    crossfadeActiveRef.current = true;
+
+    if (crossfadeTimerRef.current) clearInterval(crossfadeTimerRef.current);
+    crossfadeTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(1, elapsed / durationMs);
+      const baseVol = volumeRef.current;
+
+      // Equal-power crossfade curve: constant perceived loudness
+      const outVol = Math.cos(progress * 0.5 * Math.PI) * baseVol;
+      const inVol = Math.sin(progress * 0.5 * Math.PI) * baseVol;
+
+      // Fade out outgoing channel
+      if (outSource === 'local' || outSource === 'audius' || (outSource === 'youtube' && ytMusicFallbackActiveRef.current)) {
+        if (outAudio) outAudio.volume = Math.max(0, Math.min(1, outVol));
+      } else if (outSource === 'youtube') {
+        sendYtCmd('setVolume', [Math.max(0, Math.min(100, outVol * 100))], outYtChannel);
+      } else if (outSc) {
+        sendScCmd('setVolume', Math.max(0, Math.min(100, outVol * 100)));
+      }
+
+      // Fade in incoming channel
+      if (track.source === 'local' || track.source === 'audius' || (track.source === 'youtube' && ytMusicFallbackActiveRef.current)) {
+        if (inAudio) inAudio.volume = Math.max(0, Math.min(1, inVol));
+      } else if (track.source === 'youtube') {
+        sendYtCmd('setVolume', [Math.max(0, Math.min(100, inVol * 100))], inYtChannel);
+      } else if (track.source === 'soundcloud') {
+        sendScCmd('setVolume', Math.max(0, Math.min(100, inVol * 100)));
+      }
+
+      if (progress >= 1) {
+        if (crossfadeTimerRef.current) {
+          clearInterval(crossfadeTimerRef.current);
+          crossfadeTimerRef.current = null;
+        }
+        crossfadeActiveRef.current = false;
+        setIsCrossfading(false);
+
+        // Stop and clean up outgoing channel completely
+        if (outSource === 'local' || outSource === 'audius' || (outSource === 'youtube' && ytMusicFallbackActiveRef.current)) {
+          if (outAudio) {
+            outAudio.pause();
+            outAudio.src = '';
+          }
+        } else if (outSource === 'youtube') {
+          sendYtCmd('stopVideo', [], outYtChannel);
+          if (outYtChannel === 1) setYtVideoId1(null);
+          else setYtVideoId2(null);
+        } else if (outSc) {
+          sendScCmd('pause');
+          setScTrackUrl(null);
+        }
+
+        // Finalize incoming volume to set volume (use current volumeRef in case user moved slider during crossfade)
+        const finalVol = volumeRef.current;
+        const finalPct = Math.round(finalVol * 100);
+        if (track.source === 'local' || track.source === 'audius' || (track.source === 'youtube' && ytMusicFallbackActiveRef.current)) {
+          if (inAudio) inAudio.volume = finalVol;
+        } else if (track.source === 'youtube') {
+          sendYtCmd('setVolume', [finalPct], inYtChannel);
+        } else if (track.source === 'soundcloud') {
+          sendScCmd('setVolume', finalPct);
+        }
+      }
+    }, 50);
   };
 
   const handlePlayTrack = (track: Track, customQueue?: Track[]) => {
@@ -2810,18 +3235,27 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleVolumeChange = async (v: number) => {
-    setVolume(v);
-    volumeRef.current = v;
-    try { localStorage.setItem('spytify_volume', String(v)); } catch {}
-    try { await invoke('set_volume', { volume: v }); } catch {}
-    if (v === 0) {
-      sendYtCmd('mute');
-    } else {
-      sendYtCmd('unMute');
-    }
-    sendYtCmd('setVolume', [v * 100]);
-    sendScCmd('setVolume', v * 100);
-    if (onlineAudioRef.current) onlineAudioRef.current.volume = v;
+    const clamped = Math.max(0, Math.min(1, isNaN(v) ? 0.8 : v));
+    setVolume(clamped);
+    volumeRef.current = clamped;
+    const volPct = Math.round(clamped * 100);
+
+    try { localStorage.setItem('spytify_volume', String(clamped)); } catch {}
+    try { await invoke('set_volume', { volume: clamped }); } catch {}
+
+    const muteCmd = clamped === 0 ? 'mute' : 'unMute';
+    sendYtCmd(muteCmd, [], 1);
+    sendYtCmd(muteCmd, [], 2);
+    sendYtCmd('setVolume', [volPct], 1);
+    sendYtCmd('setVolume', [volPct], 2);
+
+    sendScCmd('setVolume', volPct);
+
+    if (onlineAudio1Ref.current) onlineAudio1Ref.current.volume = clamped;
+    if (onlineAudio2Ref.current) onlineAudio2Ref.current.volume = clamped;
+    if (onlineAudioRef.current) onlineAudioRef.current.volume = clamped;
+
+    window.dispatchEvent(new CustomEvent('spytify-volume-change', { detail: clamped }));
   };
 
   
@@ -2836,6 +3270,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       playTrackInternal(nextTrack, true);
       showNotification(`⏭ ${nextTrack.title} - ${nextTrack.artist}`);
       return;
+    }
+
+    // Khi đang trong Album / Playlist cụ thể (Album nghệ sĩ, Album người dùng, Yêu thích, Local):
+    // Luôn ưu tiên chuyển bài tiếp theo tuần tự trong chính Album / Playlist đó!
+    const isDedicatedPlaylist = isScopedPlaylistContext(activeQueueContextRef.current);
+    if (isDedicatedPlaylist) {
+      const nextTrack = getNextPlaylistTrack(currentTrackRef.current);
+      if (nextTrack) {
+        playTrackInternal(nextTrack);
+        return;
+      }
     }
 
     // When recommendation mode is active ('fresh' = 100% outside playlist, 'mix' = alternating old & new), follow handleNext
@@ -3063,26 +3508,35 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     // If search or view provided the list of results, preload genuine recommendations instantly
     let queueFromResults: Track[] = [track];
     if (allResults && allResults.length > 1) {
-      const otherResults = allResults.filter(
-        r => r.url_or_id !== result.url_or_id &&
-             r.title.trim().toLowerCase() !== result.title.trim().toLowerCase()
-      );
-      if (otherResults.length > 0) {
-        const candidateTracks = otherResults.map((r): Track => ({
-          id: `${r.source}_rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      const allConverted: Track[] = allResults.map(r => {
+        const safeUrl = r.url_or_id.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const deterministicId = `${r.source}_${safeUrl}`;
+        const existing = tracks.find(
+          t => t.id === deterministicId ||
+               (t.path_or_url && t.path_or_url === r.url_or_id) ||
+               (t.title.trim().toLowerCase() === r.title.trim().toLowerCase() &&
+                t.artist.trim().toLowerCase() === r.artist.trim().toLowerCase())
+        );
+        return existing || {
+          id: deterministicId,
           title: r.title,
           artist: r.artist,
-          album: r.album || 'Gợi ý tìm kiếm',
+          album: r.album || 'Top Hits',
           duration_secs: r.duration_secs || 210,
           path_or_url: r.url_or_id,
           cover_art: r.thumbnail,
           source: r.source,
-        }));
-        preloadedNextTrackRef.current = candidateTracks[0];
-        setPreloadedNextTrack(candidateTracks[0]);
-        preloadedAlternativesRef.current = candidateTracks.slice(1, 6);
-        queueFromResults = [track, ...candidateTracks];
-      }
+        };
+      });
+
+      queueFromResults = allConverted;
+      const curIndex = allConverted.findIndex(
+        t => t.id === track.id || t.path_or_url === track.path_or_url
+      );
+      const nextIdx = curIndex >= 0 ? (curIndex + 1) % allConverted.length : 0;
+      preloadedNextTrackRef.current = allConverted[nextIdx];
+      setPreloadedNextTrack(allConverted[nextIdx]);
+      preloadedAlternativesRef.current = allConverted.slice(nextIdx + 1, nextIdx + 6);
     }
     activeQueueRef.current = queueFromResults;
     setActiveQueue(queueFromResults);
@@ -3092,6 +3546,63 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       return [track, ...filtered];
     });
     playTrackInternal(track);
+  };
+
+  const handlePlayArtistMix = (mix: ArtistMix, startTrackOrIndex: SearchResult | number = 0) => {
+    if (!mix.tracks || mix.tracks.length === 0) return;
+
+    // Chuyển toàn bộ danh sách bài trong Album Mix sang Track[] giữ nguyên 100% thứ tự với videoId sạch sẽ
+    const albumTracks: Track[] = mix.tracks.map((r) => {
+      const rawId = (r.url_or_id || '').trim();
+      let cleanVid = rawId;
+      if (cleanVid.includes('watch?v=')) cleanVid = cleanVid.split('watch?v=')[1].split('&')[0];
+      if (cleanVid.includes('youtu.be/')) cleanVid = cleanVid.split('youtu.be/')[1].split('?')[0];
+      if (cleanVid.startsWith('yt_')) cleanVid = cleanVid.replace('yt_', '');
+
+      const deterministicId = `youtube_${cleanVid.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
+      return {
+        id: deterministicId,
+        title: r.title,
+        artist: r.artist,
+        album: r.album || mix.title,
+        duration_secs: r.duration_secs || 180,
+        path_or_url: cleanVid,
+        cover_art: r.thumbnail || mix.cover_art,
+        source: r.source || 'youtube',
+      };
+    });
+
+    let targetIndex = 0;
+    if (typeof startTrackOrIndex === 'number') {
+      targetIndex = Math.max(0, Math.min(startTrackOrIndex, albumTracks.length - 1));
+    } else {
+      const foundIdx = albumTracks.findIndex(
+        t => t.path_or_url === startTrackOrIndex.url_or_id ||
+             t.title.trim().toLowerCase() === startTrackOrIndex.title.trim().toLowerCase()
+      );
+      if (foundIdx !== -1) targetIndex = foundIdx;
+    }
+
+    const currentTrackToPlay = albumTracks[targetIndex];
+
+    // Cập nhật thư viện
+    setTracks(prev => deduplicateTracks([...albumTracks, ...prev]));
+
+    // Cài đặt hàng đợi chuẩn xác cho Album nghệ sĩ
+    activeQueueRef.current = albumTracks;
+    setActiveQueue(albumTracks);
+    activeQueueContextRef.current = 'artist_mix';
+    setActiveQueueContext('artist_mix');
+
+    // Khởi tạo preloaded next track là bài tiếp theo trong album
+    const nextIdx = (targetIndex + 1) % albumTracks.length;
+    preloadedNextTrackRef.current = albumTracks[nextIdx];
+    setPreloadedNextTrack(albumTracks[nextIdx]);
+    preloadedAlternativesRef.current = albumTracks.slice(nextIdx + 1, nextIdx + 6);
+
+    playTrackInternal(currentTrackToPlay);
+    showNotification(`▶ Đang phát Album Mix: ${mix.title} • Bài ${targetIndex + 1}/${albumTracks.length}`);
   };
 
   const localCount = tracks.filter(t => t.source === 'local').length;
@@ -3130,7 +3641,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             <div className="flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2 overflow-hidden flex-1">
                 <span className="text-[10px] font-mono font-bold uppercase flex-shrink-0" style={{ color: activeAccentColor }}>
-                  {currentTrack ? `⏭ ${getTranslation(language, 'popup.nextTrack')}:` : '✨ AI MIX:'}
+                  {currentTrack ? `⏭ ${getTranslation(language, 'popup.nextTrack')}:` : 'SMART DJ:'}
                 </span>
                 <span className="text-xs font-semibold text-white truncate" title={nextTrackPopup.title}>
                   {sanitizeTrackTitle(nextTrackPopup.title)}
@@ -3417,16 +3928,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </>
       )}
 
-      {/* YouTube iframe — stable bottom-right positioning without jumping */}
-      {ytVideoId && (
+      {/* YouTube iframe Channel 1 — stable bottom-right positioning without jumping */}
+      {ytVideoId1 && (
         <div
           className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} right-6 w-80 h-48 rounded-xl bg-black shadow-2xl border border-[#222] z-40 transition-all duration-300 overflow-hidden ${
-            showYoutubeVideo && !isTrayMode
+            showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode
               ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
               : 'opacity-0 scale-95 pointer-events-none'
           }`}
         >
-          {showYoutubeVideo && !isTrayMode && (
+          {showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode && (
             <button
               onClick={() => setShowYoutubeVideo(false)}
               className="absolute top-2 right-2 z-50 p-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-[#333] cursor-pointer shadow-md transition-colors"
@@ -3436,23 +3947,82 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             </button>
           )}
           <iframe
-            ref={ytIframeRef}
-            src={`https://www.youtube.com/embed/${ytVideoId}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
+            ref={ytIframe1Ref}
+            src={`https://www.youtube.com/embed/${ytVideoId1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
             onLoad={() => {
               try {
-                ytIframeRef.current?.contentWindow?.postMessage(
+                ytIframe1Ref.current?.contentWindow?.postMessage(
                   JSON.stringify({ event: 'listening', id: 1 }), '*'
                 );
-                const curVol = volumeRef.current;
-                if (curVol === 0) {
-                  sendYtCmd('mute');
-                } else {
-                  sendYtCmd('unMute');
+                if (isPlayingRef.current) {
+                  sendYtCmd('playVideo', [], 1);
+                  if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
                 }
-                sendYtCmd('setVolume', [curVol * 100]);
+                if (crossfadeActiveRef.current && activeYtChannelRef.current === 1) {
+                  sendYtCmd('setVolume', [0], 1);
+                } else {
+                  const curVol = volumeRef.current;
+                  if (curVol === 0) {
+                    sendYtCmd('mute', [], 1);
+                  } else {
+                    sendYtCmd('unMute', [], 1);
+                  }
+                  sendYtCmd('setVolume', [curVol * 100], 1);
+                }
               } catch {}
             }}
-            title="YouTube Player"
+            title="YouTube Player 1"
+            className="w-full h-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      )}
+
+      {/* YouTube iframe Channel 2 — for seamless crossfading */}
+      {ytVideoId2 && (
+        <div
+          className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} right-6 w-80 h-48 rounded-xl bg-black shadow-2xl border border-[#222] z-40 transition-all duration-300 overflow-hidden ${
+            showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode
+              ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
+              : 'opacity-0 scale-95 pointer-events-none'
+          }`}
+        >
+          {showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode && (
+            <button
+              onClick={() => setShowYoutubeVideo(false)}
+              className="absolute top-2 right-2 z-50 p-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-[#333] cursor-pointer shadow-md transition-colors"
+              title={getTranslation(language, 'header.minimizeMv')}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <iframe
+            ref={ytIframe2Ref}
+            src={`https://www.youtube.com/embed/${ytVideoId2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
+            onLoad={() => {
+              try {
+                ytIframe2Ref.current?.contentWindow?.postMessage(
+                  JSON.stringify({ event: 'listening', id: 1 }), '*'
+                );
+                if (isPlayingRef.current) {
+                  sendYtCmd('playVideo', [], 2);
+                  if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
+                }
+                if (crossfadeActiveRef.current && activeYtChannelRef.current === 2) {
+                  sendYtCmd('setVolume', [0], 2);
+                } else {
+                  const curVol = volumeRef.current;
+                  if (curVol === 0) {
+                    sendYtCmd('mute', [], 2);
+                  } else {
+                    sendYtCmd('unMute', [], 2);
+                  }
+                  sendYtCmd('setVolume', [curVol * 100], 2);
+                }
+              } catch {}
+            }}
+            title="YouTube Player 2"
             className="w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
@@ -3526,6 +4096,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </span>
             </div>
             <div className="flex items-center gap-2.5">
+              {/* Spytify Vercel Website Button */}
+              <button
+                type="button"
+                onClick={() => openWebsite()}
+                title="Mở trang web giới thiệu Spytify (Vercel) trên trình duyệt"
+                className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-all flex items-center gap-1.5 cursor-pointer hover:scale-105 shadow-sm ${
+                  themeMode === 'light'
+                    ? 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-300'
+                    : 'bg-[#101018] hover:bg-[#181824] text-white border-[#222230] hover:border-cyan-500/50'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="font-semibold text-[11px] hidden sm:inline">
+                  {getTranslation(language, 'website.headerBtn')}
+                </span>
+                <ArrowUpRight className="w-3 h-3 text-cyan-400/80" />
+              </button>
+
               {/* Quick Language Switcher Dropdown */}
               <div className="relative" ref={langDropdownRef}>
                 <button
@@ -3707,6 +4295,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               />
             ) : currentView === 'library' ? (
               <HomeTrendingView
+                currentUser={currentUser}
                 accentColor={activeAccentColor}
                 language={language}
                 onPlaySearchResult={handlePlaySearchResult}
@@ -3719,6 +4308,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   };
                   handleToggleFavorite(t);
                 }}
+                albums={albums}
+                onSaveArtistMixAsAlbum={handleSaveArtistMixAsAlbum}
+                onNavigateToAlbums={() => setCurrentView('albums')}
+                onPlayArtistMix={handlePlayArtistMix}
               />
             ) : currentView === 'ai_mix' ? (
               <AiMixView
@@ -3730,6 +4323,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onToggleSmartDj={() => setSmartDjEnabled(p => !p)}
                 accentColor={activeAccentColor}
                 language={language}
+                onPlaySearchResult={handlePlaySearchResult}
+                currentTrack={currentTrack}
+                isPlaying={isPlaying}
+                favorites={favorites}
+                onToggleFavorite={(id) => {
+                  const t = displayedTracks.find(x => x.id === id) || {
+                    id, title: 'Bài hát', artist: 'Nghệ sĩ', album: 'Spytify', duration_secs: 180, path_or_url: '', source: 'youtube'
+                  };
+                  handleToggleFavorite(t);
+                }}
+                albums={albums}
+                onSaveArtistMixAsAlbum={handleSaveArtistMixAsAlbum}
+                onNavigateToAlbums={() => setCurrentView('albums')}
+                onPlayArtistMix={handlePlayArtistMix}
               />
             ) : currentView === 'profile' ? (
               <ProfileView
@@ -3758,6 +4365,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   persistAlbumsForUser(currentUser?.id, updatedAlbums);
                   setAlbums(updatedAlbums);
                 }}
+                crossfadeDuration={crossfadeDuration}
+                onUpdateCrossfadeDuration={setCrossfadeDuration}
+                volume={volume}
+                onVolumeChange={handleVolumeChange}
               />
             ) : currentView === 'search' ? (
               <SearchView
@@ -4026,6 +4637,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onCycleRecommendMode={handleCycleRecommendMode}
         isNextTrackPopupEnabled={Boolean(isNextTrackPopupEnabled && nextTrackPopup)}
         onToggleNextTrackPopupEnabled={handleToggleNextTrackPopupEnabled}
+        crossfadeDuration={crossfadeDuration}
+        onUpdateCrossfadeDuration={setCrossfadeDuration}
+        isCrossfading={isCrossfading}
       />
     </div>
   );

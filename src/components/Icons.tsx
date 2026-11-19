@@ -37,6 +37,35 @@ export const SpyJamIcon: React.FC<{ className?: string; style?: React.CSSPropert
   />
 );
 
+export const ModernHomeIcon: React.FC<{
+  className?: string;
+  size?: number;
+  active?: boolean;
+  style?: React.CSSProperties;
+}> = ({ className = 'w-4 h-4', size, active = false, style }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill={active ? 'currentColor' : 'none'}
+    stroke="currentColor"
+    strokeWidth={active ? '0' : '2'}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    width={size}
+    height={size}
+    style={style}
+  >
+    {active ? (
+      <path d="M12.71 2.29a1 1 0 0 0-1.42 0l-7.79 7.79A2 2 0 0 0 3 11.5v7.5A2.5 2.5 0 0 0 5.5 21.5h3a1 1 0 0 0 1-1v-4.5a1.5 1.5 0 0 1 3 0v4.5a1 1 0 0 0 1 1h3a2.5 2.5 0 0 0 2.5-2.5v-7.5a2 2 0 0 0-.5-1.42l-7.79-7.79Z" />
+    ) : (
+      <>
+        <path d="M3 10.5V19a2.5 2.5 0 0 0 2.5 2.5h3a1 1 0 0 0 1-1v-4.5a2.5 2.5 0 0 1 5 0v4.5a1 1 0 0 0 1 1h3a2.5 2.5 0 0 0 2.5-2.5v-8.5" />
+        <path d="M1.5 11l8.79-7.71a2.5 2.5 0 0 1 3.42 0L22.5 11" />
+      </>
+    )}
+  </svg>
+);
+
 export const SpytifyBrandLogo: React.FC<{
   accentColor?: string;
   themeMode?: 'dark' | 'light';

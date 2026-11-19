@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Flame, Play, Disc, Sparkles, TrendingUp, Music, 
-  Crown, Loader2, RefreshCw, Compass
+  Crown, Loader2, RefreshCw, Compass, Headphones, Radio, Mic2,
+  Shuffle, X, Heart, Clock, ChevronLeft, ChevronRight, ListMusic,
+  FolderPlus, FolderCheck, Library, Check
 } from 'lucide-react';
-import { SearchResult, Track } from '../types';
-import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
+import { SearchResult, Track, User, ArtistMix, UserAlbum } from '../types';
+import { YoutubeIcon, SoundCloudIcon, AudiusIcon, ModernHomeIcon } from './Icons';
 import { getContrastTextColor, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle } from '../utils/trackUtils';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 
 interface HomeTrendingViewProps {
+  currentUser?: User | null;
   onPlaySearchResult: (result: SearchResult, allResults?: SearchResult[]) => void;
   currentTrack: Track | null;
   isPlaying: boolean;
@@ -17,6 +20,10 @@ interface HomeTrendingViewProps {
   onToggleFavorite: (trackId: string) => void;
   accentColor?: string;
   language?: LanguageCode;
+  albums?: UserAlbum[];
+  onSaveArtistMixAsAlbum?: (mix: ArtistMix) => void;
+  onNavigateToAlbums?: () => void;
+  onPlayArtistMix?: (mix: ArtistMix, startTrackOrIndex?: SearchResult | number) => void;
 }
 
 interface CategoryFilter {
@@ -853,7 +860,255 @@ const CURATED_BY_CATEGORY: Record<string, SearchResult[]> = {
   ],
 };
 
+const POPULAR_ARTIST_AVATARS: Record<string, string> = {
+  'sơn tùng m-tp': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
+  'sơn tùng': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
+  'vũ.': 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
+  'vũ': 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
+  'đen': 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+  'đen vâu': 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+  'hieuthuhai': 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400&auto=format&fit=crop&q=80',
+  'bruno mars': 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
+  'taylor swift': 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80',
+  'billie eilish': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80',
+  'lady gaga': 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
+  'sabrina carpenter': 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&auto=format&fit=crop&q=80',
+  'newjeans': 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=400&auto=format&fit=crop&q=80',
+  'blackpink': 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
+  'rosé': 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
+  'yoasobi': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80',
+  'creepy nuts': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80',
+};
+
+interface RecentArtistItem {
+  artist: string;
+  count: number;
+  avatar: string;
+  topTrackTitle?: string;
+  sampleVideoId?: string;
+}
+
+const DEFAULT_FEATURED_ARTISTS: RecentArtistItem[] = [
+  {
+    artist: 'Sơn Tùng M-TP',
+    count: 24,
+    avatar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Đừng Làm Trái Tim Anh Đau',
+    sampleVideoId: 'abPmZCZZrFA',
+  },
+  {
+    artist: 'Bruno Mars',
+    count: 19,
+    avatar: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Die With A Smile / APT.',
+    sampleVideoId: 'kPa7bsKwL-8',
+  },
+  {
+    artist: 'Billie Eilish',
+    count: 16,
+    avatar: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Birds of a Feather',
+    sampleVideoId: 'd5gf9dXHevw',
+  },
+  {
+    artist: 'Vũ.',
+    count: 14,
+    avatar: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Bước Qua Mùa Cô Đơn',
+    sampleVideoId: 'YQHsXMglC9A',
+  },
+  {
+    artist: 'Taylor Swift',
+    count: 18,
+    avatar: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Cruel Summer',
+    sampleVideoId: 'ic8j13piAhQ',
+  },
+  {
+    artist: 'HIEUTHUHAI',
+    count: 12,
+    avatar: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Không Thể Say / NOLOVE',
+    sampleVideoId: 'u4k4iG1u7lE',
+  },
+  {
+    artist: 'ROSÉ',
+    count: 15,
+    avatar: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'APT. (feat. Bruno Mars)',
+    sampleVideoId: 'ekr2nIex040',
+  },
+  {
+    artist: 'YOASOBI',
+    count: 11,
+    avatar: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Idol (アイドル)',
+    sampleVideoId: 'ZRtdQ81jPUQ',
+  },
+  {
+    artist: 'NewJeans',
+    count: 14,
+    avatar: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Super Shy / Hype Boy',
+    sampleVideoId: 'ArmDp-zijuc',
+  },
+  {
+    artist: 'The Weeknd',
+    count: 17,
+    avatar: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Blinding Lights / Timeless',
+    sampleVideoId: '4NRXx6U8ABQ',
+  },
+  {
+    artist: 'Đen',
+    count: 13,
+    avatar: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Nấu Ăn Cho Em',
+    sampleVideoId: 'L8eRzOYhLuw',
+  },
+  {
+    artist: 'Sabrina Carpenter',
+    count: 15,
+    avatar: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Espresso / Taste',
+    sampleVideoId: 'eVli-tstM5E',
+  },
+  {
+    artist: 'Eve',
+    count: 10,
+    avatar: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Kaikai Kitan (廻廻奇譚)',
+    sampleVideoId: '1tk1pqwrOys',
+  },
+  {
+    artist: 'DAOKO',
+    count: 12,
+    avatar: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Uchiage Hanabi (打上花火)',
+    sampleVideoId: '-tKVN2mAKRI',
+  },
+  {
+    artist: 'Lady Gaga',
+    count: 13,
+    avatar: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Die With A Smile / Poker Face',
+    sampleVideoId: 'kPa7bsKwL-8',
+  },
+  {
+    artist: 'Kenshi Yonezu',
+    count: 11,
+    avatar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Lemon / Kick Back',
+    sampleVideoId: 'SX_ViT4Ra7k',
+  },
+  {
+    artist: 'Charlie Puth',
+    count: 12,
+    avatar: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Attention / Left and Right',
+    sampleVideoId: 'nfs8NYg7yQM',
+  },
+  {
+    artist: 'Fujii Kaze',
+    count: 10,
+    avatar: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Shinunoga E-Wa (死ぬのがいいわ)',
+    sampleVideoId: 'dFzVjUgtpRg',
+  },
+  {
+    artist: 'Creepy Nuts',
+    count: 9,
+    avatar: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Bling-Bang-Bang-Born',
+    sampleVideoId: 'mLW35ymz1gk',
+  },
+  {
+    artist: 'BLACKPINK',
+    count: 14,
+    avatar: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
+    topTrackTitle: 'Pink Venom / How You Like That',
+    sampleVideoId: 'gQlMMD8auMs',
+  },
+];
+
+interface ThemedCollection {
+  id: string;
+  title: string;
+  desc: string;
+  badge: string;
+  cover: string;
+  categoryKey: string;
+}
+
+const THEMED_COLLECTIONS: ThemedCollection[] = [
+  {
+    id: 'vpop',
+    title: 'V-Pop Quán Quân & Thịnh Hành',
+    desc: 'Sơn Tùng M-TP, HIEUTHUHAI, Vũ., Wren Evans, Đen Vâu',
+    badge: '🇻🇳 V-POP HITS',
+    cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'vpop',
+  },
+  {
+    id: 'usuk',
+    title: 'Billboard Global Top 100',
+    desc: 'Bruno Mars, Lady Gaga, Billie Eilish, Sabrina Carpenter',
+    badge: '🌍 BILLBOARD #1',
+    cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'usuk',
+  },
+  {
+    id: 'lofi',
+    title: 'Deep Focus & Lo-Fi Chillout',
+    desc: 'Âm nhạc tập trung sâu, thư giãn học bài & lập trình không xao nhãng',
+    badge: '☕ FOCUS & CODE',
+    cover: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'lofi',
+  },
+  {
+    id: 'kpop_jpop',
+    title: 'J-Pop & K-Pop All-Kill',
+    desc: 'ROSÉ, YOASOBI, Creepy Nuts, NewJeans, aespa, Fujii Kaze',
+    badge: '🎌 ASIA VIRAL',
+    cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'kpop_jpop',
+  },
+  {
+    id: 'edm',
+    title: 'EDM Festival & Cyber Bass',
+    desc: 'Alan Walker, Marshmello, Phonk Gym & Bass bùng nổ năng lượng',
+    badge: '⚡ BEAST MODE',
+    cover: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'edm',
+  },
+  {
+    id: 'nightdrive',
+    title: 'Late Night City Drive',
+    desc: 'Kavinsky, Mr.Kitty, Phonk Synthwave neon huyền ảo xuyên màn đêm',
+    badge: '🌃 MIDNIGHT DRIVE',
+    cover: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'lofi',
+  },
+  {
+    id: 'acoustic',
+    title: 'Acoustic & Indie Ballad',
+    desc: 'Guitar mộc, piano ballad và những giai điệu êm dịu chữa lành tâm hồn',
+    badge: '🪕 CHỮA LÀNH',
+    cover: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'acoustic',
+  },
+  {
+    id: 'audius',
+    title: 'Audius Lossless 320K Hi-Fi',
+    desc: 'Lossless underground 320Kbps chất lượng cao chuẩn phòng thu',
+    badge: '⚡ LOSSLESS 320K',
+    cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+    categoryKey: 'audius',
+  },
+];
+
 export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
+  currentUser,
   onPlaySearchResult,
   currentTrack,
   isPlaying,
@@ -861,12 +1116,195 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   onToggleFavorite,
   accentColor = '#ff2a55',
   language = 'vi',
+  albums = [],
+  onSaveArtistMixAsAlbum,
+  onNavigateToAlbums,
+  onPlayArtistMix,
 }) => {
   const [trendingTracks, setTrendingTracks] = useState<SearchResult[]>(CURATED_BY_CATEGORY.usuk);
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('usuk');
   const [trendingKeywords, setTrendingKeywords] = useState<string[]>([]);
   const [keywordsLoading, setKeywordsLoading] = useState(false);
+
+  // Nghệ sĩ hay nghe của tài khoản hiện tại
+  const [recentArtists, setRecentArtists] = useState<RecentArtistItem[]>(DEFAULT_FEATURED_ARTISTS);
+
+  // Artist Album Mix (Powered by Rust Backend)
+  const [activeArtistMix, setActiveArtistMix] = useState<ArtistMix | null>(null);
+  const [loadingArtistMix, setLoadingArtistMix] = useState(false);
+  const [loadingArtistName, setLoadingArtistName] = useState<string>('');
+  const mixTracklistRef = useRef<HTMLDivElement | null>(null);
+  const recentArtistsScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollRecentArtists = (direction: 'left' | 'right') => {
+    if (recentArtistsScrollRef.current) {
+      const scrollAmount = 450;
+      recentArtistsScrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  const scrollMixTracklist = (direction: 'left' | 'right') => {
+    if (mixTracklistRef.current) {
+      const scrollAmount = 540;
+      mixTracklistRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
+  };
+
+  // Đóng modal khi nhấn phím Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeArtistMix) {
+        setActiveArtistMix(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeArtistMix]);
+
+  // Ngăn chặn cuộn dọc trang khi lăn chuột trên danh sách nghệ sĩ (chỉ trượt ngang nội bộ)
+  useEffect(() => {
+    const el = recentArtistsScrollRef.current;
+    if (!el) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+    };
+  }, [recentArtists]);
+
+  useEffect(() => {
+    const userId = currentUser?.id || 'guest_spy';
+    Promise.all([
+      invoke<any[]>('db_get_history', { userId, limit: 300 }).catch(() => []),
+      invoke<Track[]>('db_get_favorites', { userId }).catch(() => [])
+    ]).then(([historyList, favList]) => {
+      const counts: Record<string, { count: number; cover?: string; topTitle?: string; id?: string }> = {};
+
+      for (const t of favList) {
+        if (t.artist && t.artist.trim().length > 1 && !t.artist.toLowerCase().includes('unknown')) {
+          const clean = t.artist.split(',')[0].split('&')[0].split(/ x | ft\.?| feat\.?/i)[0].trim();
+          if (!counts[clean]) {
+            counts[clean] = { count: 0, cover: t.cover_art || (t as any).thumbnail, topTitle: t.title, id: t.path_or_url || t.id };
+          }
+          counts[clean].count += 3;
+        }
+      }
+
+      for (const h of historyList) {
+        if (h.artist && h.artist.trim().length > 1 && !h.artist.toLowerCase().includes('unknown')) {
+          const clean = h.artist.split(',')[0].split('&')[0].split(/ x | ft\.?| feat\.?/i)[0].trim();
+          let cover: string | undefined;
+          if (h.track_json) {
+            try {
+              const parsed = typeof h.track_json === 'string' ? JSON.parse(h.track_json) : h.track_json;
+              cover = parsed.thumbnail || parsed.album_art_url;
+            } catch {}
+          }
+          if (!counts[clean]) {
+            counts[clean] = { count: 0, cover, topTitle: h.track_title, id: h.path_or_url || h.track_id };
+          }
+          counts[clean].count += 1;
+          if (!counts[clean].cover && cover) counts[clean].cover = cover;
+        }
+      }
+
+      const userList = Object.entries(counts)
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 20)
+        .map(([artist, data]) => {
+          const fallbackCover = POPULAR_ARTIST_AVATARS[artist.toLowerCase()] || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80';
+          return {
+            artist,
+            count: data.count,
+            avatar: data.cover || fallbackCover,
+            topTrackTitle: data.topTitle,
+            sampleVideoId: data.id,
+          };
+        });
+
+      if (userList.length > 0) {
+        setRecentArtists(userList);
+      } else {
+        setRecentArtists(DEFAULT_FEATURED_ARTISTS);
+      }
+    });
+  }, [currentUser?.id]);
+
+  // Mở Album Mix của nghệ sĩ (xử lý toàn bộ logic tìm kiếm & tổng hợp bằng Rust backend)
+  const handleOpenArtistMix = async (artistItem: RecentArtistItem) => {
+    setLoadingArtistName(artistItem.artist);
+    setLoadingArtistMix(true);
+    try {
+      const mix = await invoke<ArtistMix>('get_artist_album_mix', {
+        artist: artistItem.artist,
+        userId: currentUser?.id || null,
+      });
+      if (mix && mix.tracks && mix.tracks.length > 0) {
+        if (!mix.cover_art && artistItem.avatar) {
+          mix.cover_art = artistItem.avatar;
+        }
+        setActiveArtistMix(mix);
+      } else {
+        handlePlayArtistDirect(artistItem);
+      }
+    } catch (err) {
+      console.warn('Failed to load artist mix from Rust backend:', err);
+      handlePlayArtistDirect(artistItem);
+    } finally {
+      setLoadingArtistMix(false);
+      setLoadingArtistName('');
+    }
+  };
+
+  const handlePlayArtistDirect = async (artistItem: RecentArtistItem) => {
+    // 1. Kiểm tra nếu có bài mẫu từ lịch sử
+    if (artistItem.sampleVideoId && artistItem.topTrackTitle) {
+      onPlaySearchResult({
+        url_or_id: artistItem.sampleVideoId,
+        title: artistItem.topTrackTitle,
+        artist: artistItem.artist,
+        album: artistItem.topTrackTitle || 'Top Hits',
+        duration_secs: 180,
+        source: 'youtube',
+        thumbnail: artistItem.avatar,
+      });
+      return;
+    }
+    // 2. Tìm bài trong curated hoặc tìm kiếm online
+    const curatedMatches = Object.values(CURATED_BY_CATEGORY)
+      .flat()
+      .filter(t => t.artist?.toLowerCase().includes(artistItem.artist.toLowerCase()));
+    if (curatedMatches.length > 0) {
+      onPlaySearchResult(curatedMatches[0], curatedMatches);
+      return;
+    }
+    try {
+      const results = await invoke<SearchResult[]>('search_online', {
+        query: `${artistItem.artist} bài hát hay nhất official audio`,
+        source: 'youtube',
+      });
+      if (results && results.length > 0) {
+        onPlaySearchResult(results[0], results);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Thể loại động: sinh từ khóa theo top trending (YouTube autocomplete) — fallback: nghệ sĩ hot nhất
   const loadTrendingKeywords = async () => {
@@ -994,7 +1432,132 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   ];
 
   return (
-    <div className="flex-1 p-6 lg:p-8 overflow-y-auto space-y-7 max-w-7xl mx-auto select-none">
+    <div className="flex-1 w-full pb-16 space-y-7 select-none">
+      {/* ─── HOME HEADER & GREETING ─────────────────────────────────────────── */}
+      <div className="flex items-center justify-between border-b border-white/5 pb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span 
+              className="text-[10px] font-bold uppercase tracking-widest font-mono px-2 py-0.5 rounded border flex items-center gap-1.5"
+              style={{
+                color: accentColor,
+                backgroundColor: `${accentColor}15`,
+                borderColor: `${accentColor}30`,
+              }}
+            >
+              <ModernHomeIcon className="w-3.5 h-3.5" active />
+              <span>{getTranslation(language, 'nav.trending')}</span>
+            </span>
+            {currentUser?.username && (
+              <span className="text-[11px] text-zinc-400 font-mono">
+                {getTranslation(language, 'home.curatedFor')} <strong className="text-white">@{currentUser.username}</strong>
+              </span>
+            )}
+          </div>
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            {getTranslation(language, 'home.discoverMusic')}
+          </h1>
+        </div>
+      </div>
+
+      {/* ─── NGHỆ SĨ BẠN HAY NGHE GẦN ĐÂY (Cuộn ngang 1 hàng duy nhất) ──────────────────── */}
+      {recentArtists.length > 0 && (
+        <div className="space-y-3.5">
+          <div className="flex items-center justify-between border-b border-[#161620] pb-2">
+            <div className="flex items-center gap-2">
+              <Mic2 className="w-4 h-4" style={{ color: accentColor }} />
+              <h2 className="text-sm font-bold text-white tracking-wide">
+                {getTranslation(language, 'home.recentArtists')}
+              </h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-[#777] font-mono">
+                {currentUser?.username ? `@${currentUser.username}` : getTranslation(language, 'home.tasteRecommendations')}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => scrollRecentArtists('left')}
+                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer border border-white/5 active:scale-95"
+                  title="Cuộn sang trái"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollRecentArtists('right')}
+                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer border border-white/5 active:scale-95"
+                  title="Cuộn sang phải"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            ref={recentArtistsScrollRef}
+            className="flex items-stretch gap-3 overflow-x-auto hover-scrollbar scroll-smooth py-1"
+          >
+            {recentArtists.map((artistItem, idx) => {
+              const isLoadingThis = loadingArtistMix && loadingArtistName === artistItem.artist;
+              return (
+                <div
+                  key={idx}
+                  onClick={() => handleOpenArtistMix(artistItem)}
+                  className="group w-[124px] sm:w-[136px] md:w-[144px] lg:w-[152px] flex-shrink-0 p-3 rounded-2xl bg-[#09090d] hover:bg-[#14141c] border border-[#181822] hover:border-cyan-500/40 transition-all flex flex-col items-center text-center cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-1 relative"
+                >
+                  {/* Artist Cover / Logo - Modern Rounded Square (Not fixed circle) */}
+                  <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-2.5 bg-[#12121a] border border-white/10 group-hover:border-cyan-400/60 transition-all shadow-md">
+                    <img
+                      src={artistItem.avatar}
+                      alt={artistItem.artist}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80';
+                      }}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+
+                    {/* Hover Play / Loading Overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2">
+                      <div
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform"
+                        style={{
+                          backgroundColor: accentColor,
+                          color: getContrastTextColor(accentColor),
+                        }}
+                        title={getTranslation(language, 'home.playAllMix')}
+                      >
+                        {isLoadingThis ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-black" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Album Mix Badge */}
+                    <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-sm border border-white/10 text-[8.5px] font-mono font-bold text-cyan-300 uppercase opacity-0 group-hover:opacity-100 transition-opacity">
+                      Mix
+                    </div>
+                  </div>
+
+                  <p className="w-full text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors">
+                    {artistItem.artist}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate w-full">
+                    {artistItem.count > 0
+                      ? `${artistItem.count} ${getTranslation(language, 'home.plays')}`
+                      : getTranslation(language, 'home.suggested')}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ─── HERO SPOTLIGHT (BILLBOARD HOT #1 / FEATURED TRACK) ──────────────── */}
       {loading ? (
         <div className="relative rounded-2xl overflow-hidden bg-[#0d0d12] border border-[#1c1c24] p-6 lg:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl animate-pulse">
@@ -1139,7 +1702,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
             style={{ color: accentColor }}
           >
             <Sparkles className="w-3 h-3" />
-            {language === 'vi' ? 'Đang hot' : 'Trending now'}
+            {getTranslation(language, 'home.trendingNow')}
           </span>
           {keywordsLoading && trendingKeywords.length === 0
             ? Array.from({ length: 6 }).map((_, i) => (
@@ -1171,7 +1734,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
             onClick={loadTrendingKeywords}
             disabled={keywordsLoading}
             className="p-1.5 rounded-lg text-[#666] hover:text-white transition-colors cursor-pointer"
-            title={language === 'vi' ? 'Làm mới từ khóa thịnh hành' : 'Refresh trending keywords'}
+            title={getTranslation(language, 'home.refreshKeywords')}
           >
             <RefreshCw className={`w-3 h-3 ${keywordsLoading ? 'animate-spin' : ''}`} />
           </button>
@@ -1311,38 +1874,80 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
         )}
       </div>
 
-      {/* ─── TRENDING MOODS & GENRES ──────────────────────────────────────── */}
+      {/* ─── CÁC BÀI HÁT CHỦ ĐỀ LIÊN QUAN (THEMED PLAYLISTS VỚI HÌNH ẢNH BÌA) ─────── */}
       <div className="space-y-4 pt-2">
-        <h2 className="text-sm font-bold text-white flex items-center gap-2">
-          <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
-          {getTranslation(language, 'trending.collections')}
-        </h2>
+        <div className="flex items-center justify-between border-b border-[#161620] pb-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
+            <h2 className="text-sm font-bold text-white tracking-wide">
+              {getTranslation(language, 'trending.collections')}
+            </h2>
+          </div>
+          <span className="text-xs text-[#777] font-mono">
+            {getTranslation(language, 'home.curatedSoundscapes')}
+          </span>
+        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            { title: 'Billboard US/UK', desc: 'Lady Gaga, Bruno Mars, Sabrina', query: 'usuk' },
-            { title: 'J-Pop & Anime Viral', desc: 'YOASOBI, Creepy Nuts, Fujii Kaze', query: 'jpop' },
-            { title: 'K-Pop All-Kill', desc: 'ROSÉ, aespa, ILLIT, Jung Kook', query: 'kpop' },
-            { title: getTranslation(language, 'trending.colVpopTitle'), desc: 'Sơn Tùng, Wren Evans, HIEUTHUHAI', query: 'vpop' },
-            { title: 'Audius 320K Hi-Fi', desc: getTranslation(language, 'trending.colAudiusDesc'), query: 'audius' },
-            { title: 'Covert Ops Beats', desc: getTranslation(language, 'trending.colLofiDesc'), query: 'lofi' },
-          ].map((col, idx) => (
-            <button
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {THEMED_COLLECTIONS.map((col, idx) => (
+            <div
               key={idx}
-              onClick={() => setActiveCategory(col.query)}
-              className="p-3.5 rounded-xl bg-[#0c0c10] hover:bg-[#14141a] border border-[#1a1a24] hover:border-[#2a2a38] transition-all text-left flex flex-col justify-between h-28 group cursor-pointer shadow-sm"
+              onClick={() => {
+                setActiveCategory(col.categoryKey);
+                const cur = CURATED_BY_CATEGORY[col.categoryKey];
+                if (cur && cur.length > 0) {
+                  onPlaySearchResult(cur[0], cur);
+                }
+              }}
+              className="group relative h-44 rounded-2xl overflow-hidden border border-[#20202c] hover:border-white/40 transition-all cursor-pointer shadow-md hover:shadow-2xl"
             >
-              <div className="flex items-center justify-between w-full">
-                <span className="text-[10px] font-mono font-bold uppercase" style={{ color: accentColor }}>
-                  {getTranslation(language, 'trending.topicBadge', { index: idx + 1 })}
-                </span>
-                <Play className="w-3.5 h-3.5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+              {/* Background Cover Image with Hover Zoom */}
+              <img
+                src={col.cover}
+                alt={col.title}
+                referrerPolicy="no-referrer"
+                className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+              />
+
+              {/* Gradient Overlay for high-contrast readability */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30 group-hover:from-black/95 transition-colors" />
+
+              {/* Content */}
+              <div className="relative z-10 p-4 h-full flex flex-col justify-between">
+                <div className="flex items-center justify-between w-full">
+                  <span
+                    className="text-[9px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full border bg-black/60 backdrop-blur-md shadow-sm"
+                    style={{
+                      color: accentColor,
+                      borderColor: `${accentColor}50`,
+                    }}
+                  >
+                    {col.badge}
+                  </span>
+
+                  {/* Play Button on Hover */}
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transform translate-y-1 group-hover:translate-y-0 transition-all shadow-xl"
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                      boxShadow: `0 0 16px ${accentColor}80`,
+                    }}
+                  >
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="text-sm font-black text-white group-hover:text-cyan-200 transition-colors leading-snug drop-shadow-md">
+                    {col.title}
+                  </h3>
+                  <p className="text-[11px] text-zinc-300 line-clamp-1 drop-shadow-sm font-sans">
+                    {col.desc}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-bold text-white group-hover:text-white transition-colors leading-tight">{col.title}</p>
-                <p className="text-[10px] text-[#777] line-clamp-1 mt-0.5">{col.desc}</p>
-              </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>
@@ -1407,6 +2012,257 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ─── ARTIST ALBUM MIX MODAL (POWERED BY RUST BACKEND) ──────────────── */}
+      {activeArtistMix && (() => {
+        const isArtistMixSaved = Boolean(
+          albums && activeArtistMix && albums.some(a => 
+            a.title.trim().toLowerCase() === (activeArtistMix.title || `${activeArtistMix.artist} Album Mix`).trim().toLowerCase() ||
+            a.title.trim().toLowerCase() === `${activeArtistMix.artist} Mix`.toLowerCase()
+          )
+        );
+
+        return (
+        <div 
+          onClick={() => setActiveArtistMix(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl sm:max-w-4xl max-h-[88vh] bg-[#0c0c14] border border-cyan-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col space-y-4 relative overflow-hidden animate-in zoom-in-95 duration-200"
+          >
+            {/* Ambient backlight */}
+            <div 
+              className="absolute -top-24 -right-24 w-72 h-72 rounded-full blur-3xl opacity-20 pointer-events-none"
+              style={{ backgroundColor: accentColor }}
+            />
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setActiveArtistMix(null);
+              }}
+              className="absolute top-4 right-4 sm:top-5 sm:right-5 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all cursor-pointer z-50 shadow-md active:scale-90"
+              title={getTranslation(language, 'home.close')}
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Album Mix Header */}
+            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-5 pt-1 relative z-10">
+              <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-2xl overflow-hidden bg-[#181824] border-2 border-white/10 shadow-2xl flex-shrink-0 group relative">
+                <img
+                  src={activeArtistMix.cover_art || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80'}
+                  alt={activeArtistMix.artist}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-cyan-500 text-black font-black text-[9px] uppercase tracking-wider font-mono">
+                  ALBUM MIX
+                </span>
+              </div>
+
+              <div className="flex-1 text-center sm:text-left min-w-0 space-y-2">
+                <span className="text-[10px] font-mono uppercase font-bold text-cyan-400 tracking-widest px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30">
+                  {getTranslation(language, 'home.artistMix', { artist: activeArtistMix.artist })}
+                </span>
+                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
+                  {activeArtistMix.title}
+                </h2>
+                <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
+                  {activeArtistMix.description}
+                </p>
+                <div className="flex items-center justify-center sm:justify-start gap-3 text-xs text-zinc-400 font-mono pt-1">
+                  <span className="text-white font-bold">{activeArtistMix.artist}</span>
+                  <span>•</span>
+                  <span>{activeArtistMix.track_count} {getTranslation(language, 'home.tracks')}</span>
+                  {isArtistMixSaved && (
+                    <>
+                      <span>•</span>
+                      <span className="text-cyan-400 flex items-center gap-1 text-[11px] font-semibold">
+                        <FolderCheck className="w-3.5 h-3.5" />
+                        <span>{getTranslation(language, 'home.inAlbums')}</span>
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons: Play All, Shuffle, Add to Album */}
+            <div className="flex items-center gap-2.5 pt-1 border-t border-white/5 relative z-10 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onPlayArtistMix) {
+                    onPlayArtistMix(activeArtistMix, 0);
+                  } else if (activeArtistMix.tracks.length > 0) {
+                    onPlaySearchResult(activeArtistMix.tracks[0], activeArtistMix.tracks);
+                  }
+                }}
+                className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg transition-all hover:scale-105 active:scale-95"
+                style={{
+                  backgroundColor: accentColor,
+                  color: getContrastTextColor(accentColor),
+                }}
+              >
+                <Play className="w-4 h-4 fill-current ml-0.5" />
+                <span>{getTranslation(language, 'home.playAllMix')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeArtistMix.tracks.length > 0) {
+                    const shuffledTracks = [...activeArtistMix.tracks].sort(() => Math.random() - 0.5);
+                    const shuffledMix: ArtistMix = { ...activeArtistMix, tracks: shuffledTracks };
+                    if (onPlayArtistMix) {
+                      onPlayArtistMix(shuffledMix, 0);
+                    } else {
+                      onPlaySearchResult(shuffledTracks[0], shuffledTracks);
+                    }
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-xs transition-colors cursor-pointer border border-white/10 flex items-center gap-2"
+              >
+                <Shuffle className="w-3.5 h-3.5" />
+                <span>{getTranslation(language, 'home.shuffle')}</span>
+              </button>
+
+              {/* Nút Thêm vào Album / Đã lưu vào Album */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSaveArtistMixAsAlbum && activeArtistMix) {
+                    onSaveArtistMixAsAlbum(activeArtistMix);
+                  }
+                }}
+                className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all cursor-pointer border flex items-center gap-2 active:scale-95 shadow-md ${
+                  isArtistMixSaved
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/30'
+                    : 'bg-white/5 hover:bg-white/10 text-white border-white/10 hover:border-cyan-500/30'
+                }`}
+                title={isArtistMixSaved ? getTranslation(language, 'home.inAlbums') : getTranslation(language, 'home.addToAlbums')}
+              >
+                {isArtistMixSaved ? (
+                  <>
+                    <FolderCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{getTranslation(language, 'home.inAlbums')}</span>
+                  </>
+                ) : (
+                  <>
+                    <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>{getTranslation(language, 'home.addToAlbums')}</span>
+                  </>
+                )}
+              </button>
+
+              {/* Nút xem trong mục Album khi đã lưu */}
+              {isArtistMixSaved && onNavigateToAlbums && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveArtistMix(null);
+                    onNavigateToAlbums();
+                  }}
+                  className="px-3 py-2.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-400 border border-cyan-500/30 font-semibold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                  title="Mở thư mục Album để nghe hoặc chỉnh sửa"
+                >
+                  <Library className="w-3.5 h-3.5" />
+                  <span>{getTranslation(language, 'home.viewInAlbums')}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Tracklist List View */}
+            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 max-h-[52vh] no-scrollbar relative z-10">
+              {activeArtistMix.tracks.map((track, idx) => {
+                const isThisPlaying = currentTrack?.path_or_url === track.url_or_id || currentTrack?.title === track.title;
+                const isFav = favorites.has(track.url_or_id);
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      if (onPlayArtistMix) {
+                        onPlayArtistMix(activeArtistMix, track);
+                      } else {
+                        onPlaySearchResult(track, activeArtistMix.tracks);
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 group transition-all cursor-pointer ${
+                      isThisPlaying
+                        ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
+                        : 'bg-[#101018] hover:bg-[#181824] border-white/5 hover:border-white/15 text-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {/* Track Index / Play status */}
+                      <span className="w-6 text-center text-xs font-mono font-bold text-zinc-500 group-hover:text-cyan-400">
+                        {isThisPlaying && isPlaying ? (
+                          <div className="flex items-end justify-center gap-0.5 h-3.5">
+                            <span className="w-0.5 h-full bg-cyan-400 animate-pulse" />
+                            <span className="w-0.5 h-2/3 bg-cyan-400 animate-pulse delay-75" />
+                            <span className="w-0.5 h-4/5 bg-cyan-400 animate-pulse delay-150" />
+                          </div>
+                        ) : (
+                          <span>{(idx + 1).toString().padStart(2, '0')}</span>
+                        )}
+                      </span>
+
+                      {/* Track Thumbnail */}
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0 border border-white/10 relative">
+                        <img
+                          src={track.thumbnail || activeArtistMix.cover_art || ''}
+                          alt={track.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Play className="w-3.5 h-3.5 fill-white text-white ml-0.5" />
+                        </div>
+                      </div>
+
+                      {/* Title & Artist */}
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-xs font-bold truncate ${isThisPlaying ? 'text-cyan-300' : 'text-white group-hover:text-cyan-300'}`}>
+                          {track.title}
+                        </p>
+                        <p className="text-[11px] text-zinc-500 truncate font-mono">
+                          {track.artist}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Duration & Actions */}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleFavorite(track.url_or_id);
+                        }}
+                        className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                          isFav ? 'text-rose-500 hover:text-rose-400' : 'text-zinc-500 hover:text-white'
+                        }`}
+                      >
+                        <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />
+                      </button>
+
+                      <span className="text-[11px] font-mono text-zinc-400 w-10 text-right">
+                        {Math.floor(track.duration_secs / 60)}:{(track.duration_secs % 60).toString().padStart(2, '0')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        );
+      })()}
     </div>
   );
 };

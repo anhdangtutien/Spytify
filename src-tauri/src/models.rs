@@ -43,6 +43,16 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArtistMix {
+    pub artist: String,
+    pub title: String,
+    pub description: String,
+    pub cover_art: Option<String>,
+    pub track_count: usize,
+    pub tracks: Vec<SearchResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: String,
     pub username: String,
@@ -51,6 +61,12 @@ pub struct User {
     pub created_at: String,
     #[serde(default)]
     pub email: Option<String>,
+    #[serde(default)]
+    pub two_factor_enabled: Option<bool>,
+    #[serde(default)]
+    pub two_factor_secret: Option<String>,
+    #[serde(default)]
+    pub two_factor_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { 
-  Radio, MessageSquare, Headphones, Users, Disc, Play, Send, 
+  Radio, MessageSquare, Headphones, Users, Disc, Play, Send, Clock, 
   Music, Plus, Hash, Volume2, Flame, Activity, Share2,
   Mic, MicOff, PhoneCall, PhoneOff, VolumeX, Signal, Shield,
   X, Sparkles, Palette, Check, Settings, Sliders, Volume1, RotateCcw, CheckCircle2,
@@ -38,6 +38,15 @@ import {
   pushCloudServerInvite,
   removeCloudServerInvite,
   fetchCloudServerInvites,
+  deleteCloudChannelMessages,
+  purgeCloudExpiredMessages,
+  purgeCloudExpiredDirectMessages,
+  pushCloudDmAutoDelete,
+  fetchCloudDmAutoDelete,
+  deleteCloudDirectMessage,
+  editCloudDirectMessage,
+  clearCloudDirectMessages,
+  isSupabaseConfigured,
   CloudServerInvite,
 } from '../services/supabase';
 import { LanguageCode, getTranslation } from '../locales/i18n';
@@ -1132,30 +1141,44 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     return match ? Number(match[1]) : 0;
   };
   const parseMsgTimestamp = (timeStr?: string, messageId?: string): number => {
-    if (!timeStr) return getMessageIdTimestamp(messageId);
-    const match = String(timeStr).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
-    if (match) {
-      const idTimestamp = getMessageIdTimestamp(messageId);
-      if (idTimestamp) return idTimestamp;
-      let hours = parseInt(match[1], 10);
-      const minutes = parseInt(match[2], 10);
-      const isPm = match[4]?.toUpperCase() === 'PM';
-      if (isPm && hours < 12) hours += 12;
-      if (!isPm && hours === 12) hours = 0;
-      const d = new Date();
-      d.setHours(hours, minutes, 0, 0);
-      return d.getTime();
+    if (timeStr && /^\d{4}-\d{2}-\d{2}/.test(timeStr)) {
+      const parsed = new Date(timeStr).getTime();
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
     }
-    const parsed = new Date(timeStr).getTime();
-    return Number.isFinite(parsed) ? parsed : getMessageIdTimestamp(messageId);
+    const idTimestamp = getMessageIdTimestamp(messageId);
+    if (idTimestamp && idTimestamp > 0) return idTimestamp;
+
+    if (timeStr) {
+      const match = String(timeStr).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+      if (match) {
+        let hours = parseInt(match[1], 10);
+        const minutes = parseInt(match[2], 10);
+        const isPm = match[4]?.toUpperCase() === 'PM';
+        if (isPm && hours < 12) hours += 12;
+        if (!isPm && hours === 12) hours = 0;
+        const d = new Date();
+        d.setHours(hours, minutes, 0, 0);
+        return d.getTime();
+      }
+      const parsed = new Date(timeStr).getTime();
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return 0;
   };
   const formatMessageTimestamp = (timeStr?: string) => {
     if (!timeStr) return '';
     if (/^\d{1,2}:\d{2}(?::\d{2})?\s*(AM|PM)?$/i.test(timeStr)) return timeStr;
-    const timestamp = new Date(timeStr);
-    return Number.isNaN(timestamp.getTime())
-      ? timeStr
-      : timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const date = new Date(timeStr);
+    if (Number.isNaN(date.getTime())) return timeStr;
+    const now = new Date();
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+    const timeStrFormatted = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (isToday) return timeStrFormatted;
+    const dateStrFormatted = date.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+    return `${dateStrFormatted} ${timeStrFormatted}`;
   };
 
   const sortMessagesChronologically = (msgs: CommunityMessage[]): CommunityMessage[] => {
@@ -1280,6 +1303,30 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       active = false;
     };
   }, [currentUser?.id, selectedServer.id]);
+
+  // Tự động dọn dẹp các tin nhắn cũ hơn giới hạn thời gian (6h, 12h, 24h)
+  const purgeServerExpiredMessages = useCallback((server?: CommunityServer) => {
+    const srv = server || selectedServer;
+    const hours = srv?.auto_delete_hours;
+    if (!hours || hours <= 0 || !srv?.id) return;
+
+    const thresholdMs = Date.now() - hours * 3600 * 1000;
+    if (isTauriRuntime()) {
+      invoke('db_purge_expired_server_messages', { serverId: srv.id, hours }).catch(() => {});
+    }
+    purgeCloudExpiredMessages(srv.id, hours).catch(() => {});
+    setMessages(prev => prev.filter(m => m.server_id !== srv.id || parseMsgTimestamp(m.created_at, m.id) >= thresholdMs));
+  }, [selectedServer]);
+
+  // Kích hoạt dọn dẹp tin nhắn định kỳ mỗi 60 giây và khi chuyển server
+  useEffect(() => {
+    purgeServerExpiredMessages(selectedServer);
+    if (!selectedServer.auto_delete_hours || selectedServer.auto_delete_hours <= 0) return;
+    const timer = setInterval(() => {
+      purgeServerExpiredMessages(selectedServer);
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [selectedServer.id, selectedServer.auto_delete_hours, purgeServerExpiredMessages]);
 
   const handleDeleteServerMessage = (msgId: string) => {
     if (isTauriRuntime()) {
@@ -2030,13 +2077,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return;
     }
 
-    // Tự động tham gia máy chủ nếu chưa tham gia
+    // Tự động tham gia máy chủ nếu chưa tham gia hoặc chưa là thành viên chính thức
     let targetServer = servers.find(s => s.id === inv.serverId);
-    if (!targetServer) {
-      const ok = await joinServerAndWelcome(inv.serverId);
-      if (ok) {
-        targetServer = servers.find(s => s.id === inv.serverId);
-      }
+    const isMember = Boolean(targetServer && currentUser && targetServer.member_ids?.includes(currentUser.id));
+    if (!targetServer || !isMember) {
+      await joinServerAndWelcome(inv.serverId);
+      targetServer = servers.find(s => s.id === inv.serverId) || targetServer;
     }
 
     // Chuyển sang máy chủ của lời mời nếu khác máy chủ hiện tại
@@ -2046,15 +2092,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       setIsFriendsTabActive(false);
     }
     const currentSrv = targetServer || selectedServer;
-    const targetChannel = currentSrv.channels.find(c => c.id === inv.channelId);
+    const targetChannel = currentSrv.channels.find(c => c.id === inv.channelId) || currentSrv.channels.find(c => c.type === (inv.isTextRoom ? 'text' : 'voice')) || currentSrv.channels[0];
 
     if (inv.isTextRoom) {
       if (targetChannel) {
         handleSelectChannel(targetChannel, currentSrv.id);
       }
+      setIsFriendsTabActive(false);
       playAudioChime('join');
     } else {
       handleJoinVoiceCall(inv.channelId, targetChannel);
+      if (targetChannel) {
+        handleSelectChannel(targetChannel, currentSrv.id);
+      }
+      setIsFriendsTabActive(false);
       playAudioChime('join');
     }
   };
@@ -2125,6 +2176,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     const handleCloseMenu = () => {
       setMemberMenu(null);
       setChannelContextMenu(null);
+      setActiveMessageMenuId(null);
+      setOpenMemberActionsMenuId(null);
+      setShowDmSettingsMenu(false);
     };
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
@@ -2198,9 +2252,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     }
 
-    // Tự động tham gia đúng phòng thoại muốn mời nếu người mời chưa ở trong phòng đó (chỉ áp dụng cho voice)
-    if (!isTextRoom && (connectedVoiceServerId !== selectedServer.id || connectedVoiceChannel !== targetVoiceChId)) {
-      handleJoinVoiceCall(targetVoiceChId, targetChannel);
+    // 1. Tự động thêm chính mình vào Server nếu chưa là thành viên của Server này
+    if (currentUser && (!selectedServer.member_ids || !selectedServer.member_ids.includes(currentUser.id))) {
+      joinServerAndWelcome(selectedServer.id).catch(() => {});
+    }
+
+    // 2. Chuyển vào room chat nếu là phòng text
+    if (isTextRoom) {
+      handleSelectChannel(targetChannel, selectedServer.id);
+      setIsFriendsTabActive(false);
     }
 
     // Nếu là DJ Bot hệ thống: Cho vào phòng đàm thoại ngay lập tức (chỉ khi là phòng voice)
@@ -2868,16 +2928,50 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Helper: hiển thị ảnh đại diện (avatar) từ đám mây hoặc chữ cái đầu nếu chưa có ảnh
   const resolveUserAvatar = (userId?: string | null, fallbackAvatar?: string | null): string | null => {
     if (!userId) return fallbackAvatar || null;
-    if (userId === 'usr_me' || (currentUser && userId === currentUser.id)) {
+    if (
+      userId === 'usr_me' ||
+      (currentUser && (userId === currentUser.id || (currentUser.username && userId.toLowerCase() === currentUser.username.toLowerCase())))
+    ) {
       return currentUser?.avatar || fallbackAvatar || null;
     }
-    const rt = realtimeUserPresences[userId];
+
+    // 1. Ưu tiên kiểm tra trong realtimeUserPresences (bộ đệm trực tuyến theo ID hoặc Username)
+    const rt =
+      realtimeUserPresences[userId] ||
+      Object.values(realtimeUserPresences).find(
+        p => p.id === userId || (p.username && p.username.toLowerCase() === userId.toLowerCase())
+      );
     if (rt?.avatar) return rt.avatar;
-    const reg = registeredUsers.find(u => u.id === userId);
+
+    // 2. Ưu tiên kiểm tra trong registeredUsers (được đồng bộ trực tiếp từ bảng spytify_profiles trên Supabase Cloud)
+    const reg = registeredUsers.find(
+      u => u.id === userId || (u.username && u.username.toLowerCase() === userId.toLowerCase())
+    );
     if (reg?.avatar) return reg.avatar;
-    const fol = followersOfMeMap[userId];
+
+    // 3. Kiểm tra thông tin trong follow graph / danh sách người theo dõi
+    const fol =
+      followersOfMeMap[userId] ||
+      Object.values(followersOfMeMap).find(
+        f => f.followerId === userId || (f.followerUsername && f.followerUsername.toLowerCase() === userId.toLowerCase())
+      );
     if (fol?.followerAvatar) return fol.followerAvatar;
-    return fallbackAvatar || null;
+
+    // 4. Fallback về avatar có sẵn truyền vào từ component cha/dữ liệu cục bộ
+    if (fallbackAvatar) return fallbackAvatar;
+
+    // 5. Dự phòng cuối cùng từ lịch sử tin nhắn DM hoặc tin nhắn Server
+    const dmMsg = dmMessages.find(
+      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === userId.toLowerCase())) && m.avatar
+    );
+    if (dmMsg?.avatar) return dmMsg.avatar;
+
+    const srvMsg = messages.find(
+      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === userId.toLowerCase())) && m.avatar
+    );
+    if (srvMsg?.avatar) return srvMsg.avatar;
+
+    return null;
   };
 
   const renderAvatarContent = (name?: string | null, avatar?: string | null) => {
@@ -3010,6 +3104,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [botActiveStreamIdx, setBotActiveStreamIdx] = useState<Record<string, number>>({});
   const [editServerAllowInvites, setEditServerAllowInvites] = useState<boolean>(true);
   const [editServerMessageLimit, setEditServerMessageLimit] = useState<number>(80);
+  const [editServerAutoDeleteHours, setEditServerAutoDeleteHours] = useState<0 | 6 | 12 | 24>(0);
 
   const [myUserThought, setMyUserThought] = useState<string>(() => {
     try {
@@ -4051,6 +4146,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [dmAttachTrack, setDmAttachTrack] = useState(false);
   const [dmCallConnected, setDmCallConnected] = useState(false);
   const [dmCallCountdown, setDmCallCountdown] = useState(30);
+  const [currentDmAutoDeleteHours, setCurrentDmAutoDeleteHours] = useState<0 | -1 | 6 | 12 | 24>(0);
+  const [showDmSettingsMenu, setShowDmSettingsMenu] = useState(false);
+  const currentDmAutoDeleteHoursRef = useRef<number>(0);
+  currentDmAutoDeleteHoursRef.current = currentDmAutoDeleteHours;
+  const currentDmRoomIdRef = useRef<string | null>(null);
+  const purgeDmExpiredMessagesRef = useRef<((roomId: string, hours: number) => void) | null>(null);
+
+  // Danh sách các cuộc trò chuyện riêng bị đóng/tạm ẩn khỏi sidebar (bấm 'X')
+  const [hiddenDmUserIds, setHiddenDmUserIds] = useState<string[]>(() => {
+    if (!currentUser?.id) return [];
+    try {
+      const raw = localStorage.getItem(`spytify_hidden_dm_threads_${currentUser.id}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [showClearDmModal, setShowClearDmModal] = useState(false);
+  const [activeMessageMenuId, setActiveMessageMenuId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageText, setEditingMessageText] = useState('');
+
   const activeDmChannelRef = useRef<any>(null);
   const dmMessagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -4696,6 +4814,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setEditServerMaxMembers(srv.max_members || 50);
     setEditServerAllowInvites(srv.allow_member_invites ?? true);
     setEditServerMessageLimit(srv.message_limit || 80);
+    setEditServerAutoDeleteHours((srv.auto_delete_hours as 0 | 6 | 12 | 24) || 0);
     setNicknameDraft(serverNicknames[srv.id] || currentUser?.display_name || '');
     const myTags = resolveMemberTags(currentUser?.id || 'usr_me', srv, myServerDisplayName);
     setSelectedTagIdsDraft(myTags.map(t => t.id));
@@ -4757,6 +4876,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       max_members: editServerMaxMembers,
       allow_member_invites: isServerOwner ? editServerAllowInvites : (selectedServer.allow_member_invites ?? true),
       message_limit: editServerMessageLimit,
+      auto_delete_hours: editServerAutoDeleteHours,
     };
 
     const updatedList = servers.map(s => s.id === selectedServer.id ? updatedSrv : s);
@@ -4764,6 +4884,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setSelectedServer(updatedSrv);
     persistServers(updatedList);
     pushCloudServer(updatedSrv).catch(() => {});
+    purgeServerExpiredMessages(updatedSrv);
     activeChannelRef.current?.send({
       type: 'broadcast',
       event: 'server_updated',
@@ -5384,7 +5505,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     if (connectedVoiceServerId === srvId) {
       handleLeaveVoiceCall();
     }
+    // 1. Dọn dẹp sạch toàn bộ tin nhắn máy chủ trong SQLite nội bộ
+    invoke('db_delete_server_messages', { serverId: srvId }).catch(console.warn);
+    // 2. Dọn dẹp sạch toàn bộ tin nhắn & máy chủ trong Supabase Cloud
     deleteCloudServer(srvId).catch(() => {});
+    // 3. Xóa tin nhắn khỏi bộ nhớ đệm UI
+    setMessages(prev => prev.filter(m => m.server_id !== srvId));
+
+    // 4. Phát tín hiệu Realtime cho tất cả các máy khách khác xóa ngay máy chủ này
+    globalSocialChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'server_deleted',
+      payload: { serverId: srvId },
+    });
+
     const nextServers = servers.filter(s => s.id !== srvId);
     setServers(nextServers);
     persistServers(nextServers);
@@ -5688,11 +5822,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return;
     }
 
-    const alreadyInvited = outgoingServerInvites.some(
-      inv => inv.serverId === selectedServer.id && inv.targetUserId === memberId
-    );
-    if (alreadyInvited) return;
-
     const createdAtStr = new Date().toISOString();
     const inviteObj: CloudServerInvite = {
       id: `srv_inv_${selectedServer.id}_${memberId}`,
@@ -5725,6 +5854,25 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       track_embed: null,
       created_at: createdAtStr,
     };
+
+    // Lưu vào bộ nhớ cục bộ phía người gửi để hiển thị ngay trong cuộc hội thoại DM
+    const dmStorageKey = `spytify_dm_messages_${dmRoom}`;
+    try {
+      const raw = localStorage.getItem(dmStorageKey);
+      const existing: CommunityMessage[] = raw ? JSON.parse(raw) : [];
+      if (!existing.some(m => m.id === dmInviteMsg.id)) {
+        const updated = [...existing, dmInviteMsg].slice(-MAX_CHAT_MESSAGES_LIMIT);
+        localStorage.setItem(dmStorageKey, JSON.stringify(updated));
+      }
+    } catch {}
+
+    if (activeDmFriend?.id === memberId) {
+      setDmMessages(prev => {
+        if (prev.some(m => m.id === dmInviteMsg.id)) return prev;
+        return [...prev, dmInviteMsg].slice(-MAX_CHAT_MESSAGES_LIMIT);
+      });
+    }
+
     pushCloudDirectMessage({
       id: dmInviteMsg.id,
       room_id: dmRoom,
@@ -5755,15 +5903,63 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         message: dmInviteMsg,
       },
     });
+
+    const targetUser = registeredUsers.find(u => u.id === memberId);
+    showVoiceToast(
+      language === 'vi'
+        ? `Đã gửi lời mời tham gia máy chủ "${selectedServer.name}" tới ${targetUser?.display_name || 'thành viên'}!`
+        : `Sent server invite "${selectedServer.name}" to ${targetUser?.display_name || 'member'}!`
+    );
   };
 
   // Tham gia Server thông qua lời mời hoặc Link mời `spytify://station/join/...`
-  const joinServerAndWelcome = async (rawServerIdOrLink: string, fromInvite?: CloudServerInvite): Promise<boolean> => {
+  const joinServerAndWelcome = async (
+    rawServerIdOrLink: string,
+    fromInvite?: CloudServerInvite,
+    isExpiredExplicit?: boolean
+  ): Promise<boolean> => {
     if (!currentUser) return false;
+
+    // 1. Kiểm tra nếu lời mời đã hết hạn sau 24 tiếng
+    if (isExpiredExplicit) {
+      showVoiceToast(
+        language === 'vi'
+          ? 'Lời mời tham gia máy chủ này đã hết hạn sau 24 tiếng.'
+          : 'This server invite has expired (24h limit).'
+      );
+      return false;
+    }
+
+    if (fromInvite?.createdAt) {
+      const inviteAge = Date.now() - new Date(fromInvite.createdAt).getTime();
+      if (inviteAge > 24 * 3600 * 1000) {
+        showVoiceToast(
+          language === 'vi'
+            ? 'Lời mời tham gia máy chủ này đã hết hạn sau 24 tiếng.'
+            : 'This server invite has expired (24h limit).'
+        );
+        return false;
+      }
+    }
+
+    const timeMatch = rawServerIdOrLink.match(/[?&]t=(\d+)/);
+    if (timeMatch) {
+      const linkTimestamp = parseInt(timeMatch[1], 10);
+      if (Date.now() - linkTimestamp > 24 * 3600 * 1000) {
+        showVoiceToast(
+          language === 'vi'
+            ? 'Liên kết mời tham gia máy chủ này đã hết hạn sau 24 tiếng.'
+            : 'This server invite link has expired (24h limit).'
+        );
+        return false;
+      }
+    }
+
     const cleanServerId = rawServerIdOrLink
       .trim()
       .replace(/^.*spytify:\/\/station\/join\//i, '')
       .split(/\s+/)[0]
+      .split('?')[0]
       .trim();
     if (!cleanServerId) return false;
 
@@ -5902,6 +6098,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   const handleAcceptServerInvite = async (invite: CloudServerInvite) => {
+    if (invite.createdAt) {
+      const inviteAge = Date.now() - new Date(invite.createdAt).getTime();
+      if (inviteAge > 24 * 3600 * 1000) {
+        showVoiceToast(
+          language === 'vi'
+            ? 'Lời mời tham gia máy chủ này đã hết hạn sau 24 tiếng.'
+            : 'This server invite has expired (24h limit).'
+        );
+        handleDeclineServerInvite(invite);
+        return;
+      }
+    }
     await joinServerAndWelcome(invite.serverId, invite);
   };
 
@@ -6080,6 +6288,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       const remainingSameType = nextChannels.filter(c => c.type === target.type);
       setSelectedChannel(remainingSameType[0] || nextChannels[0]);
     }
+
+    // Xóa sạch toàn bộ tin nhắn cũ của kênh này khỏi cơ sở dữ liệu (SQLite & Supabase)
+    invoke('db_delete_channel_messages', { serverId: selectedServer.id, channelId }).catch(() => {});
+    deleteCloudChannelMessages(selectedServer.id, channelId).catch(() => {});
+    setMessages(prev => prev.filter(m => m.channel_id !== channelId));
   };
 
   const requestDeleteChannel = (channel: CommunityChannel, e?: React.MouseEvent) => {
@@ -6120,10 +6333,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return;
     }
     try {
-      navigator.clipboard.writeText(`spytify://station/join/${srvId}`);
+      navigator.clipboard.writeText(`spytify://station/join/${srvId}?t=${Date.now()}`);
     } catch {}
     setInviteCopied(true);
-    showVoiceToast(language === 'vi' ? 'Đã sao chép link mời vào máy chủ!' : 'Copied server invite link!');
+    showVoiceToast(
+      language === 'vi'
+        ? 'Đã sao chép link mời máy chủ (hiệu lực trong 24 tiếng)!'
+        : 'Copied server invite link (valid for 24 hours)!'
+    );
     setTimeout(() => setInviteCopied(false), 2500);
   };
 
@@ -7421,6 +7638,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       }
     } catch {}
 
+    // Tự động bỏ ẩn cuộc trò chuyện trong sidebar nếu có tin nhắn mới tới
+    setHiddenDmUserIds(prev => {
+      if (!prev.includes(senderId)) return prev;
+      const next = prev.filter(id => id !== senderId);
+      try {
+        if (currentUser?.id) {
+          localStorage.setItem(`spytify_hidden_dm_threads_${currentUser.id}`, JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+
     // Đảm bảo người gửi có trong danh sách registeredUsers để hiển thị ở cột TIN NHẮN TRỰC TIẾP
     setRegisteredUsers(prev => {
       if (prev.some(u => u.id === senderId)) return prev;
@@ -7491,50 +7720,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           return;
         }
 
+        incomingRows.forEach(r => {
+          if (!r.id || r.sender_id === currentUser.id) return;
+          const dmMsg: CommunityMessage = {
+            id: r.id,
+            server_id: 'dm_private',
+            channel_id: r.room_id,
+            user_id: r.sender_id,
+            username: r.sender_username || 'operative',
+            display_name: r.sender_display_name || r.sender_username || 'Operative',
+            avatar: r.sender_avatar || null,
+            content: r.content,
+            track_embed: r.track_embed || null,
+            created_at: r.created_at || '',
+          };
+          // Khi lần đầu khởi tạo ứng dụng: nạp tin nhắn vào bộ nhớ nhưng không phát âm thanh chuông hàng loạt
+          handleIncomingDmMessage(dmMsg, r.sender_id, r.room_id, isAlreadyInitialized && !isFirstSync);
+        });
         if (!isAlreadyInitialized) {
-          if (isFirstSync) {
-            incomingRows.forEach(r => {
-              if (r.id) seenMessageIdsRef.current.add(r.id);
-            });
-            persistSeenMessageIds();
-          } else {
-            incomingRows.forEach(r => {
-              if (!r.id || r.sender_id === currentUser.id) return;
-              const dmMsg: CommunityMessage = {
-                id: r.id,
-                server_id: 'dm_private',
-                channel_id: r.room_id,
-                user_id: r.sender_id,
-                username: r.sender_username || 'operative',
-                display_name: r.sender_display_name || r.sender_username || 'Operative',
-                avatar: r.sender_avatar || null,
-                content: r.content,
-                track_embed: r.track_embed || null,
-                created_at: r.created_at || '',
-              };
-              handleIncomingDmMessage(dmMsg, r.sender_id, r.room_id, true);
-            });
-          }
           try {
             localStorage.setItem(initFlagKey, '1');
           } catch {}
-        } else {
-          incomingRows.forEach(r => {
-            if (!r.id || r.sender_id === currentUser.id) return;
-            const dmMsg: CommunityMessage = {
-              id: r.id,
-              server_id: 'dm_private',
-              channel_id: r.room_id,
-              user_id: r.sender_id,
-              username: r.sender_username || 'operative',
-              display_name: r.sender_display_name || r.sender_username || 'Operative',
-              avatar: r.sender_avatar || null,
-              content: r.content,
-              track_embed: r.track_embed || null,
-              created_at: r.created_at || '',
-            };
-            handleIncomingDmMessage(dmMsg, r.sender_id, r.room_id, !isFirstSync);
-          });
         }
         const latestSentAt = incomingRows.reduce(
           (latest, row) => (row.sent_at && row.sent_at > latest ? row.sent_at : latest),
@@ -7559,11 +7765,6 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             profileSyncSince = localStorage.getItem(profileSyncCursorKey) || profileSyncSince;
           } catch {}
         }
-        let serverAuditSince: string | undefined;
-        try {
-          serverAuditSince = localStorage.getItem(serverAuditCursorKey) || undefined;
-        } catch {}
-
         const [cloudProfiles, profileUpdates, followGraph, serverInvites, serverAudit] = await Promise.all([
           !syncProfileChanges ? fetchAllCloudProfiles() : Promise.resolve([]),
           syncProfileChanges
@@ -7571,7 +7772,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             : Promise.resolve([]),
           fetchCloudFollowGraph(currentUser.id),
           fetchCloudServerInvites(currentUser.id),
-          fetchCloudServerMembershipAudit(currentUser.id, serverAuditSince),
+          fetchCloudServerMembershipAudit(currentUser.id),
         ]);
 
         if (!isMounted) return;
@@ -7653,39 +7854,54 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           setServers(prev => {
             const byId = new Map<string, CommunityServer>();
-            prev.forEach(s => {
-              if (!removedServerSet.has(s.id)) {
-                byId.set(s.id, s);
-              }
-            });
+
+            // 1. Nạp tất cả các server đang hoạt động trên Cloud mà user tham gia
             cloudServers.forEach((cs: CommunityServer) => {
               if (!cs?.id || cs.id === 'srv_none') return;
-              if (
-                cs.owner_id !== currentUser.id &&
-                Array.isArray(cs.kicked_ids) &&
-                cs.kicked_ids.includes(currentUser.id)
-              ) {
-                return;
-              }
-              byId.set(cs.id, mergeServerWithCloud(byId.get(cs.id), cs));
+              if (removedServerSet.has(cs.id)) return;
+              const localExisting = prev.find(s => s.id === cs.id);
+              byId.set(cs.id, mergeServerWithCloud(localExisting, cs));
             });
+
+            // 2. Bảo toàn các server mà chính currentUser là chủ sở hữu (Owner) hoặc server mặc định
+            prev.forEach(s => {
+              if (!s?.id || s.id === 'srv_none') return;
+              if (removedServerSet.has(s.id)) return;
+              if (byId.has(s.id)) return;
+
+              const isOwner = s.owner_id === currentUser.id || s.owner_id === 'usr_me';
+              if (isOwner) {
+                byId.set(s.id, s);
+                pushCloudServer(s).catch(() => {});
+              }
+            });
+
             const merged = applySavedServerOrder(currentUser.id, Array.from(byId.values()));
             persistServers(merged);
             return merged;
           });
 
           setSelectedServer(prev => {
-            if (!prev || prev.id === 'srv_none') return prev;
-            if (removedServerSet.has(prev.id)) return EMPTY_SERVER_FALLBACK;
+            if (!prev || prev.id === 'srv_none') {
+              return cloudServers.length > 0 ? cloudServers[0] : EMPTY_SERVER_FALLBACK;
+            }
+            if (removedServerSet.has(prev.id)) {
+              return cloudServers.length > 0 ? cloudServers[0] : EMPTY_SERVER_FALLBACK;
+            }
             const matchedCloud = cloudServers.find((cs: CommunityServer) => cs?.id === prev.id);
-            if (!matchedCloud) return prev;
-            return mergeServerWithCloud(prev, matchedCloud);
+            if (matchedCloud) return mergeServerWithCloud(prev, matchedCloud);
+            return prev;
           });
         } else if (removedServerSet.size > 0) {
           setServers(prev => {
             const next = prev.filter(s => !removedServerSet.has(s.id));
             if (next.length !== prev.length) persistServers(next);
             return next;
+          });
+          setSelectedServer(prev => {
+            if (!prev || prev.id === 'srv_none') return prev;
+            if (removedServerSet.has(prev.id)) return EMPTY_SERVER_FALLBACK;
+            return prev;
           });
         }
 
@@ -7742,12 +7958,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 );
 
               if (existing) {
-                byId.set(existing.id, {
+                if (existing.id !== cp.id) {
+                  byId.delete(existing.id);
+                }
+                byId.set(cp.id, {
                   ...existing,
                   id: cp.id,
                   username: cp.username || existing.username,
                   display_name: cp.display_name || existing.display_name,
-                  avatar: cp.avatar || existing.avatar || null,
+                  avatar: cp.avatar !== undefined ? cp.avatar : (existing.avatar || null),
                   bio: cp.bio ?? existing.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
                   thought: cp.thought ?? existing.thought ?? null,
                   custom_status: cp.thought ?? existing.custom_status,
@@ -7775,7 +7994,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
             profileUpdates.forEach(profile => {
               if (!profile.id || profile.id === currentUser.id || profile.id.startsWith('usr_custom_')) return;
-              const existing = byId.get(profile.id);
+              const existing =
+                byId.get(profile.id) ||
+                Array.from(byId.values()).find(
+                  u => u.username.toLowerCase() === (profile.username || '').toLowerCase()
+                );
+              if (existing && existing.id !== profile.id) {
+                byId.delete(existing.id);
+              }
               byId.set(profile.id, {
                 ...(existing || {
                   id: profile.id,
@@ -7791,7 +8017,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 }),
                 username: profile.username || existing?.username || 'operative',
                 display_name: profile.display_name || existing?.display_name || profile.username,
-                avatar: profile.avatar,
+                avatar: profile.avatar !== undefined ? profile.avatar : (existing?.avatar || null),
                 bio: profile.bio ?? existing?.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
                 thought: profile.thought ?? existing?.thought ?? null,
                 custom_status: profile.thought ?? existing?.custom_status,
@@ -7802,6 +8028,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             try {
               localStorage.setItem('spytify_registered_users', JSON.stringify(nextList));
             } catch {}
+            // Cập nhật ngay activeDmFriend nếu có profile mới từ Cloud
+            setActiveDmFriend(prev => {
+              if (!prev) return null;
+              const match = nextList.find(
+                u => u.id === prev.id || (u.username && prev.username && u.username.toLowerCase() === prev.username.toLowerCase())
+              );
+              return match ? { ...prev, ...match, avatar: match.avatar ?? prev.avatar } : prev;
+            });
             return nextList;
           });
         }
@@ -7851,6 +8085,107 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       config: { broadcast: { ack: false } },
     });
     globalSocialChannelRef.current = socialCh;
+
+    socialCh.on('broadcast', { event: 'user_presence' }, ({ payload }) => {
+      if (!payload || !payload.id || payload.id === currentUser.id) return;
+      const now = Date.now();
+      setRealtimeUserPresences(prev => ({
+        ...prev,
+        [payload.id]: {
+          ...payload,
+          status: payload.status || 'offline',
+          username: payload.username || prev[payload.id]?.username || '',
+          display_name: payload.display_name || prev[payload.id]?.display_name || payload.username || 'Operative',
+          thought: payload.thought ?? payload.custom_status ?? prev[payload.id]?.thought ?? null,
+          custom_status: payload.custom_status ?? payload.thought ?? prev[payload.id]?.custom_status ?? null,
+          bio: payload.bio ?? prev[payload.id]?.bio ?? null,
+          avatar: payload.avatar || prev[payload.id]?.avatar || null,
+          tags: payload.tags ?? prev[payload.id]?.tags ?? null,
+          lastSeen: now,
+        },
+      }));
+      setRegisteredUsers(prev => {
+        const idx = prev.findIndex(
+          u => u.id === payload.id || (u.username && payload.username && u.username.toLowerCase() === payload.username.toLowerCase())
+        );
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            id: payload.id,
+            username: payload.username || updated[idx].username,
+            display_name: payload.display_name || updated[idx].display_name,
+            avatar: payload.avatar || updated[idx].avatar,
+            bio: payload.bio ?? updated[idx].bio,
+            thought: payload.thought ?? updated[idx].thought,
+            custom_status: payload.custom_status ?? payload.thought ?? updated[idx].custom_status,
+            status: payload.status || updated[idx].status,
+          };
+          return updated;
+        } else {
+          return [
+            ...prev,
+            {
+              id: payload.id,
+              username: payload.username || 'operative',
+              display_name: payload.display_name || payload.username || 'Operative',
+              avatar: payload.avatar || null,
+              role: 'AGENT',
+              status: payload.status || 'online',
+              bio: payload.bio || 'Thành viên Spytify từ hệ thống cộng đồng.',
+              thought: payload.thought || null,
+              custom_status: payload.custom_status || payload.thought || null,
+              listening: null,
+              listeningTrack: null,
+              isHost: false,
+              followsCurrentUser: false,
+            },
+          ];
+        }
+      });
+      // Cập nhật ngay activeDmFriend nếu đang mở DM với người dùng vừa phát tín hiệu presence
+      setActiveDmFriend(prev => {
+        if (!prev) return null;
+        if (
+          prev.id === payload.id ||
+          (prev.username && payload.username && prev.username.toLowerCase() === payload.username.toLowerCase())
+        ) {
+          return {
+            ...prev,
+            id: payload.id,
+            avatar: payload.avatar || prev.avatar,
+            display_name: payload.display_name || prev.display_name,
+            status: payload.status || prev.status,
+          };
+        }
+        return prev;
+      });
+    });
+
+    socialCh.on('broadcast', { event: 'user_presence_heartbeat' }, ({ payload }) => {
+      if (!payload || !payload.id || payload.id === currentUser.id) return;
+      const now = Date.now();
+      setRealtimeUserPresences(prev => {
+        if (!prev[payload.id]) return prev;
+        return {
+          ...prev,
+          [payload.id]: {
+            ...prev[payload.id],
+            lastSeen: now,
+          },
+        };
+      });
+    });
+
+    socialCh.on('broadcast', { event: 'user_presence_sync_request' }, () => {
+      if (myPresencePayloadRef.current && myPresencePayloadRef.current.status !== 'offline') {
+        socialCh.send({
+          type: 'broadcast',
+          event: 'user_presence',
+          payload: myPresencePayloadRef.current,
+        });
+      }
+    });
 
     socialCh.on('broadcast', { event: 'dm_message_notify' }, ({ payload }) => {
       if (!payload || payload.receiverId !== currentUser.id || !payload.message) return;
@@ -8043,6 +8378,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       if (payload.action === 'invite' && payload.invite?.targetUserId === currentUser.id) {
         const inv: CloudServerInvite = payload.invite;
         setIncomingServerInvites(prev => [...prev.filter(i => i.id !== inv.id && i.serverId !== inv.serverId), inv]);
+        playAudioChime('join');
+        showVoiceToast(
+          language === 'vi'
+            ? `📩 ${inv.inviterDisplayName || 'Một thành viên'} đã mời bạn tham gia máy chủ "${inv.serverName}"!`
+            : `📩 ${inv.inviterDisplayName || 'A member'} invited you to join server "${inv.serverName}"!`
+        );
       } else if (payload.action === 'accepted' && payload.updatedServer) {
         const upd: CommunityServer = payload.updatedServer;
         if (payload.targetUserId) {
@@ -8158,7 +8499,94 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       });
     });
 
-    socialCh.subscribe();
+    socialCh.on('broadcast', { event: 'server_deleted' }, ({ payload }) => {
+      if (!payload?.serverId) return;
+      const srvId = payload.serverId;
+      setServers(prev => {
+        const next = prev.filter(s => s.id !== srvId);
+        persistServers(next);
+        return next;
+      });
+      setSelectedServer(prev => {
+        if (prev.id !== srvId) return prev;
+        return EMPTY_SERVER_FALLBACK;
+      });
+      setMessages(prev => prev.filter(m => m.server_id !== srvId));
+    });
+
+    socialCh.on('broadcast', { event: 'dm_auto_delete_update' }, ({ payload }) => {
+      if (!payload?.roomId || payload.hours === undefined) return;
+      const rawNum = Number(payload.hours);
+      const h = (rawNum === -1 || rawNum === 6 || rawNum === 12 || rawNum === 24) ? rawNum : 0;
+      try {
+        localStorage.setItem(`spytify_dm_auto_delete_${payload.roomId}`, String(h));
+      } catch {}
+      if (currentDmRoomIdRef.current === payload.roomId) {
+        setCurrentDmAutoDeleteHours(h as 0 | -1 | 6 | 12 | 24);
+        if (h > 0 || h === -1) {
+          purgeDmExpiredMessagesRef.current?.(payload.roomId, h);
+        }
+      }
+    });
+
+    socialCh.on('broadcast', { event: 'delete_dm_message' }, ({ payload }) => {
+      if (!payload?.messageId || !payload?.roomId) return;
+      try {
+        const storageKey = `spytify_dm_messages_${payload.roomId}`;
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const next = parsed.filter((m: any) => m.id !== payload.messageId);
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        }
+      } catch {}
+      if (currentDmRoomIdRef.current === payload.roomId) {
+        setDmMessages(prev => prev.filter(m => m.id !== payload.messageId));
+      }
+    });
+
+    socialCh.on('broadcast', { event: 'edit_dm_message' }, ({ payload }) => {
+      if (!payload?.messageId || !payload?.roomId || payload.content === undefined) return;
+      try {
+        const storageKey = `spytify_dm_messages_${payload.roomId}`;
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const next = parsed.map((m: any) =>
+            m.id === payload.messageId ? { ...m, content: payload.content, edited: true } : m
+          );
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        }
+      } catch {}
+      if (currentDmRoomIdRef.current === payload.roomId) {
+        setDmMessages(prev =>
+          prev.map(m => (m.id === payload.messageId ? { ...m, content: payload.content, edited: true } : m))
+        );
+      }
+    });
+
+    socialCh.on('broadcast', { event: 'clear_dm_messages' }, ({ payload }) => {
+      if (!payload?.roomId) return;
+      try {
+        localStorage.removeItem(`spytify_dm_messages_${payload.roomId}`);
+      } catch {}
+      if (currentDmRoomIdRef.current === payload.roomId) {
+        setDmMessages([]);
+      }
+    });
+
+    socialCh.subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        socialCh.send({ type: 'broadcast', event: 'user_presence_sync_request', payload: {} });
+        if (myPresencePayloadRef.current && myPresencePayloadRef.current.status !== 'offline') {
+          socialCh.send({
+            type: 'broadcast',
+            event: 'user_presence',
+            payload: myPresencePayloadRef.current,
+          });
+        }
+      }
+    });
 
     return () => {
       isMounted = false;
@@ -8288,30 +8716,50 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Đồng bộ avatar mới nhất cho activeDmFriend và selectedProfileUser khi registeredUsers cập nhật
   useEffect(() => {
     if (activeDmFriend) {
-      const updated = registeredUsers.find(u => u.id === activeDmFriend.id);
-      if (updated && (updated.avatar !== activeDmFriend.avatar || updated.display_name !== activeDmFriend.display_name)) {
-        setActiveDmFriend(prev => (prev ? { ...prev, avatar: updated.avatar, display_name: updated.display_name } : null));
+      const updated = registeredUsers.find(
+        u => u.id === activeDmFriend.id || (u.username && activeDmFriend.username && u.username.toLowerCase() === activeDmFriend.username.toLowerCase())
+      );
+      if (
+        updated &&
+        (updated.avatar !== activeDmFriend.avatar ||
+          updated.display_name !== activeDmFriend.display_name ||
+          updated.id !== activeDmFriend.id)
+      ) {
+        setActiveDmFriend(prev =>
+          prev
+            ? {
+                ...prev,
+                ...updated,
+                avatar: updated.avatar ?? prev.avatar,
+                display_name: updated.display_name,
+              }
+            : null
+        );
       }
     }
     if (selectedProfileUser && selectedProfileUser.id !== 'usr_me') {
-      const updated = registeredUsers.find(u => u.id === selectedProfileUser.id);
+      const updated = registeredUsers.find(
+        u => u.id === selectedProfileUser.id || (u.username && selectedProfileUser.username && u.username.toLowerCase() === selectedProfileUser.username.toLowerCase())
+      );
       if (
         updated &&
         (updated.avatar !== selectedProfileUser.avatar ||
           updated.display_name !== selectedProfileUser.display_name ||
           updated.bio !== selectedProfileUser.bio ||
           updated.thought !== selectedProfileUser.thought ||
+          updated.id !== selectedProfileUser.id ||
           isUserFollowingMe(updated.id) !== selectedProfileUser.followsCurrentUser)
       ) {
         setSelectedProfileUser(prev =>
           prev
             ? {
                 ...prev,
-                avatar: updated.avatar,
+                ...updated,
+                avatar: updated.avatar ?? prev.avatar,
                 display_name: updated.display_name,
-                bio: updated.bio,
-                thought: updated.thought,
-                custom_status: updated.custom_status,
+                bio: updated.bio ?? prev.bio,
+                thought: updated.thought ?? prev.thought,
+                custom_status: updated.custom_status ?? prev.custom_status,
                 followsCurrentUser: isUserFollowingMe(updated.id),
               }
             : null
@@ -8778,6 +9226,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           thought: payload.thought ?? payload.custom_status ?? prev[payload.id]?.thought ?? null,
           custom_status: payload.custom_status ?? payload.thought ?? prev[payload.id]?.custom_status ?? null,
           bio: payload.bio ?? prev[payload.id]?.bio ?? null,
+          avatar: payload.avatar || prev[payload.id]?.avatar || null,
           tags: payload.tags ?? prev[payload.id]?.tags ?? null,
           lastSeen: now,
         },
@@ -9830,6 +10279,97 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       connectedVoiceServerId === 'dm_private' &&
       connectedVoiceChannel === currentDmVoiceChannelId
   );
+  currentDmRoomIdRef.current = currentDmRoomId;
+
+  // Dọn dẹp tin nhắn riêng cũ hơn thời gian quy định (tức thì 30s, 6h, 12h, 24h)
+  const purgeDmExpiredMessages = useCallback((roomId: string, hours: number) => {
+    if (!roomId || hours === 0) return;
+    const durationMs = hours === -1 ? 30 * 1000 : hours * 3600 * 1000;
+    const thresholdMs = Date.now() - durationMs;
+    purgeCloudExpiredDirectMessages(roomId, hours).catch(() => {});
+    setDmMessages(prev => {
+      const next = prev.filter(m => parseMsgTimestamp(m.created_at, m.id) >= thresholdMs);
+      try {
+        localStorage.setItem(`spytify_dm_messages_${roomId}`, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+  purgeDmExpiredMessagesRef.current = purgeDmExpiredMessages;
+
+  // Tải cấu hình tự hủy của phòng chat riêng hiện tại
+  useEffect(() => {
+    if (!currentDmRoomId) {
+      setCurrentDmAutoDeleteHours(0);
+      return;
+    }
+    const localVal = Number(localStorage.getItem(`spytify_dm_auto_delete_${currentDmRoomId}`)) || 0;
+    const initialHours = (localVal === -1 || localVal === 6 || localVal === 12 || localVal === 24) ? localVal : 0;
+    setCurrentDmAutoDeleteHours(initialHours as 0 | -1 | 6 | 12 | 24);
+    if (initialHours > 0 || initialHours === -1) {
+      purgeDmExpiredMessages(currentDmRoomId, initialHours);
+    }
+
+    fetchCloudDmAutoDelete(currentDmRoomId).then(cloudHours => {
+      if (cloudHours === 0 || cloudHours === -1 || cloudHours === 6 || cloudHours === 12 || cloudHours === 24) {
+        setCurrentDmAutoDeleteHours(cloudHours as 0 | -1 | 6 | 12 | 24);
+        try {
+          localStorage.setItem(`spytify_dm_auto_delete_${currentDmRoomId}`, String(cloudHours));
+        } catch {}
+        if (cloudHours > 0 || cloudHours === -1) {
+          purgeDmExpiredMessages(currentDmRoomId, cloudHours);
+        }
+      }
+    });
+  }, [currentDmRoomId, purgeDmExpiredMessages]);
+
+  // Quét dọn tin nhắn riêng định kỳ: nếu đang bật tự hủy tức thì (-1) thì quét mỗi 1 giây, nếu giờ thì mỗi 10 giây
+  useEffect(() => {
+    if (!currentDmRoomId || currentDmAutoDeleteHours === 0) return;
+    purgeDmExpiredMessages(currentDmRoomId, currentDmAutoDeleteHours);
+    const intervalMs = currentDmAutoDeleteHours === -1 ? 1000 : 10000;
+    const interval = setInterval(() => {
+      purgeDmExpiredMessages(currentDmRoomId, currentDmAutoDeleteHours);
+    }, intervalMs);
+    return () => clearInterval(interval);
+  }, [currentDmRoomId, currentDmAutoDeleteHours, purgeDmExpiredMessages]);
+
+  const handleChangeDmAutoDelete = (hours: 0 | -1 | 6 | 12 | 24) => {
+    if (!currentDmRoomId) return;
+    setCurrentDmAutoDeleteHours(hours);
+    setShowDmSettingsMenu(false);
+    try {
+      localStorage.setItem(`spytify_dm_auto_delete_${currentDmRoomId}`, String(hours));
+    } catch {}
+    pushCloudDmAutoDelete(currentDmRoomId, hours).catch(() => {});
+    const payload = { roomId: currentDmRoomId, hours };
+    activeDmChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'dm_auto_delete_update',
+      payload,
+    });
+    globalSocialChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'dm_auto_delete_update',
+      payload,
+    });
+    if (hours > 0 || hours === -1) {
+      purgeDmExpiredMessages(currentDmRoomId, hours);
+    }
+    showVoiceToast(
+      language === 'vi'
+        ? (hours === 0
+            ? 'Đã tắt tự động hủy tin nhắn riêng'
+            : hours === -1
+            ? 'Đã bật chế độ tự hủy tức thì (sau 30 giây)'
+            : `Đã bật tự hủy tin nhắn sau ${hours} tiếng`)
+        : (hours === 0
+            ? 'Disappearing messages disabled'
+            : hours === -1
+            ? 'Instant self-destruct enabled (30 seconds)'
+            : `Messages will disappear after ${hours}h`)
+    );
+  };
 
   useEffect(() => {
     if (!currentUser || !activeDmFriend || !currentDmRoomId) {
@@ -9839,12 +10379,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     const storageKey = `spytify_dm_messages_${currentDmRoomId}`;
     let localLoaded: CommunityMessage[] = [];
+    const localVal = Number(localStorage.getItem(`spytify_dm_auto_delete_${currentDmRoomId}`)) || 0;
+    const initialHours = (localVal === 6 || localVal === 12 || localVal === 24) ? localVal : 0;
+    const thresholdMs = initialHours > 0 ? Date.now() - initialHours * 3600 * 1000 : 0;
     try {
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          localLoaded = parsed.slice(-MAX_CHAT_MESSAGES_LIMIT);
+          localLoaded = (thresholdMs
+            ? parsed.filter((m: CommunityMessage) => parseMsgTimestamp(m.created_at, m.id) >= thresholdMs)
+            : parsed
+          ).slice(-MAX_CHAT_MESSAGES_LIMIT);
         }
       }
     } catch {}
@@ -9855,23 +10401,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     fetchCloudDirectMessages(currentDmRoomId).then(cloudRows => {
       if (cloudRows && cloudRows.length > 0) {
         setDmMessages(prev => {
+          const hours = currentDmAutoDeleteHoursRef.current;
+          const curThresholdMs = hours > 0 ? Date.now() - hours * 3600 * 1000 : 0;
           const map = new Map<string, CommunityMessage>();
-          prev.forEach(m => map.set(m.id, m));
-          cloudRows.forEach(r => {
-            map.set(r.id, {
-              id: r.id,
-              server_id: 'dm_private',
-              channel_id: r.room_id,
-              user_id: r.sender_id,
-              username: r.sender_username || 'operative',
-              display_name: r.sender_display_name || r.sender_username || 'Operative',
-              avatar: r.sender_avatar || null,
-              content: r.content,
-              track_embed: r.track_embed || null,
-              image_url: r.image_url || null,
-              created_at: r.created_at || '',
+          prev
+            .filter(m => !curThresholdMs || parseMsgTimestamp(m.created_at, m.id) >= curThresholdMs)
+            .forEach(m => map.set(m.id, m));
+          cloudRows
+            .filter(r => !curThresholdMs || parseMsgTimestamp(r.created_at, r.id) >= curThresholdMs)
+            .forEach(r => {
+              map.set(r.id, {
+                id: r.id,
+                server_id: 'dm_private',
+                channel_id: r.room_id,
+                user_id: r.sender_id,
+                username: r.sender_username || 'operative',
+                display_name: r.sender_display_name || r.sender_username || 'Operative',
+                avatar: r.sender_avatar || null,
+                content: r.content,
+                track_embed: r.track_embed || null,
+                image_url: r.image_url || null,
+                created_at: r.created_at || '',
+              });
             });
-          });
           const merged = Array.from(map.values()).slice(-MAX_CHAT_MESSAGES_LIMIT);
           try {
             localStorage.setItem(storageKey, JSON.stringify(merged));
@@ -9890,10 +10442,66 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     });
     activeDmChannelRef.current = dmChannel;
 
+    dmChannel.on('broadcast', { event: 'dm_auto_delete_update' }, ({ payload }) => {
+      if (!payload?.roomId || payload.roomId !== currentDmRoomId || payload.hours === undefined) return;
+      const rawNum = Number(payload.hours);
+      const h = (rawNum === -1 || rawNum === 6 || rawNum === 12 || rawNum === 24) ? rawNum : 0;
+      setCurrentDmAutoDeleteHours(h as 0 | -1 | 6 | 12 | 24);
+      try {
+        localStorage.setItem(`spytify_dm_auto_delete_${payload.roomId}`, String(h));
+      } catch {}
+      if (h > 0 || h === -1) {
+        purgeDmExpiredMessages(payload.roomId, h);
+      }
+    });
+
+    dmChannel.on('broadcast', { event: 'delete_dm_message' }, ({ payload }) => {
+      if (!payload?.messageId || payload.roomId !== currentDmRoomId) return;
+      setDmMessages(prev => prev.filter(m => m.id !== payload.messageId));
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const next = parsed.filter((m: any) => m.id !== payload.messageId);
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        }
+      } catch {}
+    });
+
+    dmChannel.on('broadcast', { event: 'edit_dm_message' }, ({ payload }) => {
+      if (!payload?.messageId || payload.roomId !== currentDmRoomId || payload.content === undefined) return;
+      setDmMessages(prev =>
+        prev.map(m => (m.id === payload.messageId ? { ...m, content: payload.content, edited: true } : m))
+      );
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const next = parsed.map((m: any) =>
+            m.id === payload.messageId ? { ...m, content: payload.content, edited: true } : m
+          );
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        }
+      } catch {}
+    });
+
+    dmChannel.on('broadcast', { event: 'clear_dm_messages' }, ({ payload }) => {
+      if (payload?.roomId !== currentDmRoomId) return;
+      setDmMessages([]);
+      try {
+        localStorage.removeItem(storageKey);
+      } catch {}
+    });
+
     dmChannel.on('broadcast', { event: 'new_dm_message' }, ({ payload }) => {
       if (payload && payload.id) {
         seenMessageIdsRef.current.add(payload.id);
         persistSeenMessageIds();
+        const hours = currentDmAutoDeleteHoursRef.current;
+        const curThresholdMs = hours > 0 ? Date.now() - hours * 3600 * 1000 : 0;
+        if (curThresholdMs && parseMsgTimestamp(payload.created_at, payload.id) < curThresholdMs) {
+          return;
+        }
         setDmMessages(prev => {
           if (prev.some(m => m.id === payload.id)) return prev;
           const next = [...prev, payload].slice(-MAX_CHAT_MESSAGES_LIMIT);
@@ -9917,10 +10525,139 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     dmMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [dmMessages]);
 
+  const handleCloseDmConversation = (friendId: string) => {
+    setHiddenDmUserIds(prev => {
+      if (prev.includes(friendId)) return prev;
+      const next = [...prev, friendId];
+      try {
+        if (currentUser?.id) {
+          localStorage.setItem(`spytify_hidden_dm_threads_${currentUser.id}`, JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
+    if (activeDmFriend?.id === friendId) {
+      setActiveDmFriend(null);
+    }
+  };
+
+  const handleDeleteDmMessage = (msgId: string) => {
+    if (!currentDmRoomId) return;
+    const storageKey = `spytify_dm_messages_${currentDmRoomId}`;
+    setDmMessages(prev => {
+      const next = prev.filter(m => m.id !== msgId);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    deleteCloudDirectMessage(msgId).catch(() => {});
+
+    const payload = { messageId: msgId, roomId: currentDmRoomId };
+    activeDmChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'delete_dm_message',
+      payload,
+    });
+    globalSocialChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'delete_dm_message',
+      payload,
+    });
+  };
+
+  const handleSaveEditDmMessage = (msgId: string) => {
+    const clean = editingMessageText.trim();
+    if (!clean || !currentDmRoomId) return;
+
+    const targetMsg = dmMessages.find(m => m.id === msgId);
+    if (targetMsg) {
+      const msgAgeMs = Date.now() - parseMsgTimestamp(targetMsg.created_at, targetMsg.id);
+      if (msgAgeMs > 3600 * 1000) {
+        showVoiceToast(
+          language === 'vi'
+            ? 'Không thể chỉnh sửa tin nhắn đã gửi quá 1 tiếng'
+            : 'Cannot edit messages older than 1 hour'
+        );
+        setEditingMessageId(null);
+        return;
+      }
+    }
+
+    setEditingMessageId(null);
+    const storageKey = `spytify_dm_messages_${currentDmRoomId}`;
+
+    setDmMessages(prev => {
+      const next = prev.map(m => (m.id === msgId ? { ...m, content: clean, edited: true } : m));
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    editCloudDirectMessage(msgId, clean).catch(() => {});
+
+    const payload = { messageId: msgId, roomId: currentDmRoomId, content: clean };
+    activeDmChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'edit_dm_message',
+      payload,
+    });
+    globalSocialChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'edit_dm_message',
+      payload,
+    });
+  };
+
+  const handleClearCurrentDmChat = () => {
+    if (!currentDmRoomId) return;
+    setShowClearDmModal(false);
+    setDmMessages([]);
+    try {
+      localStorage.removeItem(`spytify_dm_messages_${currentDmRoomId}`);
+    } catch {}
+    clearCloudDirectMessages(currentDmRoomId).catch(() => {});
+
+    const payload = { roomId: currentDmRoomId };
+    activeDmChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'clear_dm_messages',
+      payload,
+    });
+    globalSocialChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'clear_dm_messages',
+      payload,
+    });
+
+    showVoiceToast(
+      language === 'vi'
+        ? 'Đã xóa toàn bộ tin nhắn trong đoạn chat'
+        : 'All messages in this conversation have been deleted'
+    );
+  };
+
   const handleOpenDirectMessage = (friend: CommunityUserProfile) => {
     setIsFriendsTabActive(true);
-    setActiveDmFriend(friend);
-    markDmAsRead(friend.id);
+    // Luôn ưu tiên thông tin mới nhất từ registeredUsers để đảm bảo avatar và profile mới nhất
+    const latestProfile =
+      registeredUsers.find(
+        u => u.id === friend.id || (u.username && friend.username && u.username.toLowerCase() === friend.username.toLowerCase())
+      ) || friend;
+    setActiveDmFriend(latestProfile);
+    markDmAsRead(latestProfile.id);
+    setHiddenDmUserIds(prev => {
+      if (!prev.includes(latestProfile.id)) return prev;
+      const next = prev.filter(id => id !== latestProfile.id);
+      try {
+        if (currentUser?.id) {
+          localStorage.setItem(`spytify_hidden_dm_threads_${currentUser.id}`, JSON.stringify(next));
+        }
+      } catch {}
+      return next;
+    });
   };
 
   const handleStartPrivateCall = async (
@@ -9929,9 +10666,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   ) => {
     if (!currentUser) return;
     setIsFriendsTabActive(true);
-    setActiveDmFriend(friend);
+    const latestProfile =
+      registeredUsers.find(
+        u => u.id === friend.id || (u.username && friend.username && u.username.toLowerCase() === friend.username.toLowerCase())
+      ) || friend;
+    setActiveDmFriend(latestProfile);
 
-    const roomId = getDmRoomId(currentUser.id, friend.id);
+    const roomId = getDmRoomId(currentUser.id, latestProfile.id);
     const dmVoiceChId = `dm_voice_${roomId}`;
 
     // Nếu đang ở trong chính cuộc gọi riêng này
@@ -10163,6 +10904,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       created_at: createdAtStr,
       sent_at: new Date().toISOString(),
     });
+
+    if (currentDmAutoDeleteHours > 0 || currentDmAutoDeleteHours === -1) {
+      purgeCloudExpiredDirectMessages(currentDmRoomId, currentDmAutoDeleteHours).catch(() => {});
+    }
   };
 
   // Broadcast current track as Stage Host
@@ -10811,8 +11556,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               {registeredUsers
-                .filter(u => isMutualFriend(u) || (unreadDmCounts[u.id] || 0) > 0)
-                .sort((a, b) => (unreadDmCounts[b.id] || 0) - (unreadDmCounts[a.id] || 0))
+                .filter(u => {
+                  if (u.id === currentUser?.id || u.id.startsWith('usr_custom_')) return false;
+                  // Nếu đã bị người dùng tạm đóng/ẩn bằng dấu X thì ẩn khỏi sidebar (trừ khi đang mở hoặc có tin nhắn mới)
+                  if (hiddenDmUserIds.includes(u.id) && activeDmFriend?.id !== u.id && (unreadDmCounts[u.id] || 0) === 0) {
+                    return false;
+                  }
+                  if (isMutualFriend(u) || (unreadDmCounts[u.id] || 0) > 0 || activeDmFriend?.id === u.id) return true;
+                  if (currentUser) {
+                    const roomId = getDmRoomId(currentUser.id, u.id);
+                    const raw = localStorage.getItem(`spytify_dm_messages_${roomId}`);
+                    if (raw && raw !== '[]') return true;
+                  }
+                  return false;
+                })
+                .sort((a, b) => {
+                  const unreadDiff = (unreadDmCounts[b.id] || 0) - (unreadDmCounts[a.id] || 0);
+                  if (unreadDiff !== 0) return unreadDiff;
+                  if (activeDmFriend?.id === a.id) return -1;
+                  if (activeDmFriend?.id === b.id) return 1;
+                  return a.display_name.localeCompare(b.display_name);
+                })
                 .map(fr => {
                   const isDmSelected = activeDmFriend?.id === fr.id;
                   const frRoomId = currentUser ? getDmRoomId(currentUser.id, fr.id) : '';
@@ -10899,6 +11663,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         >
                           <PhoneCall className="w-3.5 h-3.5" />
                         </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCloseDmConversation(fr.id);
+                          }}
+                          title={language === 'vi' ? 'Đóng cuộc trò chuyện (Tạm ẩn khỏi danh sách)' : 'Close conversation'}
+                          className={`p-1 rounded-lg transition-all cursor-pointer flex-shrink-0 text-[#888] hover:text-red-400 hover:bg-red-500/10 ${
+                            isDmSelected ? 'opacity-70 hover:opacity-100' : 'opacity-0 group-hover/dm:opacity-100'
+                          }`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   );
@@ -10917,20 +11694,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                {/* Nút Mời thành viên vào phòng thoại (Logo bên trái bánh răng) */}
+                {/* Nút Mời thành viên vào server (Logo bên trái bánh răng) */}
                 <button
                   type="button"
-                  onClick={() => {
-                    const targetVoice =
-                      (selectedChannel.type === 'voice' ? selectedChannel : null) ||
-                      (connectedVoiceServerId === selectedServer.id && connectedVoiceChannel
-                        ? selectedServer.channels.find(c => c.id === connectedVoiceChannel)
-                        : null) ||
-                      selectedServer.channels.find(c => c.type === 'voice') ||
-                      selectedChannel;
-                    setVoiceInviteModalChannel(targetVoice);
-                  }}
-                  title={language === 'vi' ? 'Mời thành viên vào phòng thoại' : 'Invite members to voice room'}
+                  onClick={() => handleOpenServerSettings(selectedServer, 'invites')}
+                  title={language === 'vi' ? 'Mời vào server' : 'Invite to server'}
                   className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
                     isLight
                       ? 'bg-white hover:bg-slate-100 border-slate-300 text-slate-600 hover:text-slate-900'
@@ -11768,7 +12536,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             /* ──────── 3.0 GIAO DIỆN CHAT RIÊNG (DM 1-1) & CALL RIÊNG VỚI BẠN BÈ ──────── */
             <div className="flex-1 flex flex-col h-full overflow-hidden">
               {/* DM Header Bar */}
-              <div className={`h-14 px-5 border-b flex items-center justify-between flex-shrink-0 ${isLight ? 'bg-white/90 backdrop-blur border-[#e2e8f0]' : 'bg-black/60 backdrop-blur border-[#151520]'}`}>
+              <div className={`h-14 px-5 border-b flex items-center justify-between flex-shrink-0 relative z-30 ${isLight ? 'bg-white/90 backdrop-blur border-[#e2e8f0]' : 'bg-black/60 backdrop-blur border-[#151520]'}`}>
                 <div className="flex items-center gap-3 truncate">
                   <button
                     type="button"
@@ -11798,6 +12566,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         {activeDmFriend.display_name}
                       </span>
                       <span className="text-[11px] font-mono text-cyan-400">@{activeDmFriend.username}</span>
+                      {currentDmAutoDeleteHours !== 0 && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded font-mono text-[9px] font-bold flex items-center gap-1 ${
+                            currentDmAutoDeleteHours === -1
+                              ? 'bg-amber-950/60 border border-amber-500/40 text-amber-300'
+                              : 'bg-cyan-950/60 border border-cyan-500/30 text-cyan-400'
+                          }`}
+                          title={
+                            currentDmAutoDeleteHours === -1
+                              ? 'Tin nhắn riêng tự động hủy tức thì sau 30 giây'
+                              : `Tin nhắn riêng tự động hủy sau ${currentDmAutoDeleteHours} tiếng`
+                          }
+                        >
+                          {currentDmAutoDeleteHours === -1 ? (
+                            <Flame className="w-2.5 h-2.5 text-amber-400" />
+                          ) : (
+                            <Clock className="w-2.5 h-2.5" />
+                          )}
+                          <span>{currentDmAutoDeleteHours === -1 ? 'Tự hủy: Tức thì (30s)' : `Tự hủy: ${currentDmAutoDeleteHours}h`}</span>
+                        </span>
+                      )}
                     </div>
                     <p className="text-[10px] font-mono text-[#777] truncate">
                       {activeDmFriend.listening
@@ -11856,6 +12645,143 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   >
                     <Users className="w-4 h-4" />
                   </button>
+
+                  {/* Cài đặt đoạn chat (Tự động hủy tin nhắn & Xóa toàn bộ tin nhắn) */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDmSettingsMenu(prev => !prev);
+                      }}
+                      className={`p-2 rounded-xl border transition-all cursor-pointer relative flex items-center justify-center ${
+                        showDmSettingsMenu
+                          ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+                          : currentDmAutoDeleteHours === -1
+                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                          : currentDmAutoDeleteHours > 0
+                          ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                          : isLight
+                          ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
+                          : 'bg-[#141420] hover:bg-[#1e1e30] border-[#262638] text-[#aaa] hover:text-white'
+                      }`}
+                      title={language === 'vi' ? 'Cài đặt đoạn chat' : 'Chat settings'}
+                    >
+                      <Settings className={`w-4 h-4 transition-transform ${showDmSettingsMenu ? 'rotate-45 text-cyan-300' : ''}`} />
+                      {currentDmAutoDeleteHours !== 0 && (
+                        <span className={`absolute -top-1 -right-1 px-1 min-w-[15px] h-3.5 rounded-full font-mono font-bold text-[9px] flex items-center justify-center shadow-md ${
+                          currentDmAutoDeleteHours === -1
+                            ? 'bg-amber-400 text-black shadow-[0_0_8px_rgba(251,191,36,0.6)] animate-pulse'
+                            : 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.6)]'
+                        }`}>
+                          {currentDmAutoDeleteHours === -1 ? '⚡' : `${currentDmAutoDeleteHours}h`}
+                        </span>
+                      )}
+                    </button>
+
+                    {showDmSettingsMenu && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setShowDmSettingsMenu(false)}
+                        />
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className={`absolute right-0 top-full mt-2 w-64 rounded-2xl border shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl ${
+                            isLight
+                              ? 'bg-white/95 border-slate-200 text-slate-800'
+                              : 'bg-[#141420]/95 border-[#28283c] text-white'
+                          }`}
+                        >
+                          {/* Menu Header */}
+                          <div className="px-1 pb-2 mb-2 border-b border-white/5 flex items-center justify-between">
+                            <span className="text-xs font-bold flex items-center gap-1.5">
+                              <Settings className="w-3.5 h-3.5 text-cyan-400" />
+                              {language === 'vi' ? 'Cài đặt đoạn chat' : 'Chat Settings'}
+                            </span>
+                            {currentDmAutoDeleteHours !== 0 && (
+                              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold border ${
+                                currentDmAutoDeleteHours === -1
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                  : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                              }`}>
+                                {currentDmAutoDeleteHours === -1 ? '⚡ 30s' : `${currentDmAutoDeleteHours}h`}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Section: Tự động hủy tin nhắn */}
+                          <div className="space-y-1">
+                            <div className="px-1 py-1 text-[11px] font-semibold text-[#888] flex items-center gap-1.5">
+                              <Clock className="w-3 h-3 text-cyan-400" />
+                              <span>{language === 'vi' ? 'Tự động hủy tin nhắn' : 'Disappearing Messages'}</span>
+                            </div>
+
+                            {([
+                              { hours: 0, labelVi: 'Tắt (Giữ vĩnh viễn)', labelEn: 'Off (Keep forever)' },
+                              { hours: -1, labelVi: '⚡ Tự hủy tức thì (sau 30 giây)', labelEn: '⚡ Instant (after 30 seconds)' },
+                              { hours: 6, labelVi: 'Tự hủy sau 6 tiếng', labelEn: 'Disappear after 6 hours' },
+                              { hours: 12, labelVi: 'Tự hủy sau 12 tiếng', labelEn: 'Disappear after 12 hours' },
+                              { hours: 24, labelVi: 'Tự hủy sau 24 tiếng (1 ngày)', labelEn: 'Disappear after 24 hours' },
+                            ] as const).map(opt => {
+                              const isSelected = currentDmAutoDeleteHours === opt.hours;
+                              return (
+                                <button
+                                  key={opt.hours}
+                                  type="button"
+                                  onClick={() => handleChangeDmAutoDelete(opt.hours)}
+                                  className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                                    isSelected
+                                      ? opt.hours === -1
+                                        ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40'
+                                        : 'bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40'
+                                      : isLight
+                                      ? 'hover:bg-slate-100 text-slate-700'
+                                      : 'hover:bg-white/5 text-[#bbb] hover:text-white'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-1.5">
+                                    {opt.hours === -1 && <Flame className="w-3 h-3 text-amber-400 shrink-0" />}
+                                    <span>{language === 'vi' ? opt.labelVi : opt.labelEn}</span>
+                                  </span>
+                                  {isSelected && (
+                                    <span className={`w-2 h-2 rounded-full ${opt.hours === -1 ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : 'bg-cyan-400 shadow-[0_0_8px_#22d3ee]'}`} />
+                                  )}
+                                </button>
+                              );
+                            })}
+
+                            <p className="px-1 pt-1.5 text-[10px] text-[#777] leading-relaxed">
+                              {language === 'vi'
+                                ? 'Tin nhắn cũ hơn thời gian đã chọn sẽ tự động biến mất cho cả 2 bên.'
+                                : 'Messages older than selected time disappear for both parties.'}
+                            </p>
+                          </div>
+
+                          {/* Divider */}
+                          <div className="my-2.5 border-t border-white/10" />
+
+                          {/* Section: Quản lý đoạn chat (Xóa toàn bộ tin nhắn) */}
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowDmSettingsMenu(false);
+                                setShowClearDmModal(true);
+                              }}
+                              className="w-full px-2.5 py-2 rounded-xl text-xs font-medium text-left flex items-center gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all cursor-pointer group"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-400 group-hover:scale-110 transition-transform shrink-0" />
+                              <div className="flex flex-col">
+                                <span className="font-semibold">{language === 'vi' ? 'Xóa toàn bộ tin nhắn' : 'Clear Chat History'}</span>
+                                <span className="text-[10px] text-red-400/70">{language === 'vi' ? 'Dọn sạch lịch sử trò chuyện' : 'Delete all conversation messages'}</span>
+                              </div>
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -12002,7 +12928,35 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               )}
 
               {/* Direct Messages History (Discord-style left-aligned without speech bubbles) */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-4 pb-20 space-y-3.5 custom-scrollbar relative z-10">
+                {(currentDmAutoDeleteHours > 0 || currentDmAutoDeleteHours === -1) && (
+                  <div className={`flex items-center justify-center gap-2 py-1.5 px-3 rounded-full text-[11px] my-1 mx-auto max-w-sm text-center shadow-sm ${
+                    currentDmAutoDeleteHours === -1
+                      ? 'bg-amber-950/40 border border-amber-500/30 text-amber-300'
+                      : 'bg-cyan-950/40 border border-cyan-500/30 text-cyan-300'
+                  }`}>
+                    {currentDmAutoDeleteHours === -1 ? (
+                      <>
+                        <Flame className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 animate-pulse" />
+                        <span>
+                          {language === 'vi'
+                            ? 'Chế độ tự hủy tức thì: Tin nhắn tự biến mất sau 30 giây'
+                            : 'Instant self-destruct active: Messages disappear after 30s'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0 animate-pulse" />
+                        <span>
+                          {language === 'vi'
+                            ? `Tin nhắn sẽ tự động biến mất sau ${currentDmAutoDeleteHours} tiếng`
+                            : `Messages disappear after ${currentDmAutoDeleteHours} hours`}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {dmMessages.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center py-12 opacity-80">
                     <div
@@ -12022,14 +12976,35 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </p>
                   </div>
                 ) : (
-                  dmMessages.map(msg => {
+                  dmMessages
+                    .filter(msg => {
+                      if (currentDmAutoDeleteHours === 0) return true;
+                      const durationMs = currentDmAutoDeleteHours === -1 ? 30 * 1000 : currentDmAutoDeleteHours * 3600 * 1000;
+                      return Date.now() - parseMsgTimestamp(msg.created_at, msg.id) <= durationMs;
+                    })
+                    .sort((a, b) => parseMsgTimestamp(a.created_at, a.id) - parseMsgTimestamp(b.created_at, b.id))
+                    .map((msg, msgIndex, msgArr) => {
+                    const msgAgeMs = Date.now() - parseMsgTimestamp(msg.created_at, msg.id);
+                    const isWithinOneHour = msgAgeMs <= 3600 * 1000;
+                    const isInviteExpired = msgAgeMs > 24 * 3600 * 1000;
+                    const canEdit = msg.user_id === currentUser?.id && isWithinOneHour;
                     const inviteMatch = msg.content?.match(/spytify:\/\/station\/join\/([a-zA-Z0-9_-]+)/i);
                     const invitedSrvId = inviteMatch ? inviteMatch[1] : null;
+                    const isPureInviteLink = Boolean(
+                      msg.content && (
+                        /^spytify:\/\/station\/join\/[a-zA-Z0-9_-]+\/?$/i.test(msg.content.trim()) ||
+                        /^📩?\s*Mời bạn tham gia máy chủ.*spytify:\/\/station\/join\/[a-zA-Z0-9_-]+\/?$/i.test(msg.content.trim())
+                      )
+                    );
+                    const serverNameFromMsg = msg.content?.match(/máy chủ ["“](.*?)["”]/i)?.[1];
+                    const targetInvitedServer = invitedSrvId ? servers.find(s => s.id === invitedSrvId) : undefined;
+                    const displayServerName = targetInvitedServer?.name || serverNameFromMsg || (invitedSrvId ? `Máy chủ ${invitedSrvId.replace(/^srv_custom_|^srv_/, '')}` : 'Máy chủ');
+
                     return (
                       <div
                         key={msg.id}
-                        className={`flex items-start gap-3 -mx-2 px-2 py-1 rounded-lg transition-colors ${
-                          isLight ? 'hover:bg-[#f1f5f9]' : 'hover:bg-[#101016]/40'
+                        className={`group relative flex items-start gap-3 -mx-2 px-2.5 py-1.5 rounded-xl transition-all ${
+                          isLight ? 'hover:bg-[#f1f5f9]' : 'hover:bg-[#12121a]'
                         }`}
                       >
                         <div
@@ -12039,7 +13014,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           {renderAvatarContent(msg.display_name, resolveUserAvatar(msg.user_id, msg.avatar))}
                         </div>
 
-                        <div className="flex-1 overflow-hidden">
+                        <div className="flex-1 overflow-hidden min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <span className={`text-xs font-bold ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>
                               {msg.display_name}
@@ -12050,37 +13025,120 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             <span className={`text-[10px] font-mono ${isLight ? 'text-[#94a3b8]' : 'text-[#444]'}`}>
                               {formatMessageTimestamp(msg.created_at)}
                             </span>
+                            {msg.edited && (
+                              <span className="text-[9px] font-mono italic text-[#777]">(đã sửa)</span>
+                            )}
+                            {currentDmAutoDeleteHours === -1 && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold flex items-center gap-1 animate-pulse">
+                                <Flame className="w-2.5 h-2.5 text-amber-400" />
+                                <span>{Math.max(0, Math.ceil((30 * 1000 - (Date.now() - parseMsgTimestamp(msg.created_at, msg.id))) / 1000))}s</span>
+                              </span>
+                            )}
                           </div>
 
-                          {msg.content && (
-                            <p className={`text-xs leading-relaxed break-words font-sans ${isLight ? 'text-[#334155]' : 'text-[#ddd]'}`}>
-                              {renderChatMessageContent(msg.content)}
-                            </p>
+                          {editingMessageId === msg.id ? (
+                            <div className="mt-1 space-y-1.5">
+                              <input
+                                type="text"
+                                value={editingMessageText}
+                                onChange={(e) => setEditingMessageText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleSaveEditDmMessage(msg.id);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingMessageId(null);
+                                  }
+                                }}
+                                autoFocus
+                                className={`w-full px-2.5 py-1.5 rounded-lg text-xs outline-none border transition-colors ${
+                                  isLight
+                                    ? 'bg-white border-cyan-500 text-slate-900 focus:ring-1 focus:ring-cyan-500'
+                                    : 'bg-[#10101a] border-cyan-500/60 text-white focus:border-cyan-400'
+                                }`}
+                              />
+                              <div className="flex items-center gap-2 text-[10px]">
+                                <span className="text-[#888]">Enter để lưu • Esc để hủy</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingMessageId(null)}
+                                  className="text-red-400 hover:underline cursor-pointer ml-auto"
+                                >
+                                  Hủy
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditDmMessage(msg.id)}
+                                  className="px-2 py-0.5 rounded bg-cyan-500 hover:bg-cyan-400 text-black font-bold cursor-pointer transition-transform hover:scale-105"
+                                >
+                                  Lưu
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            msg.content && !isPureInviteLink && (
+                              <p className={`text-xs leading-relaxed break-words font-sans ${isLight ? 'text-[#334155]' : 'text-[#ddd]'}`}>
+                                {renderChatMessageContent(msg.content)}
+                              </p>
+                            )
                           )}
 
                           {invitedSrvId && (
                             <div
-                              className={`mt-2 max-w-sm p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                                isLight
-                                  ? 'bg-emerald-50 border-emerald-200'
-                                  : 'bg-[#0d1518] border-emerald-500/35'
+                              className={`mt-2 max-w-sm p-3 rounded-2xl border flex items-center justify-between gap-3 shadow-md ${
+                                isInviteExpired
+                                  ? isLight
+                                    ? 'bg-slate-100 border-slate-300 opacity-60'
+                                    : 'bg-[#101018] border-white/10 opacity-60'
+                                  : isLight
+                                  ? 'bg-emerald-50/80 border-emerald-200'
+                                  : 'bg-[#0a1416] border-emerald-500/30'
                               }`}
                             >
-                              <div className="truncate">
-                                <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400 block">
-                                  📩 LỜI MỜI THAM GIA MÁY CHỦ
-                                </span>
-                                <p className={`text-xs font-bold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                                  spytify://station/join/{invitedSrvId}
-                                </p>
+                              <div className="flex items-center gap-2.5 truncate min-w-0">
+                                <div
+                                  className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
+                                    isInviteExpired
+                                      ? 'bg-zinc-800 border-zinc-700 text-zinc-500'
+                                      : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                                  }`}
+                                >
+                                  {displayServerName.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="truncate min-w-0">
+                                  <span
+                                    className={`text-[9px] font-mono font-bold uppercase tracking-wider block ${
+                                      isInviteExpired ? 'text-zinc-500' : 'text-emerald-400'
+                                    }`}
+                                  >
+                                    {isInviteExpired ? '⏰ LỜI MỜI ĐÃ HẾT HẠN (QUÁ 24H)' : '📩 LỜI MỜI THAM GIA MÁY CHỦ'}
+                                  </span>
+                                  <p
+                                    className={`text-xs font-bold truncate ${
+                                      isInviteExpired ? 'text-zinc-400 line-through' : isLight ? 'text-slate-900' : 'text-white'
+                                    }`}
+                                  >
+                                    {displayServerName}
+                                  </p>
+                                </div>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => joinServerAndWelcome(invitedSrvId)}
-                                className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs font-mono shrink-0 cursor-pointer transition-transform hover:scale-105"
-                              >
-                                Tham gia
-                              </button>
+                              {isInviteExpired ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="px-3.5 py-1.5 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-xs font-mono shrink-0 cursor-not-allowed border border-white/5"
+                                >
+                                  Đã hết hạn
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => joinServerAndWelcome(invitedSrvId, undefined, isInviteExpired)}
+                                  className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs font-mono shrink-0 cursor-pointer shadow-md shadow-emerald-500/25 transition-transform hover:scale-105 active:scale-95"
+                                >
+                                  Tham gia
+                                </button>
+                              )}
                             </div>
                           )}
 
@@ -12122,6 +13180,88 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                 onClick={() => setLightboxImageUrl(msg.image_url!)}
                                 className="max-w-[320px] max-h-[260px] rounded-xl object-cover cursor-pointer hover:opacity-95 transition-all border border-white/10 shadow-lg hover:scale-[1.01]"
                               />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Nút 3 chấm nằm gọn ngay trong layout tin nhắn */}
+                        <div className={`relative shrink-0 self-start transition-opacity ${activeMessageMenuId === msg.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMessageMenuId(activeMessageMenuId === msg.id ? null : msg.id);
+                            }}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              activeMessageMenuId === msg.id
+                                ? 'bg-white/15 text-white shadow-sm'
+                                : isLight
+                                ? 'hover:bg-slate-200 text-slate-500 hover:text-slate-900'
+                                : 'hover:bg-white/10 text-[#888] hover:text-white'
+                            }`}
+                            title="Tùy chọn tin nhắn"
+                          >
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </button>
+
+                          {activeMessageMenuId === msg.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              className={`absolute right-0 ${
+                                msgIndex >= Math.max(0, msgArr.length - 2)
+                                  ? 'bottom-full mb-1'
+                                  : 'top-full mt-1'
+                              } w-44 rounded-xl border shadow-2xl p-1 z-40 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100 ${
+                                isLight
+                                  ? 'bg-white/98 border-slate-200 text-slate-800'
+                                  : 'bg-[#181828]/98 border-[#28283c] text-white'
+                              }`}
+                            >
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMessageMenuId(null);
+                                    setEditingMessageId(msg.id);
+                                    setEditingMessageText(msg.content);
+                                  }}
+                                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 hover:bg-white/5 cursor-pointer text-[#ddd]"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-cyan-400" />
+                                  <span>Chỉnh sửa tin nhắn</span>
+                                </button>
+                              ) : (
+                                msg.user_id === currentUser?.id && (
+                                  <div className="px-2.5 py-1 text-[10px] text-[#777] italic">
+                                    Đã quá 1 tiếng (không thể sửa)
+                                  </div>
+                                )
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMessageMenuId(null);
+                                  navigator.clipboard.writeText(msg.content);
+                                  showVoiceToast('Đã sao chép nội dung tin nhắn');
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 hover:bg-white/5 cursor-pointer text-[#ddd]"
+                              >
+                                <Copy className="w-3.5 h-3.5 text-[#aaa]" />
+                                <span>Sao chép nội dung</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMessageMenuId(null);
+                                  handleDeleteDmMessage(msg.id);
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-2 hover:bg-red-500/10 text-red-400 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                <span>Xóa tin nhắn</span>
+                              </button>
                             </div>
                           )}
                         </div>
@@ -12202,13 +13342,39 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     <Share2 className="w-4 h-4" />
                   </button>
 
+                  {/* Nút bật/tắt Tự hủy tức thì (30 giây) ngay tại thanh chat */}
+                  <button
+                    type="button"
+                    onClick={() => handleChangeDmAutoDelete(currentDmAutoDeleteHours === -1 ? 0 : -1)}
+                    className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center ${
+                      currentDmAutoDeleteHours === -1
+                        ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.35)] animate-pulse'
+                        : isLight
+                        ? 'bg-slate-100 border-slate-300 text-slate-600 hover:text-amber-600'
+                        : 'bg-[#101018] border-[#222232] text-[#888] hover:text-amber-400'
+                    }`}
+                    title={
+                      currentDmAutoDeleteHours === -1
+                        ? 'Đang BẬT tự hủy tức thì sau 30 giây (Bấm để tắt)'
+                        : 'Bật chế độ tự hủy tức thì (30 giây)'
+                    }
+                  >
+                    <Flame className={`w-4 h-4 ${currentDmAutoDeleteHours === -1 ? 'text-amber-400' : ''}`} />
+                  </button>
+
                   <input
                     type="text"
                     value={dmInputText}
                     onChange={e => setDmInputText(e.target.value)}
-                    placeholder={`Nhắn tin riêng cho @${activeDmFriend.username}...`}
-                    className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs border outline-none transition-colors font-sans ${
-                      isLight
+                    placeholder={
+                      currentDmAutoDeleteHours === -1
+                        ? `🔥 Nhắn tin tự hủy sau 30s cho @${activeDmFriend.username}...`
+                        : `Nhắn tin riêng cho @${activeDmFriend.username}...`
+                    }
+                    className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs border outline-none transition-all font-sans ${
+                      currentDmAutoDeleteHours === -1
+                        ? 'border-amber-500/50 bg-[#16120e] text-white placeholder-amber-400/60 focus:border-amber-400'
+                        : isLight
                         ? 'bg-[#f8fafc] text-[#0f172a] border-[#cbd5e1] placeholder-[#94a3b8] focus:border-[#64748b]'
                         : 'bg-[#101018] text-white border-[#222232] placeholder-[#666] focus:border-white/50'
                     }`}
@@ -12329,59 +13495,89 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </div>
 
                     <div className="space-y-2">
-                      {incomingServerInvites.map(inv => (
-                        <div
-                          key={inv.id}
-                          className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                            isLight ? 'bg-white border-cyan-200' : 'bg-[#0b0e18]/90 border-cyan-500/30'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 truncate">
-                            <div
-                              className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-bold text-base shrink-0 border"
-                              style={{
-                                backgroundColor: `${inv.serverColor || '#00E5FF'}20`,
-                                borderColor: `${inv.serverColor || '#00E5FF'}50`,
-                                color: inv.serverColor || '#00E5FF',
-                              }}
-                            >
-                              {renderServerIconContent(inv.serverIcon || '🎧', inv.serverName, inv.serverColor || '#00E5FF', 'w-5 h-5')}
-                            </div>
-                            <div className="truncate">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                                  {inv.serverName}
-                                </span>
-                                <span className="text-[9px] font-mono font-bold text-cyan-300 bg-cyan-500/15 border border-cyan-500/30 px-1.5 py-0.2 rounded">
-                                  LỜI MỜI VÀO SERVER
-                                </span>
+                      {incomingServerInvites.map(inv => {
+                        const isInvExpired = inv.createdAt ? Date.now() - new Date(inv.createdAt).getTime() > 24 * 3600 * 1000 : false;
+                        return (
+                          <div
+                            key={inv.id}
+                            className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
+                              isInvExpired
+                                ? isLight
+                                  ? 'bg-slate-100 border-slate-300 opacity-60'
+                                  : 'bg-[#101018] border-white/10 opacity-60'
+                                : isLight ? 'bg-white border-cyan-200' : 'bg-[#0b0e18]/90 border-cyan-500/30'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 truncate">
+                              <div
+                                className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-bold text-base shrink-0 border"
+                                style={{
+                                  backgroundColor: isInvExpired ? '#333' : `${inv.serverColor || '#00E5FF'}20`,
+                                  borderColor: isInvExpired ? '#444' : `${inv.serverColor || '#00E5FF'}50`,
+                                  color: isInvExpired ? '#888' : (inv.serverColor || '#00E5FF'),
+                                }}
+                              >
+                                {renderServerIconContent(inv.serverIcon || '🎧', inv.serverName, inv.serverColor || '#00E5FF', 'w-5 h-5')}
                               </div>
-                              <p className="text-[11px] font-mono text-[#888] mt-0.5 truncate">
-                                Mời bởi <b className="text-cyan-400">{inv.inviterDisplayName}</b> (@{inv.inviterUsername}) • {inv.createdAt}
-                              </p>
+                              <div className="truncate">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs font-bold ${isInvExpired ? 'text-zinc-500 line-through' : isLight ? 'text-slate-900' : 'text-white'}`}>
+                                    {inv.serverName}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                                      isInvExpired
+                                        ? 'text-zinc-500 bg-zinc-800 border-zinc-700'
+                                        : 'text-cyan-300 bg-cyan-500/15 border-cyan-500/30'
+                                    }`}
+                                  >
+                                    {isInvExpired ? 'LỜI MỜI ĐÃ HẾT HẠN (QUÁ 24H)' : 'LỜI MỜI VÀO SERVER'}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] font-mono text-[#888] mt-0.5 truncate">
+                                  Mời bởi <b className="text-cyan-400">{inv.inviterDisplayName}</b> (@{inv.inviterUsername}) • {inv.createdAt}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {isInvExpired ? (
+                                <>
+                                  <span className="text-[10px] font-mono text-zinc-500 font-bold px-2.5 py-1 bg-zinc-800 rounded-lg border border-white/5">
+                                    Đã hết hạn
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeclineServerInvite(inv)}
+                                    className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#888] hover:text-white text-xs font-mono transition-colors cursor-pointer"
+                                  >
+                                    Gỡ bỏ
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAcceptServerInvite(inv)}
+                                    className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs font-mono flex items-center gap-1.5 cursor-pointer shadow-md transition-transform hover:scale-105 active:scale-95"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Đồng ý vào Server</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeclineServerInvite(inv)}
+                                    className="px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-300 text-xs font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Từ chối</span>
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleAcceptServerInvite(inv)}
-                              className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs font-mono flex items-center gap-1.5 cursor-pointer shadow-md transition-transform hover:scale-105 active:scale-95"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Đồng ý vào Server</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeclineServerInvite(inv)}
-                              className="px-3 py-1.5 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-300 text-xs font-mono flex items-center gap-1 cursor-pointer transition-colors"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              <span>Từ chối</span>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -12876,6 +14072,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               <Hash className="w-4 h-4 text-[#777]" />
             )}
             <h3 className={`text-xs font-bold tracking-wide truncate ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>{getChannelName(selectedChannel)}</h3>
+            {selectedServer.auto_delete_hours && selectedServer.auto_delete_hours > 0 && !isVoice && (
+              <span
+                className="ml-1 px-1.5 py-0.5 rounded font-mono text-[9px] font-bold bg-cyan-950/60 border border-cyan-500/30 text-cyan-400 flex items-center gap-1"
+                title={`Kênh chat tự động xóa sạch tin nhắn sau ${selectedServer.auto_delete_hours} tiếng`}
+              >
+                <Clock className="w-2.5 h-2.5" />
+                <span>Tự xóa: {selectedServer.auto_delete_hours}h</span>
+              </span>
+            )}
             {selectedChannel.is_radio && canManageServer && (
               <button
                 type="button"
@@ -13562,15 +14767,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 .filter(
                   msg =>
                     (!msg.server_id || msg.server_id === selectedServer.id) &&
-                    (!msg.channel_id || msg.channel_id === selectedChannel.id)
+                    (!msg.channel_id || msg.channel_id === selectedChannel.id) &&
+                    (!selectedServer.auto_delete_hours ||
+                      Date.now() - parseMsgTimestamp(msg.created_at, msg.id) <=
+                        selectedServer.auto_delete_hours * 3600 * 1000)
                 )
                 .sort((a, b) => parseMsgTimestamp(a.created_at, a.id) - parseMsgTimestamp(b.created_at, b.id))
                 .map(msg => {
                   const isWelcomeMsg = msg.id.startsWith('msg_welcome_');
                   const isEveryoneMention = messageMentionsEveryone(msg.content);
                   const isMentioned = messageMentionsCurrentUser(msg.content);
+                  const msgAgeMs = Date.now() - parseMsgTimestamp(msg.created_at, msg.id);
+                  const isInviteExpired = msgAgeMs > 24 * 3600 * 1000;
                   const inviteMatch = msg.content?.match(/spytify:\/\/station\/join\/([a-zA-Z0-9_-]+)/i);
                   const invitedSrvId = inviteMatch ? inviteMatch[1] : null;
+                  const isPureInviteLink = Boolean(
+                    msg.content && (
+                      /^spytify:\/\/station\/join\/[a-zA-Z0-9_-]+\/?$/i.test(msg.content.trim()) ||
+                      /^📩?\s*Mời bạn tham gia máy chủ.*spytify:\/\/station\/join\/[a-zA-Z0-9_-]+\/?$/i.test(msg.content.trim())
+                    )
+                  );
+                  const serverNameFromMsg = msg.content?.match(/máy chủ ["“](.*?)["”]/i)?.[1];
+                  const targetInvitedServer = invitedSrvId ? servers.find(s => s.id === invitedSrvId) : undefined;
+                  const displayServerName = targetInvitedServer?.name || serverNameFromMsg || (invitedSrvId ? `Máy chủ ${invitedSrvId.replace(/^srv_custom_|^srv_/, '')}` : 'Máy chủ');
                   return (
                     <React.Fragment key={msg.id}>
                       {selectedChannelUnreadCount > 0 && msg.id === firstUnreadMessageIds[selectedChannel.id] && (
@@ -13631,7 +14850,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           )}
                         </div>
 
-                        {msg.content && (
+                        {msg.content && !isPureInviteLink && (
                           <p
                             className={`text-xs leading-relaxed break-words font-sans ${
                               isWelcomeMsg
@@ -13649,25 +14868,60 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                         {invitedSrvId && (
                           <div
-                            className={`mt-2 max-w-sm p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                              isLight ? 'bg-emerald-50 border-emerald-200' : 'bg-[#0d1518] border-emerald-500/35'
+                            className={`mt-2 max-w-sm p-3 rounded-2xl border flex items-center justify-between gap-3 shadow-md ${
+                              isInviteExpired
+                                ? isLight
+                                  ? 'bg-slate-100 border-slate-300 opacity-60'
+                                  : 'bg-[#101018] border-white/10 opacity-60'
+                                : isLight
+                                ? 'bg-emerald-50/80 border-emerald-200'
+                                : 'bg-[#0a1416] border-emerald-500/30'
                             }`}
                           >
-                            <div className="truncate">
-                              <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400 block">
-                                📩 LỜI MỜI THAM GIA MÁY CHỦ
-                              </span>
-                              <p className={`text-xs font-bold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                                spytify://station/join/{invitedSrvId}
-                              </p>
+                            <div className="flex items-center gap-2.5 truncate min-w-0">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
+                                  isInviteExpired
+                                    ? 'bg-zinc-800 border-zinc-700 text-zinc-500'
+                                    : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                                }`}
+                              >
+                                {displayServerName.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="truncate min-w-0">
+                                <span
+                                  className={`text-[9px] font-mono font-bold uppercase tracking-wider block ${
+                                    isInviteExpired ? 'text-zinc-500' : 'text-emerald-400'
+                                  }`}
+                                >
+                                  {isInviteExpired ? '⏰ LỜI MỜI ĐÃ HẾT HẠN (QUÁ 24H)' : '📩 LỜI MỜI THAM GIA MÁY CHỦ'}
+                                </span>
+                                <p
+                                  className={`text-xs font-bold truncate ${
+                                    isInviteExpired ? 'text-zinc-400 line-through' : isLight ? 'text-slate-900' : 'text-white'
+                                  }`}
+                                >
+                                  {displayServerName}
+                                </p>
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => joinServerAndWelcome(invitedSrvId)}
-                              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs font-mono shrink-0 cursor-pointer transition-transform hover:scale-105"
-                            >
-                              Tham gia
-                            </button>
+                            {isInviteExpired ? (
+                              <button
+                                type="button"
+                                disabled
+                                className="px-3.5 py-1.5 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-xs font-mono shrink-0 cursor-not-allowed border border-white/5"
+                              >
+                                Đã hết hạn
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => joinServerAndWelcome(invitedSrvId, undefined, isInviteExpired)}
+                                className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs font-mono shrink-0 cursor-pointer shadow-md shadow-emerald-500/25 transition-transform hover:scale-105 active:scale-95"
+                              >
+                                Tham gia
+                              </button>
+                            )}
                           </div>
                         )}
 
@@ -16131,6 +17385,50 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         </div>
       )}
 
+      {/* Modal xác nhận xóa toàn bộ tin nhắn đoạn chat DM */}
+      {showClearDmModal && activeDmFriend && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-sm rounded-2xl border p-5 shadow-2xl space-y-4 ${
+              isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#141422] border-[#262638] text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-500 flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <div className="truncate">
+                <h3 className="text-sm font-bold truncate">Xóa toàn bộ tin nhắn?</h3>
+                <p className="text-xs text-[#888] truncate">Đoạn chat với @{activeDmFriend.username}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#aaa] leading-relaxed">
+              Toàn bộ lịch sử tin nhắn trong đoạn chat này sẽ bị xóa sạch trên mọi thiết bị và máy chủ đám mây. Hành động này không thể hoàn tác.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowClearDmModal(false)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+                  isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-white/5 hover:bg-white/10 text-white'
+                }`}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleClearCurrentDmChat}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white cursor-pointer shadow-lg shadow-red-600/30 transition-transform hover:scale-105"
+              >
+                Xóa toàn bộ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ──────────────── 6. MODAL CÀI ĐẶT ÂM LƯỢNG MIC & LOA (VOICE AUDIO SETTINGS) ──────────────── */}
       {isAudioSettingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
@@ -17060,6 +18358,33 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </div>
                   </div>
 
+                  <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                    <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Tự động xóa tin nhắn kênh chat sau khoảng thời gian:</span>
+                    </label>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={editServerAutoDeleteHours}
+                        onChange={e => setEditServerAutoDeleteHours(Number(e.target.value) as 0 | 6 | 12 | 24)}
+                        disabled={!canManageServer}
+                        className={`px-3 py-2 rounded-xl text-xs border outline-none font-sans cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${
+                          isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#12121a] border-[#222232] text-white focus:border-cyan-400'
+                        }`}
+                      >
+                        <option value={0}>Không tự động xóa (Giữ vĩnh viễn)</option>
+                        <option value={6}>Sau 6 tiếng (Tự hủy)</option>
+                        <option value={12}>Sau 12 tiếng (Tự hủy)</option>
+                        <option value={24}>Sau 24 tiếng (1 ngày)</option>
+                      </select>
+                      <span className="text-[10px] text-[#777] font-mono">
+                        {editServerAutoDeleteHours === 0
+                          ? '(Tin nhắn trong các kênh chat được lưu trữ theo giới hạn số lượng)'
+                          : `(Mọi tin nhắn trong server sẽ tự động bị xóa sạch sau ${editServerAutoDeleteHours} tiếng để giải phóng dung lượng)`}
+                      </span>
+                    </div>
+                  </div>
+
                   <div className="pt-4 border-t border-[#1e1e2c] flex justify-end">
                     <button
                       type="submit"
@@ -17209,6 +18534,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                                   {openMemberActionsMenuId === mem.id && (
                                     <div
+                                      onClick={(e) => e.stopPropagation()}
                                       className={`absolute right-0 top-full mt-1.5 w-48 rounded-xl border shadow-2xl py-1 z-50 text-xs font-mono animate-in fade-in zoom-in-95 duration-100 ${
                                         isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#12121e] border-[#2c2c40] text-zinc-200'
                                       }`}

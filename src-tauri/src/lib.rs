@@ -13,7 +13,7 @@ use audio::AudioPlayerManager;
 use db::DatabaseManager;
 use rust_ui::{RustUiEngine, RustUiSnapshot};
 use models::{
-    HistoryItem, PlaybackStatus, RecommendationResult, SearchResult, Track, TrainingReport, User,
+    ArtistMix, HistoryItem, PlaybackStatus, RecommendationResult, SearchResult, Track, TrainingReport, User,
     UserStats,
 };
 use tauri::{
@@ -371,6 +371,147 @@ where
         }
     }
     out
+}
+
+#[tauri::command]
+async fn get_artist_album_mix(
+    artist: String,
+    user_id: Option<String>,
+    db: State<'_, DatabaseManager>,
+) -> Result<ArtistMix, String> {
+    let clean_artist = artist
+        .split(',')
+        .next()
+        .unwrap_or(&artist)
+        .split('&')
+        .next()
+        .unwrap_or(&artist)
+        .split(" x ")
+        .next()
+        .unwrap_or(&artist)
+        .split(" ft.")
+        .next()
+        .unwrap_or(&artist)
+        .split(" feat.")
+        .next()
+        .unwrap_or(&artist)
+        .trim()
+        .to_string();
+
+    let clean_lower = clean_artist.to_lowercase();
+    let mut combined_tracks: Vec<SearchResult> = Vec::new();
+    let mut seen_titles = std::collections::HashSet::new();
+    let mut found_cover: Option<String> = None;
+
+    // 1. Quét bài hát từ SQLite History và Favorites của tài khoản
+    if let Some(uid) = user_id.as_deref().filter(|s| !s.is_empty()) {
+        if let Ok(history) = db.get_history(uid, 120) {
+            for item in history {
+                if item.artist.to_lowercase().contains(&clean_lower) || item.track_title.to_lowercase().contains(&clean_lower) {
+                    let norm_title = item.track_title.to_lowercase().trim().to_string();
+                    if seen_titles.insert(norm_title) {
+                        let parsed_cover = item.track_json.as_deref()
+                            .and_then(|j| serde_json::from_str::<Track>(j).ok())
+                            .and_then(|t| t.cover_art);
+                        if found_cover.is_none() && parsed_cover.is_some() {
+                            found_cover = parsed_cover.clone();
+                        }
+                        combined_tracks.push(SearchResult {
+                            title: item.track_title,
+                            artist: item.artist,
+                            album: format!("{} Mix", clean_artist),
+                            duration_secs: item.duration_secs,
+                            source: match item.source.to_lowercase().as_str() {
+                                "soundcloud" => models::TrackSource::SoundCloud,
+                                "audius" => models::TrackSource::Audius,
+                                _ => models::TrackSource::YouTube,
+                            },
+                            url_or_id: item.path_or_url.unwrap_or(item.track_id),
+                            thumbnail: parsed_cover,
+                        });
+                    }
+                }
+            }
+        }
+
+        if let Ok(favs) = db.get_favorites(uid) {
+            for t in favs {
+                if t.artist.to_lowercase().contains(&clean_lower) || t.title.to_lowercase().contains(&clean_lower) {
+                    let norm_title = t.title.to_lowercase().trim().to_string();
+                    if seen_titles.insert(norm_title) {
+                        if found_cover.is_none() && t.cover_art.is_some() {
+                            found_cover = t.cover_art.clone();
+                        }
+                        combined_tracks.push(SearchResult {
+                            title: t.title,
+                            artist: t.artist,
+                            album: format!("{} Mix", clean_artist),
+                            duration_secs: t.duration_secs,
+                            source: match t.source {
+                                models::TrackSource::SoundCloud => models::TrackSource::SoundCloud,
+                                models::TrackSource::Audius => models::TrackSource::Audius,
+                                _ => models::TrackSource::YouTube,
+                            },
+                            url_or_id: t.path_or_url,
+                            thumbnail: t.cover_art,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Tìm kiếm các bài hát top hits của nghệ sĩ trên YouTube (Rust async task)
+    let yt_query = format!("{} top songs official audio", clean_artist);
+    let yt_res = tokio::time::timeout(
+        tokio::time::Duration::from_millis(4000),
+        sources::youtube::search_youtube(&yt_query)
+    ).await;
+
+    if let Ok(Ok(yt_tracks)) = yt_res {
+        for t in yt_tracks {
+            let norm_title = t.title.to_lowercase().trim().to_string();
+            if t.duration_secs > 0 && t.duration_secs < 900 {
+                if seen_titles.insert(norm_title) {
+                    if found_cover.is_none() && t.thumbnail.is_some() {
+                        found_cover = t.thumbnail.clone();
+                    }
+                    combined_tracks.push(t);
+                }
+            }
+            if combined_tracks.len() >= 25 {
+                break;
+            }
+        }
+    }
+
+    // 3. Fallback thêm từ Audius nếu danh sách còn ít
+    if combined_tracks.len() < 5 {
+        if let Ok(audius_tracks) = sources::audius::search_audius(&clean_artist).await {
+            for t in audius_tracks {
+                let norm_title = t.title.to_lowercase().trim().to_string();
+                if seen_titles.insert(norm_title) {
+                    if found_cover.is_none() && t.thumbnail.is_some() {
+                        found_cover = t.thumbnail.clone();
+                    }
+                    combined_tracks.push(t);
+                }
+                if combined_tracks.len() >= 25 {
+                    break;
+                }
+            }
+        }
+    }
+
+    let track_count = combined_tracks.len();
+    Ok(ArtistMix {
+        artist: clean_artist.clone(),
+        title: format!("{} Mix", clean_artist),
+        description: format!("Tuyển tập những bài hát được nghe nhiều nhất của {}", clean_artist),
+        cover_art: found_cover,
+        track_count,
+        tracks: combined_tracks,
+    })
 }
 
 #[tauri::command]
@@ -782,6 +923,42 @@ fn auth_get_credentials(user_id: String, db: State<'_, DatabaseManager>) -> Opti
 }
 
 #[tauri::command]
+fn auth_set_two_factor(
+    user_id: String,
+    secret: String,
+    enabled: bool,
+    scope: Option<String>,
+    db: State<'_, DatabaseManager>,
+) -> Result<(), String> {
+    db.set_two_factor(&user_id, &secret, enabled, scope.as_deref())
+}
+
+#[tauri::command]
+fn auth_set_two_factor_scope(
+    user_id: String,
+    scope: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<(), String> {
+    db.set_two_factor_scope(&user_id, &scope)
+}
+
+#[tauri::command]
+fn auth_get_user_2fa(
+    user_id: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<(bool, Option<String>, Option<String>), String> {
+    db.get_user_2fa(&user_id)
+}
+
+#[tauri::command]
+fn auth_check_2fa_by_identifier(
+    identifier: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<Option<(String, String, bool, Option<String>)>, String> {
+    db.get_user_2fa_by_identifier(&identifier)
+}
+
+#[tauri::command]
 fn save_text_file(path: String, content: String) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
@@ -801,11 +978,25 @@ fn auth_update_avatar(
 }
 
 #[tauri::command]
+fn auth_update_password(
+    user_id: String,
+    new_password: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<(String, String), String> {
+    db.update_password(&user_id, &new_password)
+}
+
+#[tauri::command]
 fn auth_get_current_user(
     user_id: String,
     db: State<'_, DatabaseManager>,
 ) -> Result<Option<User>, String> {
     db.get_user_by_id(&user_id)
+}
+
+#[tauri::command]
+fn auth_get_saved_accounts(db: State<'_, DatabaseManager>) -> Result<Vec<User>, String> {
+    db.get_all_local_users()
 }
 
 #[tauri::command]
@@ -913,6 +1104,32 @@ fn db_delete_server_chat_message(
     db: State<'_, DatabaseManager>,
 ) -> Result<(), String> {
     db.delete_server_chat_message(&id)
+}
+
+#[tauri::command]
+fn db_delete_channel_messages(
+    server_id: String,
+    channel_id: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<(), String> {
+    db.delete_channel_chat_messages(&server_id, &channel_id)
+}
+
+#[tauri::command]
+fn db_delete_server_messages(
+    server_id: String,
+    db: State<'_, DatabaseManager>,
+) -> Result<(), String> {
+    db.delete_all_server_chat_messages(&server_id)
+}
+
+#[tauri::command]
+fn db_purge_expired_server_messages(
+    server_id: String,
+    hours: u32,
+    db: State<'_, DatabaseManager>,
+) -> Result<usize, String> {
+    db.purge_expired_server_messages(&server_id, hours)
 }
 
 #[cfg(target_os = "windows")]
@@ -1691,15 +1908,22 @@ pub fn run() {
             get_related_tracks,
             get_trending_hits,
             get_trending_keywords,
+            get_artist_album_mix,
             auth_register,
             auth_login,
             auth_google_login,
             auth_start_google_oauth,
             auth_get_current_user,
+            auth_get_saved_accounts,
             auth_update_avatar,
+            auth_update_password,
             auth_import_user,
             auth_hash_password,
             auth_get_credentials,
+            auth_set_two_factor,
+            auth_set_two_factor_scope,
+            auth_get_user_2fa,
+            auth_check_2fa_by_identifier,
             save_text_file,
             read_text_file,
             db_get_favorites,
@@ -1740,6 +1964,9 @@ pub fn run() {
             db_save_server_chat_message,
             db_get_server_chat_messages,
             db_delete_server_chat_message,
+            db_delete_channel_messages,
+            db_delete_server_messages,
+            db_purge_expired_server_messages,
             hide_screen_share_notification
         ])
         .run(tauri::generate_context!())

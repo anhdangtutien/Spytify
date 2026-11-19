@@ -31,6 +31,15 @@ export interface SearchResult {
   thumbnail?: string | null;
 }
 
+export interface ArtistMix {
+  artist: string;
+  title: string;
+  description: string;
+  cover_art?: string | null;
+  track_count: number;
+  tracks: SearchResult[];
+}
+
 export interface User {
   id: string;
   username: string;
@@ -40,6 +49,9 @@ export interface User {
   bio?: string;
   thought?: string | null;
   custom_status?: string;
+  two_factor_enabled?: boolean;
+  two_factor_secret?: string | null;
+  two_factor_scope?: 'both' | 'login' | 'reset_password';
   created_at: string;
 }
 
@@ -172,6 +184,7 @@ export interface CommunityServer {
   pending_invites?: CommunityPendingInvite[];
   custom_bots?: CommunityUserProfile[];
   message_limit?: number;
+  auto_delete_hours?: 0 | 6 | 12 | 24;
 }
 
 export interface RequestBotTrack {
@@ -217,6 +230,7 @@ export interface CommunityMessage {
   track_embed?: Track | null;
   image_url?: string | null;
   file_attachment?: CommunityFileAttachment | null;
+  edited?: boolean;
 }
 
 export interface CommunityFileAttachment {
