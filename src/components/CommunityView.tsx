@@ -5477,6 +5477,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       payload: welcomeMsg,
     });
 
+    const broadcastWelcomeMsg = { ...welcomeMsg, avatar: null };
+
     globalSocialChannelRef.current?.send({
       type: 'broadcast',
       event: 'server_message_notify',
@@ -5484,7 +5486,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         serverId: srv.id,
         channelId: firstTextCh.id,
         senderId: welcomeMsg.user_id,
-        message: welcomeMsg,
+        message: broadcastWelcomeMsg,
       },
     });
 
@@ -5495,7 +5497,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       receiver_id: firstTextCh.id,
       sender_username: welcomeMsg.username,
       sender_display_name: welcomeMsg.display_name,
-      sender_avatar: welcomeMsg.avatar || null,
+      sender_avatar: null,
       content: welcomeMsg.content,
       track_embed: null,
       created_at: createdAtStr,
@@ -5964,7 +5966,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       receiver_id: memberId,
       sender_username: dmInviteMsg.username,
       sender_display_name: dmInviteMsg.display_name,
-      sender_avatar: dmInviteMsg.avatar,
+      sender_avatar: null,
       content: dmInviteMsg.content,
       track_embed: null,
       created_at: createdAtStr,
@@ -8972,7 +8974,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     id: currentUser?.id || myParticipantIdRef.current,
     username: currentUser?.username || currentUser?.email?.split('@')[0] || 'operative',
     display_name: myServerDisplayName,
-    avatar: currentUser?.avatar || publishedProfilePresenceRef.current.avatar || null,
+    // TỐI ƯU EGRESS: Không gửi Base64 avatar trong presence định kỳ để tránh tốn băng thông.
+    // Avatar được đồng bộ chính danh từ bảng spytify_profiles và chỉ broadcast khi người dùng đổi avatar.
+    avatar: null,
     status: myStatus === 'invisible' ? 'offline' : myStatus,
     bio: myBio || publishedProfilePresenceRef.current.bio,
     thought: myUserThought,
@@ -10339,6 +10343,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       created_at: createdAtStr,
     };
 
+    const broadcastMsg = { ...newMsg, avatar: null };
+
     if (fileAttachment && currentUser?.id && targetServerId !== 'srv_none') {
       try {
         await pushCloudDirectMessage({
@@ -10348,7 +10354,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           receiver_id: targetChannelId,
           sender_username: newMsg.username,
           sender_display_name: newMsg.display_name,
-          sender_avatar: newMsg.avatar,
+          sender_avatar: null,
           content: newMsg.content,
           track_embed: newMsg.track_embed,
           image_url: newMsg.image_url || null,
@@ -10372,7 +10378,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       activeChannelRef.current.send({
         type: 'broadcast',
         event: 'new_message',
-        payload: newMsg,
+        payload: broadcastMsg,
       });
     }
 
@@ -10383,7 +10389,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         serverId: targetServerId,
         channelId: targetChannelId,
         senderId: currentUser?.id || 'guest',
-        message: newMsg,
+        message: broadcastMsg,
       },
     });
 
@@ -10395,7 +10401,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         receiver_id: targetChannelId,
         sender_username: newMsg.username,
         sender_display_name: newMsg.display_name,
-        sender_avatar: newMsg.avatar,
+        sender_avatar: null,
         content: newMsg.content,
         track_embed: newMsg.track_embed,
         image_url: newMsg.image_url || null,
@@ -11081,11 +11087,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     setDmAttachTrack(false);
     setPendingDmImage(null);
 
+    const broadcastDmMsg = { ...newMsg, avatar: null };
+
     if (activeDmChannelRef.current) {
       activeDmChannelRef.current.send({
         type: 'broadcast',
         event: 'new_dm_message',
-        payload: newMsg,
+        payload: broadcastDmMsg,
       });
     }
 
@@ -11096,7 +11104,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         roomId: currentDmRoomId,
         senderId: currentUser.id,
         receiverId: activeDmFriend.id,
-        message: newMsg,
+        message: broadcastDmMsg,
       },
     });
 
@@ -11108,7 +11116,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       receiver_id: activeDmFriend.id,
       sender_username: newMsg.username,
       sender_display_name: newMsg.display_name,
-      sender_avatar: newMsg.avatar,
+      sender_avatar: null,
       content: newMsg.content,
       track_embed: newMsg.track_embed,
       image_url: newMsg.image_url,

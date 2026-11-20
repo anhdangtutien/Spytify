@@ -895,7 +895,7 @@ export async function fetchCloudDirectMessages(roomId: string): Promise<CloudDir
   try {
     const { data: legacyData, error: legacyError } = await client
       .from('spytify_direct_messages')
-      .select('*')
+      .select('id, room_id, sender_id, receiver_id, sender_username, sender_display_name, content, track_embed, image_url, created_at, sent_at')
       .eq('room_id', roomId)
       .order('sent_at', { ascending: false })
       .limit(MAX_CHAT_MESSAGES_LIMIT);
@@ -909,7 +909,7 @@ export async function fetchCloudDirectMessages(roomId: string): Promise<CloudDir
 
     const { data: communityData, error: communityError } = await client
       .from('spytify_community_messages')
-      .select('*')
+      .select('id, server_id, channel_id, sender_id, sender_username, sender_display_name, content, track_embed, image_url, file_attachment, created_at, sent_at')
       .eq('server_id', serverId)
       .order('sent_at', { ascending: false })
       .limit(MAX_CHAT_MESSAGES_LIMIT);
@@ -986,6 +986,10 @@ export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promis
     const sentAt = msg.sent_at || new Date().toISOString();
     const row = { ...msg };
     delete row.file_attachment;
+    // TỐI ƯU HÓA EGRESS: Không lưu chuỗi Base64 avatar nặng vào từng tin nhắn.
+    // Avatar luôn được lấy từ profile spytify_profiles theo sender_id.
+    row.sender_avatar = null;
+
     let legacyResult = await client.from('spytify_direct_messages').upsert(
       {
         ...row,
@@ -995,9 +999,8 @@ export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promis
       { onConflict: 'id' }
     );
     if (legacyResult.error && Object.prototype.hasOwnProperty.call(msg, 'image_url')) {
-      const withoutOptionalFields = { ...msg };
+      const withoutOptionalFields = { ...row };
       delete withoutOptionalFields.image_url;
-      delete withoutOptionalFields.file_attachment;
       legacyResult = await client.from('spytify_direct_messages').upsert(
         {
           ...withoutOptionalFields,
@@ -1020,7 +1023,7 @@ export async function pushCloudDirectMessage(msg: CloudDirectMessageRow): Promis
           sender_id: msg.sender_id,
           sender_username: msg.sender_username,
           sender_display_name: msg.sender_display_name,
-          sender_avatar: msg.sender_avatar || null,
+          sender_avatar: null,
           content: msg.content,
           track_embed: msg.track_embed || null,
           image_url: msg.image_url || null,
