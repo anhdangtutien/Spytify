@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, RotateCcw, Power, Sliders, Volume2, Sparkles, 
-  Headphones, Flame, Check, AlertCircle, CheckCircle2, Music, Activity
+  Headphones, Flame, Check, AlertCircle, CheckCircle2, Music, Activity,
+  BookmarkPlus, Trash2, Bookmark
 } from 'lucide-react';
 import { 
-  EQ_FREQUENCIES, EQ_LABELS, EQ_PRESETS, EqualizerState,
-  loadEqualizerState, saveEqualizerState 
+  EQ_FREQUENCIES, EQ_LABELS, EQ_PRESETS, EqualizerState, CustomEqualizerPreset,
+  loadEqualizerState, saveEqualizerState, applyEqualizerStateToGraph,
+  loadCustomPresets, saveCustomPreset, deleteCustomPreset
 } from '../services/equalizer';
 import { LanguageCode } from '../locales/i18n';
 import { Track } from '../types';
@@ -50,16 +52,28 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 }) => {
   const isLight = themeMode === 'light';
   const [eqState, setEqState] = useState<EqualizerState>(() => loadEqualizerState());
+  const [customPresets, setCustomPresets] = useState<CustomEqualizerPreset[]>(() => loadCustomPresets());
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const saveTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       const current = loadEqualizerState();
       setEqState(current);
-      // Ensure Web Audio context is active on modal open
-      saveEqualizerState(current);
+      setCustomPresets(loadCustomPresets());
+      // Ensure Web Audio graph reflects state immediately
+      applyEqualizerStateToGraph(current);
     }
   }, [isOpen]);
+
+  // Clean up debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
 
   // Redraw frequency response curve whenever gains or enabled state changes
   useEffect(() => {
@@ -95,9 +109,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
     for (let i = 0; i < numBands; i++) {
       const gain = eqState.enabled ? eqState.gains[i] : 0;
-      // map gain (-15dB .. +15dB) to (height - 15 .. 15)
+      // map gain (-15dB .. +15dB) to (height - 12 .. 12)
       const normalized = -gain / 15;
-      const y = zeroY + normalized * (zeroY - 15);
+      const y = zeroY + normalized * (zeroY - 12);
       const x = paddingX + i * stepX;
       points.push({ x, y });
     }
@@ -146,7 +160,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     // Draw dots at control points
     points.forEach(p => {
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = isLight ? '#ffffff' : '#0e0e17';
       ctx.fill();
       ctx.strokeStyle = eqState.enabled ? accentColor : (isLight ? '#94a3b8' : '#475569');
@@ -157,9 +171,17 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
   if (!isOpen) return null;
 
+  const debouncedSave = (state: EqualizerState) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = window.setTimeout(() => {
+      saveEqualizerState(state);
+    }, 250);
+  };
+
   const handleToggleEnable = () => {
     const next: EqualizerState = { ...eqState, enabled: !eqState.enabled };
     setEqState(next);
+    applyEqualizerStateToGraph(next);
     saveEqualizerState(next);
   };
 
@@ -170,11 +192,49 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
       ...eqState,
       presetId,
       gains: [...matched.gains],
-      preamp: matched.preamp ?? eqState.preamp,
-      bassBoost: matched.bassBoost ?? eqState.bassBoost,
+      preamp: matched.preamp ?? 0,
+      bassBoost: matched.bassBoost ?? 0,
     };
     setEqState(next);
+    applyEqualizerStateToGraph(next);
     saveEqualizerState(next);
+  };
+
+  const handleSelectCustomPreset = (preset: CustomEqualizerPreset) => {
+    const next: EqualizerState = {
+      ...eqState,
+      presetId: preset.id,
+      gains: [...preset.gains],
+      preamp: preset.preamp,
+      bassBoost: preset.bassBoost,
+      spatial3D: preset.spatial3D ?? eqState.spatial3D,
+    };
+    setEqState(next);
+    applyEqualizerStateToGraph(next);
+    saveEqualizerState(next);
+  };
+
+  const handleSaveCustom = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const name = newPresetName.trim();
+    if (!name) return;
+    const created = saveCustomPreset(name, eqState);
+    const updated = loadCustomPresets();
+    setCustomPresets(updated);
+    setNewPresetName('');
+    setIsSavingPreset(false);
+    const next: EqualizerState = { ...eqState, presetId: created.id };
+    setEqState(next);
+    saveEqualizerState(next);
+  };
+
+  const handleDeleteCustom = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = deleteCustomPreset(id);
+    setCustomPresets(updated);
+    if (eqState.presetId === id) {
+      handleSelectPreset('flat');
+    }
   };
 
   const handleBandGainChange = (index: number, value: number) => {
@@ -186,24 +246,29 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
       presetId: 'custom',
     };
     setEqState(next);
-    saveEqualizerState(next);
+    // Instant 0ms Web Audio update!
+    applyEqualizerStateToGraph(next);
+    debouncedSave(next);
   };
 
   const handlePreampChange = (value: number) => {
     const next: EqualizerState = { ...eqState, preamp: value, presetId: 'custom' };
     setEqState(next);
-    saveEqualizerState(next);
+    applyEqualizerStateToGraph(next);
+    debouncedSave(next);
   };
 
   const handleBassBoostChange = (value: number) => {
     const next: EqualizerState = { ...eqState, bassBoost: value, presetId: 'custom' };
     setEqState(next);
-    saveEqualizerState(next);
+    applyEqualizerStateToGraph(next);
+    debouncedSave(next);
   };
 
   const handleToggleSpatial = () => {
     const next: EqualizerState = { ...eqState, spatial3D: !eqState.spatial3D };
     setEqState(next);
+    applyEqualizerStateToGraph(next);
     saveEqualizerState(next);
   };
 
@@ -216,7 +281,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
@@ -229,20 +294,20 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
         }}
       >
         {/* Top Header */}
-        <div className={`flex items-center justify-between px-6 py-4 border-b ${isLight ? 'border-slate-100 bg-slate-50/70' : 'border-[#1a1a24] bg-[#12121c]/60'}`}>
+        <div className={`flex items-center justify-between px-5 py-3 border-b ${isLight ? 'border-slate-100 bg-slate-50/70' : 'border-[#1a1a24] bg-[#12121c]/60'}`}>
           <div className="flex items-center gap-3">
             <div 
-              className="w-9 h-9 rounded-xl flex items-center justify-center transition-transform shadow-inner"
+              className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform shadow-inner"
               style={{ 
                 backgroundColor: eqState.enabled ? `${accentColor}20` : (isLight ? '#f1f5f9' : '#1e1e2d'),
                 color: eqState.enabled ? accentColor : (isLight ? '#64748b' : '#71717a'),
               }}
             >
-              <Sliders className="w-5 h-5" />
+              <Sliders className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className={`text-base font-bold font-mono tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                <h2 className={`text-sm sm:text-base font-bold font-mono tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {language === 'vi' ? 'CÀI ĐẶT ÂM THANH & EQ' : 'AUDIO SETTINGS & EQ'}
                 </h2>
                 <span 
@@ -255,7 +320,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   {eqState.enabled ? 'Hi-Fi 10-Band' : 'EQ Bypassed'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-sans">
+              <p className="text-[11px] text-slate-400 font-sans">
                 {language === 'vi' ? 'Bộ cân bằng tần số 10-Band, Chuyển tiếp mượt & Sóng nhạc' : '10-Band Equalizer, Crossfade & Audio Visualizer'}
               </p>
             </div>
@@ -264,9 +329,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           <div className="flex items-center gap-2">
             {/* Master Bypass Toggle */}
             <button
+              type="button"
               onClick={handleToggleEnable}
               title={eqState.enabled ? 'Tắt bộ lọc EQ (Bypass)' : 'Bật bộ lọc EQ'}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border shadow-sm ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border shadow-sm ${
                 eqState.enabled 
                   ? 'border-transparent shadow-md'
                   : (isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-[#181824] border-[#2c2c3c] text-slate-400')
@@ -282,19 +348,21 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
             {/* Reset to Flat */}
             <button
+              type="button"
               onClick={handleResetToFlat}
               title={language === 'vi' ? 'Đặt lại về Flat (0 dB)' : 'Reset to Flat (0 dB)'}
-              className={`p-2 rounded-lg transition-colors cursor-pointer border ${
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
                 isLight ? 'border-slate-200 hover:bg-slate-100 text-slate-600' : 'border-[#22222e] hover:bg-[#1a1a26] text-slate-400 hover:text-white'
               }`}
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
 
             {/* Close */}
             <button
+              type="button"
               onClick={onClose}
-              className={`p-2 rounded-lg transition-colors cursor-pointer border ${
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
                 isLight ? 'border-slate-200 hover:bg-slate-100 text-slate-600' : 'border-[#22222e] hover:bg-[#1a1a26] text-slate-400 hover:text-white'
               }`}
             >
@@ -304,34 +372,34 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
         </div>
 
         {/* Audio Source Status Notice */}
-        <div className="px-6 pt-3">
+        <div className="px-5 pt-2.5">
           {isYoutubeSource ? (
-            <div className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-sans leading-relaxed">
-              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <div>
+            <div className="flex items-start gap-2 p-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-sans leading-relaxed">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-[11px]">
                 <span className="font-bold">
-                  {language === 'vi' ? 'Đang phát qua YouTube Web Iframe' : 'Playing via YouTube Web Iframe'}
+                  {language === 'vi' ? 'Đang phát qua YouTube Web Iframe: ' : 'Playing via YouTube Web Iframe: '}
                 </span>
-                <p className="text-amber-200/80 mt-0.5 text-[11px]">
+                <span className="text-amber-200/80">
                   {language === 'vi' 
-                    ? 'Do cơ chế bảo mật Sandbox của trình duyệt, luồng YouTube nhúng phát trực tiếp ra loa máy và không cho phép can thiệp EQ. Để cảm nhận trọn vẹn sức mạnh EQ (Bass Boost, Vocal, 3D...), bạn hãy bấm nút TẢI XUỐNG bài hát hoặc phát Nhạc trên máy (Local Music) nhé!'
-                    : 'Browser sandbox limits cross-origin YouTube iframe audio from Web Audio processing. Download the song or play from Local Music to experience full Hi-Fi EQ!'}
-                </p>
+                    ? 'Do sandbox trình duyệt, luồng YouTube phát ra loa không cho can thiệp EQ. Bấm TẢI XUỐNG bài hát để cảm nhận trọn vẹn EQ!' 
+                    : 'Browser sandbox prevents Web Audio interception on YouTube iframe. Download song to experience full EQ!'}
+                </span>
               </div>
             </div>
           ) : isDirectAudioSource ? (
-            <div className="flex items-center gap-2 p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-sans">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span className="font-medium">
+            <div className="flex items-center gap-2 p-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-sans">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="font-medium text-[11px]">
                 {language === 'vi' 
                   ? `Đang áp dụng EQ thời gian thực cho: "${currentTrack?.title}" (Hi-Fi Direct Audio)` 
                   : `Realtime EQ actively processing: "${currentTrack?.title}"`}
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-500/20 bg-slate-500/5 text-slate-400 text-xs font-sans">
-              <Music className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>
+            <div className="flex items-center gap-2 p-2 rounded-xl border border-slate-500/20 bg-slate-500/5 text-slate-400 text-xs font-sans">
+              <Music className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="text-[11px]">
                 {language === 'vi'
                   ? 'Gợi ý: Phát nhạc từ Thư viện máy (Local Music) hoặc bài đã tải về để cảm nhận rõ rệt độ biến đổi âm thanh!'
                   : 'Play local or downloaded songs to experience live audio filtering!'}
@@ -341,16 +409,16 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
         </div>
 
         {/* Body Content */}
-        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
           {/* Quick Playback Settings (Crossfade & Visualizer) */}
-          <div className={`p-3.5 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+          <div className={`p-3 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-3 ${
             isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'
           }`}>
             {/* Crossfade Transition */}
-            <div className="flex flex-col justify-between gap-2">
+            <div className="flex flex-col justify-between gap-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  <Sliders className="w-3 h-3" style={{ color: accentColor }} />
                   {language === 'vi' ? 'Chuyển bài mượt (Crossfade)' : 'Crossfade Transition'}
                 </span>
                 <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
@@ -371,7 +439,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       key={opt.sec}
                       type="button"
                       onClick={() => onUpdateCrossfadeDuration?.(opt.sec)}
-                      className={`py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer border text-center w-full ${
+                      className={`py-1 rounded-lg text-xs font-mono transition-all cursor-pointer border text-center w-full ${
                         isSelected
                           ? 'border-transparent font-bold text-white shadow-sm'
                           : isLight
@@ -391,10 +459,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
 
             {/* Visualizer Waveform Toggle */}
-            <div className="flex items-center justify-between sm:border-l sm:border-white/10 sm:pl-4">
+            <div className="flex items-center justify-between sm:border-l sm:border-white/10 sm:pl-3">
               <div className="flex flex-col">
                 <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  <Activity className="w-3 h-3" style={{ color: accentColor }} />
                   {language === 'vi' ? 'Sóng nhạc động (Visualizer)' : 'Audio Visualizer'}
                 </span>
                 <span className="text-[11px] text-slate-500 font-sans mt-0.5">
@@ -404,31 +472,89 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               <button
                 type="button"
                 onClick={onToggleVisualizer}
-                className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ml-2 ${
+                className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer shrink-0 ml-2 ${
                   showVisualizer ? '' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
                 }`}
                 style={showVisualizer ? { backgroundColor: accentColor } : undefined}
               >
                 <div 
-                  className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
-                    showVisualizer ? 'translate-x-6' : 'translate-x-1'
+                  className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
+                    showVisualizer ? 'translate-x-5' : 'translate-x-0.5'
                   }`} 
                 />
               </button>
             </div>
           </div>
 
-          {/* Preset Pills (1 clean horizontal row with smooth scroll) */}
+          {/* Preset Pills (Now with Custom Presets Save, Name & Delete!) */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-mono text-slate-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
                 {language === 'vi' ? 'Cấu hình âm thanh (Presets)' : 'Sound Presets'}
               </span>
-              <span className="text-[11px] font-mono text-slate-500">
-                {eqState.presetId === 'custom' ? (language === 'vi' ? 'Đang tùy chỉnh riêng' : 'Custom Mode') : ''}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSavingPreset(p => !p)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium transition-all cursor-pointer border ${
+                    isSavingPreset 
+                      ? 'border-transparent text-white shadow-sm'
+                      : isLight 
+                      ? 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200' 
+                      : 'bg-[#181824] border-[#2c2c3c] text-slate-300 hover:text-white hover:bg-[#222234]'
+                  }`}
+                  style={isSavingPreset ? { backgroundColor: accentColor } : undefined}
+                >
+                  <BookmarkPlus className="w-3 h-3" />
+                  <span>{language === 'vi' ? 'Lưu cấu hình' : 'Save Preset'}</span>
+                </button>
+                <span className="text-[11px] font-mono text-slate-500">
+                  {eqState.presetId === 'custom' 
+                    ? (language === 'vi' ? 'Đang chỉnh riêng' : 'Custom') 
+                    : customPresets.find(p => p.id === eqState.presetId)?.name || ''}
+                </span>
+              </div>
             </div>
+
+            {/* Inline Save Preset Form */}
+            {isSavingPreset && (
+              <form 
+                onSubmit={handleSaveCustom}
+                className={`flex items-center gap-2 p-2 rounded-xl mb-2.5 border animate-in fade-in duration-150 ${
+                  isLight ? 'bg-slate-100 border-slate-300' : 'bg-[#181826] border-[#2c2c40]'
+                }`}
+              >
+                <Bookmark className="w-4 h-4 ml-1 shrink-0" style={{ color: accentColor }} />
+                <input
+                  type="text"
+                  autoFocus
+                  value={newPresetName}
+                  onChange={e => setNewPresetName(e.target.value)}
+                  placeholder={language === 'vi' ? 'Nhập tên cấu hình (VD: Siêu Bass, Gaming, Chill...)' : 'Preset name (e.g. Bass Boost 2026, Chill...)'}
+                  className={`flex-1 text-xs px-2.5 py-1.5 rounded-lg outline-none border transition-colors ${
+                    isLight ? 'bg-white border-slate-300 text-slate-800' : 'bg-[#0f0f18] border-[#2f2f45] text-white'
+                  }`}
+                />
+                <button
+                  type="submit"
+                  disabled={!newPresetName.trim()}
+                  className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-white transition-opacity disabled:opacity-40 cursor-pointer"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  {language === 'vi' ? 'Lưu' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setIsSavingPreset(false); setNewPresetName(''); }}
+                  className={`px-2 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
+                    isLight ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {language === 'vi' ? 'Hủy' : 'Cancel'}
+                </button>
+              </form>
+            )}
 
             {/* Presets in 1 clean horizontal line with smooth horizontal scrolling */}
             <div 
@@ -443,12 +569,49 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 }
               }}
             >
+              {/* User Saved Custom Presets */}
+              {customPresets.map(preset => {
+                const isSelected = eqState.presetId === preset.id;
+                return (
+                  <div
+                    key={preset.id}
+                    onClick={() => handleSelectCustomPreset(preset)}
+                    className={`group px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer border flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'border-transparent font-bold shadow-md'
+                        : isLight
+                        ? 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
+                        : 'bg-[#181712] border-amber-500/30 text-amber-300 hover:bg-[#201e16]'
+                    }`}
+                    style={isSelected ? {
+                      backgroundColor: `${accentColor}25`,
+                      borderColor: accentColor,
+                      color: accentColor,
+                      boxShadow: `0 0 12px ${accentColor}30`,
+                    } : undefined}
+                  >
+                    <Bookmark className="w-3 h-3 shrink-0 text-amber-400" />
+                    <span>{preset.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteCustom(preset.id, e)}
+                      title={language === 'vi' ? 'Xóa cấu hình này' : 'Delete preset'}
+                      className="ml-0.5 p-0.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-400 opacity-60 hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+
+              {/* Default Presets */}
               {EQ_PRESETS.map(preset => {
                 const isSelected = eqState.presetId === preset.id;
                 const label = preset.name[language] || preset.name['en-US'] || preset.id;
                 return (
                   <button
                     key={preset.id}
+                    type="button"
                     onClick={() => handleSelectPreset(preset.id)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer border flex items-center gap-1.5 ${
                       isSelected
@@ -477,26 +640,26 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             <canvas 
               ref={canvasRef} 
               width={560} 
-              height={85} 
-              className="w-full h-[85px] block"
+              height={70} 
+              className="w-full h-[70px] block"
             />
-            <div className="absolute top-2 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
+            <div className="absolute top-1.5 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
               <span>+15 dB</span>
             </div>
-            <div className="absolute bottom-2 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
+            <div className="absolute bottom-1.5 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
               <span>-15 dB</span>
             </div>
           </div>
 
-          {/* 10 Vertical Faders */}
-          <div className={`p-4 rounded-xl border ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111119] border-[#1c1c28]'}`}>
+          {/* 10 Vertical Faders — Rock-solid fixed sliders, touch-none & wheel protected */}
+          <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111119] border-[#1c1c28]'}`}>
             <div className="grid grid-cols-10 gap-1 sm:gap-2">
               {EQ_FREQUENCIES.map((freq, index) => {
                 const gain = eqState.gains[index] ?? 0;
                 const label = EQ_LABELS[index];
 
                 return (
-                  <div key={freq} className="flex flex-col items-center gap-2">
+                  <div key={freq} className="flex flex-col items-center gap-1.5 touch-none select-none">
                     {/* Gain dB value indicator */}
                     <span 
                       className={`text-[10px] font-mono font-bold px-1 rounded transition-colors ${
@@ -510,8 +673,14 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       {gain > 0 ? `+${gain}` : `${gain}`}
                     </span>
 
-                    {/* Vertical Slider */}
-                    <div className="relative h-36 flex items-center justify-center">
+                    {/* Vertical Slider — Guaranteed fixed, no unwanted drag-down on scroll */}
+                    <div 
+                      className="relative h-28 flex items-center justify-center touch-none select-none"
+                      onWheel={(e) => {
+                        // Prevent wheel on slider from changing value or dragging slider down
+                        e.stopPropagation();
+                      }}
+                    >
                       <input
                         type="range"
                         min="-15"
@@ -520,11 +689,13 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                         value={gain}
                         disabled={!eqState.enabled}
                         onChange={e => handleBandGainChange(index, parseFloat(e.target.value))}
-                        className="h-32 w-2 appearance-none rounded-full cursor-pointer accent-current outline-none transition-opacity disabled:opacity-40"
+                        onWheel={e => (e.target as HTMLElement).blur()}
+                        className="h-24 w-2.5 appearance-none rounded-full cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none select-none"
                         style={{
                           WebkitAppearance: 'slider-vertical',
                           accentColor: accentColor,
                           backgroundColor: isLight ? '#cbd5e1' : '#222232',
+                          touchAction: 'none',
                         }}
                       />
                     </div>
@@ -542,8 +713,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           {/* Auxiliary Audio Enhancement Sliders (Preamp, Bass Boost, 3D Spatial) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {/* Preamp */}
-            <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-              <div className="flex items-center justify-between mb-2">
+            <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+              <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
                   <Volume2 className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   {language === 'vi' ? 'Tiền khuếch đại' : 'Preamp'}
@@ -560,10 +731,12 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 value={eqState.preamp}
                 disabled={!eqState.enabled}
                 onChange={e => handlePreampChange(parseFloat(e.target.value))}
-                className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40"
+                onWheel={e => (e.target as HTMLElement).blur()}
+                className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
                 style={{
                   accentColor: accentColor,
                   backgroundColor: isLight ? '#cbd5e1' : '#222232',
+                  touchAction: 'none',
                 }}
               />
               <span className="text-[10px] text-slate-500 mt-1 block">
@@ -572,8 +745,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
 
             {/* Bass Boost */}
-            <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-              <div className="flex items-center justify-between mb-2">
+            <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+              <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
                   <Flame className="w-3.5 h-3.5 text-amber-500" />
                   Bass Boost
@@ -590,10 +763,12 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 value={eqState.bassBoost}
                 disabled={!eqState.enabled}
                 onChange={e => handleBassBoostChange(parseInt(e.target.value))}
-                className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40"
+                onWheel={e => (e.target as HTMLElement).blur()}
+                className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
                 style={{
                   accentColor: '#f59e0b',
                   backgroundColor: isLight ? '#cbd5e1' : '#222232',
+                  touchAction: 'none',
                 }}
               />
               <span className="text-[10px] text-slate-500 mt-1 block">
@@ -602,13 +777,14 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
 
             {/* 3D Spatial Audio Toggle */}
-            <div className={`p-3.5 rounded-xl border flex flex-col justify-between ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+            <div className={`p-3 rounded-xl border flex flex-col justify-between ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
                   <Headphones className="w-3.5 h-3.5 text-cyan-400" />
                   3D Spatial Audio
                 </span>
                 <button
+                  type="button"
                   onClick={handleToggleSpatial}
                   className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${
                     eqState.spatial3D ? 'bg-cyan-500' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
@@ -621,7 +797,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   />
                 </button>
               </div>
-              <span className="text-[10px] text-slate-500 mt-2 block">
+              <span className="text-[10px] text-slate-500 mt-1 block">
                 {language === 'vi' ? 'Mở rộng trường âm thanh tai nghe' : 'Wide immersive stereo stage'}
               </span>
             </div>

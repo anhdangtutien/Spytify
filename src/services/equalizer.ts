@@ -6,9 +6,19 @@ export const EQ_LABELS = ['32Hz', '64Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2k
 export interface EqualizerPreset {
   id: string;
   name: Record<LanguageCode, string>;
-  gains: number[]; // 10 values in dB (-12 to +12)
+  gains: number[]; // 10 values in dB (-15 to +15)
   preamp?: number;
   bassBoost?: number; // 0 to 100
+}
+
+export interface CustomEqualizerPreset {
+  id: string;
+  name: string;
+  gains: number[];
+  preamp: number;
+  bassBoost: number;
+  spatial3D?: boolean;
+  createdAt: number;
 }
 
 export interface EqualizerState {
@@ -154,6 +164,47 @@ export const EQ_PRESETS: EqualizerPreset[] = [
 ];
 
 const STORAGE_KEY = 'spytify_equalizer_settings_v1';
+const CUSTOM_PRESETS_KEY = 'spytify_custom_eq_presets_v1';
+
+export function loadCustomPresets(): CustomEqualizerPreset[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_PRESETS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(p => p && typeof p.id === 'string' && typeof p.name === 'string' && Array.isArray(p.gains));
+      }
+    }
+  } catch {}
+  return [];
+}
+
+export function saveCustomPreset(name: string, state: EqualizerState): CustomEqualizerPreset {
+  const customPresets = loadCustomPresets();
+  const id = `custom_${Date.now()}`;
+  const newPreset: CustomEqualizerPreset = {
+    id,
+    name: name.trim() || `Preset ${customPresets.length + 1}`,
+    gains: [...state.gains],
+    preamp: state.preamp,
+    bassBoost: state.bassBoost,
+    spatial3D: state.spatial3D,
+    createdAt: Date.now(),
+  };
+  const updated = [newPreset, ...customPresets];
+  try {
+    localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(updated));
+  } catch {}
+  return newPreset;
+}
+
+export function deleteCustomPreset(id: string): CustomEqualizerPreset[] {
+  const customPresets = loadCustomPresets().filter(p => p.id !== id);
+  try {
+    localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(customPresets));
+  } catch {}
+  return customPresets;
+}
 
 export const DEFAULT_EQ_STATE: EqualizerState = {
   enabled: true,
@@ -174,7 +225,7 @@ let masterGainNode: GainNode | null = null;
 let analyserNode: AnalyserNode | null = null;
 const connectedSources = new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>();
 
-function getOrCreateAudioContext(): AudioContext | null {
+export function getOrCreateAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!audioCtx) {
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -187,7 +238,14 @@ function getOrCreateAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
-function initAudioGraph(): boolean {
+export function ensureAudioContextRunning(): void {
+  const ctx = getOrCreateAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+}
+
+export function initAudioGraph(): boolean {
   const ctx = getOrCreateAudioContext();
   if (!ctx) return false;
   if (filterNodes.length === EQ_FREQUENCIES.length && preampNode && masterGainNode) {
@@ -213,7 +271,7 @@ function initAudioGraph(): boolean {
       return filter;
     });
 
-    // Bass booster peaking node at 75Hz
+    // Bass booster peaking node at 80Hz
     bassBoostNode = ctx.createBiquadFilter();
     bassBoostNode.type = 'lowshelf';
     bassBoostNode.frequency.value = 80;
@@ -266,14 +324,14 @@ export function loadEqualizerState(): EqualizerState {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         const gains = Array.isArray(parsed.gains) && parsed.gains.length === EQ_FREQUENCIES.length
-          ? parsed.gains.map((g: unknown) => (typeof g === 'number' && !isNaN(g) ? Math.max(-12, Math.min(12, g)) : 0))
+          ? parsed.gains.map((g: unknown) => (typeof g === 'number' && !isNaN(g) ? Math.max(-15, Math.min(15, g)) : 0))
           : [...DEFAULT_EQ_STATE.gains];
 
         return {
           enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : DEFAULT_EQ_STATE.enabled,
           presetId: typeof parsed.presetId === 'string' ? parsed.presetId : DEFAULT_EQ_STATE.presetId,
           gains,
-          preamp: typeof parsed.preamp === 'number' ? Math.max(-12, Math.min(12, parsed.preamp)) : 0,
+          preamp: typeof parsed.preamp === 'number' ? Math.max(-15, Math.min(15, parsed.preamp)) : 0,
           bassBoost: typeof parsed.bassBoost === 'number' ? Math.max(0, Math.min(100, parsed.bassBoost)) : 0,
           spatial3D: typeof parsed.spatial3D === 'boolean' ? parsed.spatial3D : false,
         };
@@ -320,26 +378,26 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
 
   const { enabled, gains, preamp, bassBoost } = state;
 
-  // 1. Preamp Gain
+  // 1. Preamp Gain (Instant 0ms real-time parameter update)
   if (preampNode) {
     const targetDb = enabled ? preamp : 0;
     const linearGain = Math.pow(10, targetDb / 20);
-    preampNode.gain.value = linearGain;
-    preampNode.gain.setTargetAtTime(linearGain, ctx.currentTime, 0.03);
+    preampNode.gain.cancelScheduledValues(ctx.currentTime);
+    preampNode.gain.setValueAtTime(linearGain, ctx.currentTime);
   }
 
-  // 2. 10 Bands
+  // 2. 10 Bands (Instant 0ms real-time parameter update)
   filterNodes.forEach((node, i) => {
     const targetGain = enabled ? (gains[i] ?? 0) : 0;
-    node.gain.value = targetGain;
-    node.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.03);
+    node.gain.cancelScheduledValues(ctx.currentTime);
+    node.gain.setValueAtTime(targetGain, ctx.currentTime);
   });
 
-  // 3. Bass Booster (0 to +12dB at 80Hz)
+  // 3. Bass Booster (0 to +15dB at 80Hz, Instant 0ms real-time update)
   if (bassBoostNode) {
-    const extraBassDb = enabled ? (bassBoost / 100) * 12 : 0;
-    bassBoostNode.gain.value = extraBassDb;
-    bassBoostNode.gain.setTargetAtTime(extraBassDb, ctx.currentTime, 0.03);
+    const extraBassDb = enabled ? (bassBoost / 100) * 15 : 0;
+    bassBoostNode.gain.cancelScheduledValues(ctx.currentTime);
+    bassBoostNode.gain.setValueAtTime(extraBassDb, ctx.currentTime);
   }
 }
 

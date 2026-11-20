@@ -16,7 +16,7 @@ import { HomeTrendingView } from './components/HomeTrendingView';
 import { AlbumsView } from './components/AlbumsView';
 import { AddToAlbumModal } from './components/AddToAlbumModal';
 import { EqualizerModal } from './components/EqualizerModal';
-import { loadEqualizerState } from './services/equalizer';
+import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph } from './services/equalizer';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
 import { checkGitHubUpdate, UpdateInfo, CURRENT_VERSION } from './services/updater';
@@ -2472,9 +2472,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   useEffect(() => {
     const audio1 = new Audio();
     const audio2 = new Audio();
+    audio1.crossOrigin = 'anonymous';
+    audio2.crossOrigin = 'anonymous';
     onlineAudio1Ref.current = audio1;
     onlineAudio2Ref.current = audio2;
     onlineAudioRef.current = audio1;
+
+    try {
+      attachAudioElementToEqualizer(audio1);
+      attachAudioElementToEqualizer(audio2);
+      applyEqualizerStateToGraph(loadEqualizerState());
+    } catch (e) {
+      console.warn('Equalizer audio graph attach notice:', e);
+    }
 
     const setupAudioListeners = (audio: HTMLAudioElement, channel: 1 | 2) => {
       const onTimeUpdate = () => {
@@ -2794,7 +2804,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (onlineAudio1Ref.current) {
           try {
             try { await invoke('stop_track'); } catch {}
+            ensureAudioContextRunning();
             const fileUrl = convertFileSrc(track.path_or_url);
+            onlineAudio1Ref.current.crossOrigin = 'anonymous';
             onlineAudio1Ref.current.src = fileUrl;
             onlineAudio1Ref.current.volume = volumeRef.current;
             await onlineAudio1Ref.current.play();
@@ -2945,7 +2957,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
         if (onlineAudio1Ref.current) {
           onlineAudio1Ref.current.pause();
-          onlineAudio1Ref.current.removeAttribute('crossorigin');
+          ensureAudioContextRunning();
+          onlineAudio1Ref.current.crossOrigin = 'anonymous';
           onlineAudio1Ref.current.src = streamUrl;
           onlineAudio1Ref.current.volume = volumeRef.current;
           onlineAudio1Ref.current.load();
@@ -3207,6 +3220,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     } else {
       // Transitioning to PLAY
+      ensureAudioContextRunning();
       playStartTimestampRef.current = Date.now();
       isPlayingRef.current = true;
       setIsPlaying(true);
