@@ -52,7 +52,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   // Drag and drop reordering state via Pointer Events (Rock-solid in Tauri / WebView2)
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
-  const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
+  const [dropPosition, setDropPosition] = useState<'above' | 'below' | 'swap' | null>(null);
 
   const dragRef = useRef<{
     startIndex: number;
@@ -60,7 +60,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
     startY: number;
     moved: boolean;
     overIndex: number | null;
-    position: 'above' | 'below' | null;
+    position: 'above' | 'below' | 'swap' | null;
   } | null>(null);
   const suppressClickIdxRef = useRef<number | null>(null);
 
@@ -90,7 +90,15 @@ export const TrackTable: React.FC<TrackTableProps> = ({
         const targetIdx = parseInt(targetIdxAttr, 10);
         if (!isNaN(targetIdx) && targetIdx !== drag.startIndex) {
           const rect = rowSlot.getBoundingClientRect();
-          const pos: 'above' | 'below' = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+          const ratio = (e.clientY - rect.top) / rect.height;
+          let pos: 'above' | 'below' | 'swap';
+          if (ratio < 0.28) {
+            pos = 'above';
+          } else if (ratio > 0.72) {
+            pos = 'below';
+          } else {
+            pos = 'swap';
+          }
           drag.overIndex = targetIdx;
           drag.position = pos;
           setDragOverIdx(targetIdx);
@@ -119,19 +127,23 @@ export const TrackTable: React.FC<TrackTableProps> = ({
         if (drag.overIndex !== null && drag.overIndex !== drag.startIndex && onReorderTracks) {
           const from = drag.startIndex;
           const to = drag.overIndex;
-          const pos = drag.position || 'above';
+          const pos = drag.position || 'swap';
 
           const currentList = displayList.length > 0 ? [...displayList] : [...tracks];
           if (from >= 0 && from < currentList.length && to >= 0 && to < currentList.length) {
-            const [movedItem] = currentList.splice(from, 1);
-            let insertIdx = to;
-            if (from < to) {
-              insertIdx = (pos === 'below') ? to : Math.max(0, to - 1);
-            } else {
-              insertIdx = (pos === 'below' && to < from - 1) ? to + 1 : to;
+            if (pos === 'swap') {
+              const temp = currentList[from];
+              currentList[from] = currentList[to];
+              currentList[to] = temp;
+            } else if (pos === 'above') {
+              const [movedItem] = currentList.splice(from, 1);
+              const insertIdx = from < to ? to - 1 : to;
+              currentList.splice(Math.max(0, Math.min(currentList.length, insertIdx)), 0, movedItem);
+            } else if (pos === 'below') {
+              const [movedItem] = currentList.splice(from, 1);
+              const insertIdx = from < to ? to : to + 1;
+              currentList.splice(Math.max(0, Math.min(currentList.length, insertIdx)), 0, movedItem);
             }
-            insertIdx = Math.max(0, Math.min(currentList.length, insertIdx));
-            currentList.splice(insertIdx, 0, movedItem);
 
             setDisplayList(currentList);
             onReorderTracks(currentList);
@@ -456,15 +468,37 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               } ${
                 draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5 pointer-events-none' : ''
               } ${
-                dragOverIdx === idx && dropPosition === 'above' ? 'border-t-2 border-cyan-400 bg-cyan-500/10' : ''
+                dragOverIdx === idx && dropPosition === 'above'
+                  ? '!border-t-2 !border-t-cyan-400 bg-cyan-500/15 shadow-[0_-2px_8px_rgba(34,211,238,0.4)]'
+                  : ''
               } ${
-                dragOverIdx === idx && dropPosition === 'below' ? 'border-b-2 border-cyan-400 bg-cyan-500/10' : ''
+                dragOverIdx === idx && dropPosition === 'below'
+                  ? '!border-b-2 !border-b-cyan-400 bg-cyan-500/15 shadow-[0_2px_8px_rgba(34,211,238,0.4)]'
+                  : ''
+              } ${
+                dragOverIdx === idx && dropPosition === 'swap'
+                  ? '!border-2 !border-cyan-400 bg-cyan-500/20 shadow-[0_0_12px_rgba(34,211,238,0.35)] scale-[1.01]'
+                  : ''
               } ${
                 isSelected
                   ? 'text-white border-l-2'
                   : 'hover:bg-[#0c0c10] text-[#888899] hover:text-white border-l-2 border-transparent'
               }`}
             >
+              {/* Liền trước indicator */}
+              {dragOverIdx === idx && dropPosition === 'above' && (
+                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] z-20 pointer-events-none" />
+              )}
+              {/* Liền sau indicator */}
+              {dragOverIdx === idx && dropPosition === 'below' && (
+                <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] z-20 pointer-events-none" />
+              )}
+              {/* Swap vị trí indicator */}
+              {dragOverIdx === idx && dropPosition === 'swap' && (
+                <div className="absolute top-1.5 right-2 px-1.5 py-0.2 rounded bg-cyan-500/30 border border-cyan-400 text-cyan-200 text-[9px] font-mono font-bold flex items-center gap-1 z-20 pointer-events-none animate-pulse">
+                  <span>⇄ Đổi vị trí</span>
+                </div>
+              )}
               {/* Col 1: Play button / Number / Equalizer / Drag handle */}
               <div className="flex items-center justify-center relative">
                 {canReorder && (

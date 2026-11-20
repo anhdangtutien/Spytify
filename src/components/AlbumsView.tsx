@@ -99,7 +99,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   // Drag-and-drop reordering state via Pointer Events (Tauri / WebView2 compatible)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [albumDropPosition, setAlbumDropPosition] = useState<'above' | 'below' | null>(null);
+  const [albumDropPosition, setAlbumDropPosition] = useState<'above' | 'below' | 'swap' | null>(null);
 
   const albumDragRef = useRef<{
     startIndex: number;
@@ -107,7 +107,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     startY: number;
     moved: boolean;
     overIndex: number | null;
-    position: 'above' | 'below' | null;
+    position: 'above' | 'below' | 'swap' | null;
   } | null>(null);
   const suppressAlbumClickIdxRef = useRef<number | null>(null);
 
@@ -133,7 +133,15 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
         const targetIdx = parseInt(targetIdxAttr, 10);
         if (!isNaN(targetIdx) && targetIdx !== drag.startIndex) {
           const rect = rowSlot.getBoundingClientRect();
-          const pos: 'above' | 'below' = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+          const ratio = (e.clientY - rect.top) / rect.height;
+          let pos: 'above' | 'below' | 'swap';
+          if (ratio < 0.28) {
+            pos = 'above';
+          } else if (ratio > 0.72) {
+            pos = 'below';
+          } else {
+            pos = 'swap';
+          }
           drag.overIndex = targetIdx;
           drag.position = pos;
           setDragOverIndex(targetIdx);
@@ -162,19 +170,23 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
         if (drag.overIndex !== null && drag.overIndex !== drag.startIndex && selectedAlbum) {
           const from = drag.startIndex;
           const to = drag.overIndex;
-          const pos = drag.position || 'above';
+          const pos = drag.position || 'swap';
 
           const reordered = [...cleanAlbumTracks];
           if (from >= 0 && from < reordered.length && to >= 0 && to < reordered.length) {
-            const [movedItem] = reordered.splice(from, 1);
-            let insertIdx = to;
-            if (from < to) {
-              insertIdx = (pos === 'below') ? to : Math.max(0, to - 1);
-            } else {
-              insertIdx = (pos === 'below' && to < from - 1) ? to + 1 : to;
+            if (pos === 'swap') {
+              const temp = reordered[from];
+              reordered[from] = reordered[to];
+              reordered[to] = temp;
+            } else if (pos === 'above') {
+              const [movedItem] = reordered.splice(from, 1);
+              const insertIdx = from < to ? to - 1 : to;
+              reordered.splice(Math.max(0, Math.min(reordered.length, insertIdx)), 0, movedItem);
+            } else if (pos === 'below') {
+              const [movedItem] = reordered.splice(from, 1);
+              const insertIdx = from < to ? to : to + 1;
+              reordered.splice(Math.max(0, Math.min(reordered.length, insertIdx)), 0, movedItem);
             }
-            insertIdx = Math.max(0, Math.min(reordered.length, insertIdx));
-            reordered.splice(insertIdx, 0, movedItem);
 
             onUpdateAlbum?.(selectedAlbum.id, { tracks: reordered });
           }
@@ -795,15 +807,37 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 group transition-all select-none relative cursor-grab active:cursor-grabbing ${
                         draggedIndex === idx ? 'opacity-30 scale-[0.98] pointer-events-none' : ''
                       } ${
-                        dragOverIndex === idx && albumDropPosition === 'above' ? 'border-t-2 border-dashed border-cyan-400 bg-cyan-500/10' : ''
+                        dragOverIndex === idx && albumDropPosition === 'above'
+                          ? '!border-t-2 !border-t-cyan-400 bg-cyan-500/15 shadow-[0_-3px_10px_rgba(34,211,238,0.4)]'
+                          : ''
                       } ${
-                        dragOverIndex === idx && albumDropPosition === 'below' ? 'border-b-2 border-dashed border-cyan-400 bg-cyan-500/10' : ''
+                        dragOverIndex === idx && albumDropPosition === 'below'
+                          ? '!border-b-2 !border-b-cyan-400 bg-cyan-500/15 shadow-[0_3px_10px_rgba(34,211,238,0.4)]'
+                          : ''
+                      } ${
+                        dragOverIndex === idx && albumDropPosition === 'swap'
+                          ? '!border-2 !border-cyan-400 bg-cyan-500/20 shadow-[0_0_14px_rgba(34,211,238,0.4)] scale-[1.01]'
+                          : ''
                       } ${
                         isCurrent
                           ? 'bg-[#12121c]'
                           : 'bg-[#09090c] hover:bg-[#121218] border-[#161620]'
                       }`}
                     >
+                      {/* Liền trước indicator */}
+                      {dragOverIndex === idx && albumDropPosition === 'above' && (
+                        <div className="absolute top-0 left-0 right-0 h-[3px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] rounded-t-xl z-20 pointer-events-none" />
+                      )}
+                      {/* Liền sau indicator */}
+                      {dragOverIndex === idx && albumDropPosition === 'below' && (
+                        <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] rounded-b-xl z-20 pointer-events-none" />
+                      )}
+                      {/* Swap vị trí indicator */}
+                      {dragOverIndex === idx && albumDropPosition === 'swap' && (
+                        <div className="absolute top-2 right-2.5 px-2 py-0.5 rounded-md bg-cyan-500/30 border border-cyan-400 text-cyan-200 text-[10px] font-mono font-bold flex items-center gap-1 z-20 pointer-events-none animate-pulse shadow-md">
+                          <span>⇄ Đổi vị trí (Swap)</span>
+                        </div>
+                      )}
                       {/* Drag Handle */}
                       <div 
                         onPointerDown={(e) => {
