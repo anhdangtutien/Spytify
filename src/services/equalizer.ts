@@ -314,6 +314,9 @@ export function attachAudioElementToEqualizer(element: HTMLAudioElement | null |
 export function applyEqualizerStateToGraph(state: EqualizerState): void {
   const ctx = getOrCreateAudioContext();
   if (!ctx || !initAudioGraph()) return;
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
 
   const { enabled, gains, preamp, bassBoost } = state;
 
@@ -321,19 +324,22 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
   if (preampNode) {
     const targetDb = enabled ? preamp : 0;
     const linearGain = Math.pow(10, targetDb / 20);
-    preampNode.gain.setTargetAtTime(linearGain, ctx.currentTime, 0.05);
+    preampNode.gain.value = linearGain;
+    preampNode.gain.setTargetAtTime(linearGain, ctx.currentTime, 0.03);
   }
 
   // 2. 10 Bands
   filterNodes.forEach((node, i) => {
     const targetGain = enabled ? (gains[i] ?? 0) : 0;
-    node.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.05);
+    node.gain.value = targetGain;
+    node.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.03);
   });
 
-  // 3. Bass Booster (0 to +8dB at 80Hz)
+  // 3. Bass Booster (0 to +12dB at 80Hz)
   if (bassBoostNode) {
-    const extraBassDb = enabled ? (bassBoost / 100) * 8 : 0;
-    bassBoostNode.gain.setTargetAtTime(extraBassDb, ctx.currentTime, 0.05);
+    const extraBassDb = enabled ? (bassBoost / 100) * 12 : 0;
+    bassBoostNode.gain.value = extraBassDb;
+    bassBoostNode.gain.setTargetAtTime(extraBassDb, ctx.currentTime, 0.03);
   }
 }
 

@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  X, RotateCcw, Power, Zap, Sliders, Volume2, Sparkles, 
-  Headphones, Flame, Check, Info 
+  X, RotateCcw, Power, Sliders, Volume2, Sparkles, 
+  Headphones, Flame, Check, AlertCircle, CheckCircle2, Music 
 } from 'lucide-react';
 import { 
   EQ_FREQUENCIES, EQ_LABELS, EQ_PRESETS, EqualizerState,
   loadEqualizerState, saveEqualizerState 
 } from '../services/equalizer';
 import { LanguageCode } from '../locales/i18n';
+import { Track } from '../types';
 
 interface EqualizerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  currentTrack?: Track | null;
   accentColor?: string;
   themeMode?: 'dark' | 'light';
   language?: LanguageCode;
@@ -20,6 +22,7 @@ interface EqualizerModalProps {
 export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   isOpen,
   onClose,
+  currentTrack,
   accentColor = '#ff2a55',
   themeMode = 'dark',
   language = 'vi',
@@ -32,6 +35,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     if (isOpen) {
       const current = loadEqualizerState();
       setEqState(current);
+      // Ensure Web Audio context is active on modal open
+      saveEqualizerState(current);
     }
   }, [isOpen]);
 
@@ -69,8 +74,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
     for (let i = 0; i < numBands; i++) {
       const gain = eqState.enabled ? eqState.gains[i] : 0;
-      // map gain (-12dB .. +12dB) to (height - 15 .. 15)
-      const normalized = -gain / 12; // -1 (at +12dB) to +1 (at -12dB)
+      // map gain (-15dB .. +15dB) to (height - 15 .. 15)
+      const normalized = -gain / 15;
       const y = zeroY + normalized * (zeroY - 15);
       const x = paddingX + i * stepX;
       points.push({ x, y });
@@ -185,9 +190,12 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     handleSelectPreset('flat');
   };
 
+  const isDirectAudioSource = currentTrack?.source === 'local' || currentTrack?.source === 'audius';
+  const isYoutubeSource = currentTrack?.source === 'youtube';
+
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
@@ -269,21 +277,64 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
         </div>
 
+        {/* Audio Source Status Notice */}
+        <div className="px-6 pt-3">
+          {isYoutubeSource ? (
+            <div className="flex items-start gap-2.5 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-sans leading-relaxed">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">
+                  {language === 'vi' ? 'Đang phát qua YouTube Web Iframe' : 'Playing via YouTube Web Iframe'}
+                </span>
+                <p className="text-amber-200/80 mt-0.5 text-[11px]">
+                  {language === 'vi' 
+                    ? 'Do cơ chế bảo mật Sandbox của trình duyệt, luồng YouTube nhúng phát trực tiếp ra loa máy và không cho phép can thiệp EQ. Để cảm nhận trọn vẹn sức mạnh EQ (Bass Boost, Vocal, 3D...), bạn hãy bấm nút TẢI XUỐNG bài hát hoặc phát Nhạc trên máy (Local Music) nhé!'
+                    : 'Browser sandbox limits cross-origin YouTube iframe audio from Web Audio processing. Download the song or play from Local Music to experience full Hi-Fi EQ!'}
+                </p>
+              </div>
+            </div>
+          ) : isDirectAudioSource ? (
+            <div className="flex items-center gap-2 p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-sans">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-medium">
+                {language === 'vi' 
+                  ? `Đang áp dụng EQ thời gian thực cho: "${currentTrack?.title}" (Hi-Fi Direct Audio)` 
+                  : `Realtime EQ actively processing: "${currentTrack?.title}"`}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-500/20 bg-slate-500/5 text-slate-400 text-xs font-sans">
+              <Music className="w-4 h-4 text-slate-400 shrink-0" />
+              <span>
+                {language === 'vi'
+                  ? 'Gợi ý: Phát nhạc từ Thư viện máy (Local Music) hoặc bài đã tải về để cảm nhận rõ rệt độ biến đổi âm thanh!'
+                  : 'Play local or downloaded songs to experience live audio filtering!'}
+              </span>
+            </div>
+          )}
+        </div>
+
         {/* Body Content */}
-        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-          {/* Preset Pills */}
+        <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          {/* Preset Pills (Now with flex-wrap so ALL PRESETS ARE IMMEDIATELY VISIBLE & CLICKABLE) */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2.5">
               <span className="text-xs font-mono text-slate-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
                 {language === 'vi' ? 'Cấu hình âm thanh (Presets)' : 'Sound Presets'}
               </span>
               <span className="text-[11px] font-mono text-slate-500">
-                {eqState.presetId === 'custom' ? (language === 'vi' ? 'Đang tùy chỉnh' : 'Custom Mode') : ''}
+                {eqState.presetId === 'custom' ? (language === 'vi' ? 'Đang tùy chỉnh riêng' : 'Custom Mode') : ''}
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+            {/* Presets in responsive wrap grid so all 10 are visible without stuck scroll */}
+            <div 
+              className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1"
+              onWheel={(e) => {
+                e.stopPropagation();
+              }}
+            >
               {EQ_PRESETS.map(preset => {
                 const isSelected = eqState.presetId === preset.id;
                 const label = preset.name[language] || preset.name['en-US'] || preset.id;
@@ -291,11 +342,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   <button
                     key={preset.id}
                     onClick={() => handleSelectPreset(preset.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer border flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border flex items-center gap-1.5 ${
                       isSelected
-                        ? 'border-transparent font-bold shadow-sm'
+                        ? 'border-transparent font-bold shadow-md'
                         : isLight
-                        ? 'bg-slate-100/80 border-slate-200/60 text-slate-600 hover:bg-slate-200/70'
+                        ? 'bg-slate-100/80 border-slate-200/60 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
                         : 'bg-[#151520] border-[#242434] text-slate-400 hover:text-white hover:bg-[#1a1a28]'
                     }`}
                     style={isSelected ? {
@@ -305,7 +356,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       boxShadow: `0 0 12px ${accentColor}30`,
                     } : undefined}
                   >
-                    {isSelected && <Check className="w-3 h-3" />}
+                    {isSelected && <Check className="w-3 h-3 shrink-0" />}
                     <span>{label}</span>
                   </button>
                 );
@@ -318,14 +369,14 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             <canvas 
               ref={canvasRef} 
               width={560} 
-              height={90} 
-              className="w-full h-[90px] block"
+              height={85} 
+              className="w-full h-[85px] block"
             />
             <div className="absolute top-2 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
-              <span>+12 dB</span>
+              <span>+15 dB</span>
             </div>
             <div className="absolute bottom-2 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
-              <span>-12 dB</span>
+              <span>-15 dB</span>
             </div>
           </div>
 
@@ -355,13 +406,13 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                     <div className="relative h-36 flex items-center justify-center">
                       <input
                         type="range"
-                        min="-12"
-                        max="12"
+                        min="-15"
+                        max="15"
                         step="0.5"
                         value={gain}
                         disabled={!eqState.enabled}
                         onChange={e => handleBandGainChange(index, parseFloat(e.target.value))}
-                        className="h-32 w-1.5 appearance-none rounded-full cursor-pointer accent-current outline-none transition-opacity disabled:opacity-40"
+                        className="h-32 w-2 appearance-none rounded-full cursor-pointer accent-current outline-none transition-opacity disabled:opacity-40"
                         style={{
                           WebkitAppearance: 'slider-vertical',
                           accentColor: accentColor,
@@ -395,8 +446,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               </div>
               <input
                 type="range"
-                min="-12"
-                max="12"
+                min="-15"
+                max="15"
                 step="0.5"
                 value={eqState.preamp}
                 disabled={!eqState.enabled}
@@ -408,7 +459,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 }}
               />
               <span className="text-[10px] text-slate-500 mt-1 block">
-                {language === 'vi' ? 'Chống méo âm khi đẩy cao bass' : 'Gain headroom compensation'}
+                {language === 'vi' ? 'Chống vỡ tiếng khi đẩy cao bass' : 'Gain headroom compensation'}
               </span>
             </div>
 
@@ -438,7 +489,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 }}
               />
               <span className="text-[10px] text-slate-500 mt-1 block">
-                {language === 'vi' ? 'Lực đập trầm tăng cường (80Hz)' : 'Subwoofer punch boost'}
+                {language === 'vi' ? 'Lực đập siêu trầm 80Hz' : 'Subwoofer punch boost'}
               </span>
             </div>
 
@@ -466,16 +517,6 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 {language === 'vi' ? 'Mở rộng trường âm thanh tai nghe' : 'Wide immersive stereo stage'}
               </span>
             </div>
-          </div>
-
-          {/* Informative Note */}
-          <div className={`flex items-start gap-2 p-3 rounded-lg text-xs text-slate-400 ${isLight ? 'bg-slate-100/70' : 'bg-[#101018]'}`}>
-            <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-            <span>
-              {language === 'vi' 
-                ? 'Bộ lọc Hi-Fi Equalizer áp dụng thời gian thực cho bài hát trên máy, nhạc tải về và các luồng âm thanh Audio Stream. Cấu hình sẽ tự động lưu lại cho các lần nghe tiếp theo.'
-                : 'Hi-Fi Equalizer applies in real-time to local tracks, downloaded music, and audio streams. Your settings are saved automatically.'}
-            </span>
           </div>
         </div>
       </div>

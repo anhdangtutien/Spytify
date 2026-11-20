@@ -3974,6 +3974,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               setIsEqualizerOpen(false);
               setIsEqualizerActive(loadEqualizerState().enabled);
             }}
+            currentTrack={currentTrack}
             accentColor={activeAccentColor}
             themeMode={themeMode}
             language={language}
