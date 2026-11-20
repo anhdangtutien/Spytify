@@ -62,7 +62,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__'
-          releaseBody: 'Spytify v1.1.1: Tích hợp hệ thống quản trị từ xa (Remote Config Listener), hỗ trợ LiveKit SFU đa cụm (Primary + Backup Failover), phát sóng thông báo toàn mạng Realtime và cải tiến hiệu năng phòng thoại.'
+          releaseBody: 'Spytify v1.1.2: Bổ sung bộ xử lý âm thanh vòm 3D Studio Spatializer (Binaural Haas Crossfeed + Diffuse Room Acoustics), công nghệ kéo thả Pointer Events siêu mượt trong danh sách bài hát và album, tính năng tải xuống toàn bộ Album (Batch download), hiển thị tên bài hát thời gian thực trên thanh sóng động (Visualizer) và tinh chỉnh giao diện PlayerBar.'
           releaseDraft: false
           prerelease: false
 
@@ -126,7 +126,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Spytify v__VERSION__'
-          releaseBody: 'Spytify v1.1.1: Tích hợp hệ thống quản trị từ xa (Remote Config Listener), hỗ trợ LiveKit SFU đa cụm (Primary + Backup Failover), phát sóng thông báo toàn mạng Realtime. Hỗ trợ macOS Universal (Apple Silicon & Intel).'
+          releaseBody: 'Spytify v1.1.2: Bổ sung bộ xử lý âm thanh vòm 3D Studio Spatializer (Binaural Haas Crossfeed + Diffuse Room Acoustics), công nghệ kéo thả Pointer Events siêu mượt trong danh sách bài hát và album, tính năng tải xuống toàn bộ Album (Batch download), hiển thị tên bài hát thời gian thực trên thanh sóng động (Visualizer) và tinh chỉnh giao diện PlayerBar. Hỗ trợ macOS Universal (Apple Silicon & Intel).'
           releaseDraft: false
           prerelease: false
           args: --target universal-apple-darwin

@@ -332,7 +332,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               type="text"
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
-              placeholder={language === 'vi' ? 'Lọc nhanh bằng Rust...' : 'Fast filter with Rust...'}
+              placeholder={language === 'vi' ? 'Tìm kiếm bài hát...' : 'Search tracks...'}
               className="w-full bg-[#101016] text-xs text-white placeholder-[#555] pl-8 pr-6 py-1.5 rounded-lg border border-[#1c1c28] focus:border-white/30 focus:outline-none font-mono"
             />
             {filterQuery && (

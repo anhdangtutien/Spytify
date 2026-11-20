@@ -4588,6 +4588,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 audioElement={onlineAudioRef.current}
                 currentTime={currentTime}
                 themeMode={themeMode}
+                currentTrack={currentTrack}
               />
             )}
 
@@ -4892,7 +4893,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                         title={language === 'vi' ? 'Tạo album mới từ tất cả bài hát đã tải về máy' : 'Create new album from downloaded tracks'}
                       >
                         <FolderPlus className="w-4 h-4" style={{ color: accentColor }} />
-                        <span>{language === 'vi' ? 'Tạo Album từ nhạc tải xuống' : 'Create Album from Downloaded'}</span>
+                        <span>{language === 'vi' ? 'Tạo Album' : 'Create Album'}</span>
                       </button>
                     )}
                     {displayedTracks.length > 0 && (

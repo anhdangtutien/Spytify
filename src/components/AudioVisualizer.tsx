@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Activity, Radio } from 'lucide-react';
 import { LanguageCode, getTranslation } from '../locales/i18n';
+import { Track } from '../types';
 
 interface AudioVisualizerProps {
   isPlaying: boolean;
@@ -10,6 +11,7 @@ interface AudioVisualizerProps {
   audioElement?: HTMLAudioElement | null;
   currentTime?: number;
   themeMode?: 'dark' | 'light';
+  currentTrack?: Track | null;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -36,6 +38,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
   audioElement,
   currentTime = 0,
   themeMode = 'dark',
+  currentTrack,
 }) => {
   const isLight = themeMode === 'light';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -247,9 +250,9 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ? 'bg-[#ffffff]/90 border border-[#e2e8f0] shadow-sm' 
         : 'bg-[#09090d] border border-[#161622]'
     }`}>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div 
-          className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all"
+          className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all shrink-0"
           style={{
             backgroundColor: `${accentColor}18`,
             borderColor: `${accentColor}35`,
@@ -259,11 +262,22 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         >
           <Activity className={`w-3.5 h-3.5 ${isPlaying ? 'animate-pulse' : ''}`} />
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-bold tracking-tight ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>
+        <div className="flex items-center gap-2 min-w-0 truncate">
+          <span className={`text-xs font-bold tracking-tight shrink-0 ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>
             {isPlaying ? getTranslation(language, 'visualizer.playing') : getTranslation(language, 'visualizer.idle')}
           </span>
-          <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+          {currentTrack && (
+            <div className="flex items-center gap-1.5 min-w-0 truncate">
+              <span className="text-[10px] text-[#555] font-mono shrink-0">•</span>
+              <span className={`text-xs font-semibold truncate ${isLight ? 'text-[#0f172a]' : 'text-zinc-200'}`}>
+                {currentTrack.title}
+              </span>
+              <span className="text-[11px] text-[#777] truncate hidden sm:inline">
+                — {currentTrack.artist}
+              </span>
+            </div>
+          )}
+          <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded border shrink-0 ${
             isLight 
               ? 'bg-[#f1f5f9] text-[#475569] border-[#cbd5e1]' 
               : 'bg-[#13131c] text-zinc-400 border-white/10'
@@ -271,7 +285,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             {sourceLabel}
           </span>
           <span 
-            className="hidden md:inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border transition-colors"
+            className="hidden md:inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border transition-colors shrink-0"
             style={{
               color: accentColor,
               backgroundColor: `${accentColor}18`,
