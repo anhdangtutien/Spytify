@@ -250,7 +250,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         ? 'bg-[#ffffff]/90 border border-[#e2e8f0] shadow-sm' 
         : 'bg-[#09090d] border border-[#161622]'
     }`}>
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden pr-3">
         <div 
           className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all shrink-0"
           style={{
@@ -285,7 +285,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             {sourceLabel}
           </span>
           <span 
-            className="hidden md:inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border transition-colors shrink-0"
+            className="hidden xl:inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border transition-colors shrink-0"
             style={{
               color: accentColor,
               backgroundColor: `${accentColor}18`,
@@ -293,20 +293,20 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             }}
           >
             <Radio className="w-2.5 h-2.5 animate-pulse" style={{ color: accentColor }} />
-            FLUID WAVEFORM 60FPS
+            60FPS
           </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2.5">
-        <div className={`hidden sm:flex items-center gap-4 text-[9px] font-mono font-bold tracking-wider uppercase pr-1 ${
+      <div className="flex items-center gap-2.5 shrink-0 pl-2">
+        <div className={`hidden sm:flex items-center gap-3 text-[9px] font-mono font-bold tracking-wider uppercase pr-1 shrink-0 ${
           isLight ? 'text-[#94a3b8]' : 'text-[#666]'
         }`}>
           <span className="hover:text-emerald-400 transition-colors">BASS</span>
           <span className="hover:text-cyan-400 transition-colors">MID</span>
           <span className="hover:text-amber-400 transition-colors">TREBLE</span>
         </div>
-        <canvas ref={canvasRef} width={252} height={26} className="rounded opacity-95" />
+        <canvas ref={canvasRef} width={240} height={26} className="rounded opacity-95 shrink-0" />
       </div>
     </div>
   );

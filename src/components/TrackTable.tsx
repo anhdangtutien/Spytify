@@ -124,9 +124,12 @@ export const TrackTable: React.FC<TrackTableProps> = ({
           const currentList = displayList.length > 0 ? [...displayList] : [...tracks];
           if (from >= 0 && from < currentList.length && to >= 0 && to < currentList.length) {
             const [movedItem] = currentList.splice(from, 1);
-            let insertIdx = currentList.findIndex((_, i) => i === (from < to ? to - 1 : to));
-            if (insertIdx === -1) insertIdx = to;
-            if (pos === 'below') insertIdx += 1;
+            let insertIdx = to;
+            if (from < to) {
+              insertIdx = (pos === 'below') ? to : Math.max(0, to - 1);
+            } else {
+              insertIdx = (pos === 'below' && to < from - 1) ? to + 1 : to;
+            }
             insertIdx = Math.max(0, Math.min(currentList.length, insertIdx));
             currentList.splice(insertIdx, 0, movedItem);
 
@@ -451,7 +454,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               className={`grid grid-cols-[40px_1fr_1fr_90px_110px] items-center px-3 rounded-md transition-all group select-none relative ${
                 canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
-                draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5' : ''
+                draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5 pointer-events-none' : ''
               } ${
                 dragOverIdx === idx && dropPosition === 'above' ? 'border-t-2 border-cyan-400 bg-cyan-500/10' : ''
               } ${

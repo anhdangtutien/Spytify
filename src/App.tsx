@@ -2641,11 +2641,26 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
       };
 
+      const onDuration = () => {
+        if (activeAudioChannelRef.current !== channel) return;
+        const validDur = (audio.duration > 0 && isFinite(audio.duration)) 
+          ? audio.duration 
+          : (currentTrackRef.current?.duration_secs || 0);
+        if (validDur > 0) {
+          durationRef.current = validDur;
+          if (!isTrayModeRef.current) setDuration(validDur);
+        }
+      };
+
       audio.addEventListener('timeupdate', onTimeUpdate);
+      audio.addEventListener('loadedmetadata', onDuration);
+      audio.addEventListener('durationchange', onDuration);
       audio.addEventListener('ended', onEnded);
       return () => {
         audio.pause();
         audio.removeEventListener('timeupdate', onTimeUpdate);
+        audio.removeEventListener('loadedmetadata', onDuration);
+        audio.removeEventListener('durationchange', onDuration);
         audio.removeEventListener('ended', onEnded);
       };
     };

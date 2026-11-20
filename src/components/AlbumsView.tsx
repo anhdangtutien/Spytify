@@ -167,9 +167,12 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           const reordered = [...cleanAlbumTracks];
           if (from >= 0 && from < reordered.length && to >= 0 && to < reordered.length) {
             const [movedItem] = reordered.splice(from, 1);
-            let insertIdx = reordered.findIndex((_, i) => i === (from < to ? to - 1 : to));
-            if (insertIdx === -1) insertIdx = to;
-            if (pos === 'below') insertIdx += 1;
+            let insertIdx = to;
+            if (from < to) {
+              insertIdx = (pos === 'below') ? to : Math.max(0, to - 1);
+            } else {
+              insertIdx = (pos === 'below' && to < from - 1) ? to + 1 : to;
+            }
             insertIdx = Math.max(0, Math.min(reordered.length, insertIdx));
             reordered.splice(insertIdx, 0, movedItem);
 
@@ -790,7 +793,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         boxShadow: `0 0 14px ${accentColor}25`
                       } : undefined}
                       className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 group transition-all select-none relative cursor-grab active:cursor-grabbing ${
-                        draggedIndex === idx ? 'opacity-30 scale-[0.98]' : ''
+                        draggedIndex === idx ? 'opacity-30 scale-[0.98] pointer-events-none' : ''
                       } ${
                         dragOverIndex === idx && albumDropPosition === 'above' ? 'border-t-2 border-dashed border-cyan-400 bg-cyan-500/10' : ''
                       } ${
