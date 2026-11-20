@@ -95,6 +95,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, a')) {
+      e.preventDefault();
+      return;
+    }
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
@@ -102,6 +107,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     if (dragOverIndex !== index) {
       setDragOverIndex(index);
@@ -110,13 +116,20 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === targetIndex || !selectedAlbum) {
+    e.stopPropagation();
+    const sourceIdx = draggedIndex !== null ? draggedIndex : Number(e.dataTransfer.getData('text/plain'));
+    if (isNaN(sourceIdx) || sourceIdx === targetIndex || !selectedAlbum || sourceIdx < 0) {
       setDraggedIndex(null);
       setDragOverIndex(null);
       return;
     }
     const reordered = [...cleanAlbumTracks];
-    const [movedItem] = reordered.splice(draggedIndex, 1);
+    if (sourceIdx >= reordered.length || targetIndex >= reordered.length) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const [movedItem] = reordered.splice(sourceIdx, 1);
     reordered.splice(targetIndex, 0, movedItem);
     setDraggedIndex(null);
     setDragOverIndex(null);

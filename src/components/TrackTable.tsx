@@ -53,16 +53,19 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
+  const canReorder = Boolean(onReorderTracks && !filterQuery.trim() && sortBy === 'default');
+
   const handleDragStart = (e: React.DragEvent, index: number) => {
-    if (!onReorderTracks) return;
+    if (!canReorder) return;
     setDraggedIdx(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
-    if (!onReorderTracks) return;
+    if (!canReorder) return;
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     if (dragOverIdx !== index) {
       setDragOverIdx(index);
@@ -70,19 +73,27 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   };
 
   const handleDrop = (e: React.DragEvent, targetIndex: number) => {
-    if (!onReorderTracks) return;
+    if (!canReorder || !onReorderTracks) return;
     e.preventDefault();
-    if (draggedIdx === null || draggedIdx === targetIndex) {
+    e.stopPropagation();
+    const sourceIdx = draggedIdx !== null ? draggedIdx : Number(e.dataTransfer.getData('text/plain'));
+    if (isNaN(sourceIdx) || sourceIdx === targetIndex || sourceIdx < 0) {
       setDraggedIdx(null);
       setDragOverIdx(null);
       return;
     }
-    const reordered = [...tracks];
-    const [moved] = reordered.splice(draggedIdx, 1);
-    reordered.splice(targetIndex, 0, moved);
+    const currentList = displayList.length > 0 ? [...displayList] : [...tracks];
+    if (sourceIdx >= currentList.length || targetIndex >= currentList.length) {
+      setDraggedIdx(null);
+      setDragOverIdx(null);
+      return;
+    }
+    const [moved] = currentList.splice(sourceIdx, 1);
+    currentList.splice(targetIndex, 0, moved);
+    setDisplayList(currentList);
     setDraggedIdx(null);
     setDragOverIdx(null);
-    onReorderTracks(reordered);
+    onReorderTracks(currentList);
   };
 
   // Native Rust-powered fast filtering and sorting
@@ -353,10 +364,21 @@ export const TrackTable: React.FC<TrackTableProps> = ({
           return (
             <div
               key={track.id}
+              draggable={canReorder}
+              onDragStart={(e) => {
+                if (!canReorder) return;
+                const target = e.target as HTMLElement;
+                if (target.closest('button, a, input')) {
+                  e.preventDefault();
+                  return;
+                }
+                handleDragStart(e, idx);
+              }}
               onDragOver={(e) => handleDragOver(e, idx)}
               onDrop={(e) => handleDrop(e, idx)}
               onDragEnd={() => { setDraggedIdx(null); setDragOverIdx(null); }}
               onClick={() => {
+                if (draggedIdx !== null) return;
                 if (isSelected) {
                   onTogglePlay();
                 } else {
@@ -369,10 +391,12 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 borderLeftColor: isSelected ? accentColor : 'transparent',
                 backgroundColor: isSelected ? `${accentColor}18` : undefined,
               }}
-              className={`grid grid-cols-[40px_1fr_1fr_90px_110px] items-center px-3 rounded-md transition-colors group cursor-pointer select-none ${
-                draggedIdx === idx ? 'opacity-30 scale-[0.99]' : ''
+              className={`grid grid-cols-[40px_1fr_1fr_90px_110px] items-center px-3 rounded-md transition-all group select-none ${
+                canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
-                dragOverIdx === idx ? 'border-t-2 border-indigo-400 bg-indigo-500/10' : ''
+                draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5' : ''
+              } ${
+                dragOverIdx === idx ? 'border-t-2 border-cyan-400 bg-cyan-500/10' : ''
               } ${
                 isSelected
                   ? 'text-white border-l-2'
@@ -381,15 +405,10 @@ export const TrackTable: React.FC<TrackTableProps> = ({
             >
               {/* Col 1: Play button / Number / Equalizer / Drag handle */}
               <div className="flex items-center justify-center relative">
-                {onReorderTracks && (
+                {canReorder && (
                   <div 
-                    draggable={true}
-                    onDragStart={(e) => {
-                      e.stopPropagation();
-                      handleDragStart(e, idx);
-                    }}
-                    className="hidden group-hover:flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-white p-0.5 absolute -left-1 z-10"
-                    title={language === 'vi' ? 'Kéo thả đổi thứ tự' : 'Drag to reorder'}
+                    className="hidden group-hover:flex items-center justify-center text-slate-400 hover:text-white p-0.5 absolute -left-1 z-10"
+                    title={language === 'vi' ? 'Kéo thả để đổi thứ tự bài hát' : 'Drag to reorder'}
                   >
                     <GripVertical className="w-3.5 h-3.5 pointer-events-none" />
                   </div>

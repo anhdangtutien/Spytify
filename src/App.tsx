@@ -186,6 +186,24 @@ export default function App() {
         }
 
         if (allScanned.length > 0) {
+          try {
+            const rawOrder = localStorage.getItem('spytify_local_tracks_order');
+            if (rawOrder) {
+              const orderKeys: string[] = JSON.parse(rawOrder);
+              if (Array.isArray(orderKeys) && orderKeys.length > 0) {
+                allScanned.sort((a, b) => {
+                  const keyA = a.path_or_url || a.id || a.title;
+                  const keyB = b.path_or_url || b.id || b.title;
+                  const idxA = orderKeys.indexOf(keyA);
+                  const idxB = orderKeys.indexOf(keyB);
+                  if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                  if (idxA !== -1) return -1;
+                  if (idxB !== -1) return 1;
+                  return 0;
+                });
+              }
+            }
+          } catch {}
           setTracks(prev => deduplicateTracks([...allScanned, ...prev]));
         }
       } catch (err) {
@@ -4901,7 +4919,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
                   }}
-                  onReorderTracks={currentView === 'local' ? (newTracks) => setTracks(newTracks) : undefined}
+                  onReorderTracks={currentView === 'local' ? (newLocalTracks) => {
+                    setTracks(prev => {
+                      const nonLocalTracks = prev.filter(t => t.source !== 'local');
+                      return [...newLocalTracks, ...nonLocalTracks];
+                    });
+                    try {
+                      const orderKeys = newLocalTracks.map(t => t.path_or_url || t.id || t.title);
+                      localStorage.setItem('spytify_local_tracks_order', JSON.stringify(orderKeys));
+                    } catch {}
+                  } : undefined}
                   onToggleFavorite={(id) => {
                     const t = displayedTracks.find(x => x.id === id);
                     if (t) handleToggleFavorite(t);
