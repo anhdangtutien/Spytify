@@ -90,6 +90,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const [dragValue, setDragValue] = useState(0);
   const [showTimerMenu, setShowTimerMenu] = useState(false);
   const [customMinutesInput, setCustomMinutesInput] = useState('');
+  const [isPrevHovered, setIsPrevHovered] = useState(false);
+  const [isNextHovered, setIsNextHovered] = useState(false);
 
   const formatTimerRemaining = () => {
     if (sleepTimerMinutes === 0) return getTranslation(language, 'timer.endOfTrack');
@@ -243,7 +245,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   }
 
   return (
-    <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-50 relative transition-all duration-300 ease-in-out flex-shrink-0 overflow-hidden ${
+    <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-50 relative transition-all duration-300 ease-in-out flex-shrink-0 ${
       isCompact ? 'h-[52px] px-2 sm:px-4 flex items-center justify-between' : 'h-22 px-3 sm:px-6 flex items-center justify-between'
     }`}>
       {/* Sleek Top-Edge Progress Bar in Compact Mode */}
@@ -282,7 +284,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* Left: Track Info — Spy Minimalist style */}
-      <div className="flex items-center gap-2 sm:gap-3 w-[28%] min-w-0 max-w-[340px] z-10 shrink-0 overflow-hidden">
+      <div className="flex items-center gap-2 sm:gap-3 max-w-[130px] sm:max-w-[200px] md:w-[28%] md:max-w-[340px] z-10 shrink-0 overflow-hidden">
         {currentTrack ? (
           <>
             <div className={`${isCompact ? 'w-8 h-8 rounded-md' : 'w-12 h-12 rounded-lg'} overflow-hidden bg-[#101014] flex-shrink-0 border border-[#202028] relative group shadow-sm transition-all`}>
@@ -371,8 +373,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         )}
       </div>
 
-      {/* Center: Controls + Spy Seekbar (100% Dead Center) */}
-      <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center transition-all z-20 pointer-events-auto ${
+      {/* Center: Controls + Spy Seekbar — Left-aligned on small screens, Dead Center on md+ */}
+      <div className={`flex items-center justify-center shrink-0 z-20 pointer-events-auto transition-all ml-1 sm:ml-2 md:ml-0 md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 ${
         isCompact 
           ? 'gap-2 sm:gap-3.5 whitespace-nowrap' 
           : 'flex-col gap-1.5 w-full max-w-[580px] px-2'
@@ -390,10 +392,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
 
           {/* Prev Button with Previous Song Pop-up */}
-          <div className="relative group/prev flex items-center">
+          <div 
+            className="relative group/prev flex items-center"
+            onMouseEnter={() => setIsPrevHovered(true)}
+            onMouseLeave={() => setIsPrevHovered(false)}
+          >
             <button 
               onClick={onPrev} 
-              title={getTranslation(language, 'player.prev')}
               className="text-[#888] hover:text-white transition-colors cursor-pointer p-1"
             >
               <SkipBack className="w-4 h-4 fill-current" />
@@ -401,7 +406,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
             {/* Previous Track Preview Pop-up */}
             <div 
-              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-[#0c0c12]/95 backdrop-blur-md border shadow-2xl opacity-0 group-hover/prev:opacity-100 pointer-events-none group-hover/prev:pointer-events-auto transition-all duration-200 z-50 flex flex-col gap-2"
+              className={`absolute bottom-full mb-3 left-0 sm:left-1/2 sm:-translate-x-1/2 w-64 p-3 rounded-xl bg-[#0c0c12]/95 backdrop-blur-md border shadow-2xl transition-all duration-200 z-50 flex flex-col gap-2 ${
+                isPrevHovered ? 'opacity-100 pointer-events-auto scale-100' : 'opacity-0 pointer-events-none scale-95'
+              }`}
               style={{
                 borderColor: `${accentColor}40`,
                 boxShadow: `0 8px 30px rgba(0,0,0,0.8), 0 0 14px ${accentColor}25`
@@ -483,18 +490,23 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
 
           {/* Next Button with Upcoming Song Pop-up */}
-          <div className="relative group/next flex items-center">
+          <div 
+            className="relative group/next flex items-center"
+            onMouseEnter={() => setIsNextHovered(true)}
+            onMouseLeave={() => setIsNextHovered(false)}
+          >
             <button 
               onClick={onNext} 
               className="text-[#888] hover:text-white transition-colors cursor-pointer p-1"
-              title={getTranslation(language, 'player.next')}
             >
               <SkipForward className="w-4 h-4 fill-current" />
             </button>
 
             {/* Next Track Preview Pop-up */}
             <div 
-              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-[#0c0c12]/95 backdrop-blur-md border shadow-2xl opacity-0 group-hover/next:opacity-100 pointer-events-none group-hover/next:pointer-events-auto transition-all duration-200 z-50 flex flex-col gap-2"
+              className={`absolute bottom-full mb-3 left-0 sm:left-1/2 sm:-translate-x-1/2 w-64 p-3 rounded-xl bg-[#0c0c12]/95 backdrop-blur-md border shadow-2xl transition-all duration-200 z-50 flex flex-col gap-2 ${
+                isNextHovered ? 'opacity-100 pointer-events-auto scale-100' : 'opacity-0 pointer-events-none scale-95'
+              }`}
               style={{
                 borderColor: `${accentColor}40`,
                 boxShadow: `0 8px 30px rgba(0,0,0,0.8), 0 0 14px ${accentColor}25`
@@ -765,7 +777,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Right: Volume + Utils */}
-      <div className={`flex items-center justify-end w-[28%] min-w-0 max-w-[360px] ml-auto z-10 shrink-0 ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
+      <div className={`flex items-center justify-end shrink-0 ml-auto z-10 md:w-[28%] md:max-w-[360px] ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
         {/* Next Track Preview / Auto Suggestion Toggle */}
         {onToggleNextTrackPopupEnabled && (
           <button
