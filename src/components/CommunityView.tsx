@@ -3024,32 +3024,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return fol.followerAvatar;
     }
 
-    // 4. Fallback về avatar có sẵn truyền vào từ component cha/dữ liệu cục bộ
+    // 4. Persistent Cache (chống giật/nháy khi đồng bộ dữ liệu nền)
+    const cached = AVATAR_PERSISTENT_CACHE.get(lowerId) || localStorage.getItem(`spytify_user_avatar_${lowerId}`);
+    if (cached) return cached;
+
+    // 5. Fallback về avatar có sẵn truyền vào từ component cha/dữ liệu cục bộ
     if (fallbackAvatar && fallbackAvatar.trim()) {
-      saveAvatarToPersistentCache(userId, fallbackAvatar);
       return fallbackAvatar;
     }
 
-    // 5. Dự phòng cuối cùng từ lịch sử tin nhắn DM hoặc tin nhắn Server
-    const dmMsg = dmMessages.find(
-      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === lowerId)) && m.avatar && m.avatar.trim()
-    );
-    if (dmMsg?.avatar) {
-      saveAvatarToPersistentCache(userId, dmMsg.avatar);
-      return dmMsg.avatar;
-    }
-
-    const srvMsg = messages.find(
-      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === lowerId)) && m.avatar && m.avatar.trim()
-    );
-    if (srvMsg?.avatar) {
-      saveAvatarToPersistentCache(userId, srvMsg.avatar);
-      return srvMsg.avatar;
-    }
-
-    // 6. Persistent Cache (chống giật/nháy khi đồng bộ dữ liệu nền)
-    const cached = AVATAR_PERSISTENT_CACHE.get(lowerId) || localStorage.getItem(`spytify_user_avatar_${lowerId}`);
-    if (cached) return cached;
+    return null;
 
     return null;
   };
@@ -5716,18 +5700,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           u => u.id === memberInfo.id || u.username.toLowerCase() === (memberInfo.username || '').toLowerCase()
         );
         if (existing) {
-          if (
-            (memberInfo.avatar && memberInfo.avatar !== existing.avatar) ||
-            (memberInfo.display_name && memberInfo.display_name !== existing.display_name)
-          ) {
+          // TUYỆT ĐỐI không ghi đè avatar đã có của thành viên bằng avatar từ tin nhắn chat cũ!
+          // Hồ sơ spytify_profiles là nguồn chân lý duy nhất. Chỉ cập nhật avatar nếu existing CHƯA có avatar.
+          const shouldUpdateAvatar = !existing.avatar && Boolean(memberInfo.avatar && memberInfo.avatar.trim());
+          const shouldUpdateDisplayName = !existing.display_name && Boolean(memberInfo.display_name);
+          if (shouldUpdateAvatar || shouldUpdateDisplayName) {
             const next = prev.map(u =>
               u.id === existing.id
                 ? {
                     ...u,
                     id: memberInfo.id,
                     username: memberInfo.username || u.username,
-                    display_name: memberInfo.display_name || u.display_name,
-                    avatar: memberInfo.avatar || u.avatar || null,
+                    display_name: u.display_name || memberInfo.display_name || u.username,
+                    avatar: u.avatar || memberInfo.avatar || null,
                   }
                 : u
             );
@@ -6519,7 +6504,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           .find(m => m.user_id === u.id && m.avatar);
         const effStatus = getEffectiveStatus(u);
         const effName = rt?.display_name || u.display_name;
-        const effAvatar = resolveUserAvatar(u.id, u.avatar) || (rt?.avatar && rt.avatar.trim() ? rt.avatar : null) || (u.avatar && u.avatar.trim() ? u.avatar : null) || (latestMsgWithAvatar?.avatar && latestMsgWithAvatar.avatar.trim() ? latestMsgWithAvatar.avatar : null) || (followersOfMeMap[u.id]?.followerAvatar && followersOfMeMap[u.id]?.followerAvatar?.trim() ? followersOfMeMap[u.id]?.followerAvatar : null) || null;
+        const effAvatar = resolveUserAvatar(u.id, u.avatar) || (rt?.avatar && rt.avatar.trim() ? rt.avatar : null) || (u.avatar && u.avatar.trim() ? u.avatar : null) || (followersOfMeMap[u.id]?.followerAvatar && followersOfMeMap[u.id]?.followerAvatar?.trim() ? followersOfMeMap[u.id]?.followerAvatar : null) || null;
         const isDemandBotMember = isDemandBotId(u.id);
         const demandBotState = isDemandBotMember ? getServerRythmBot(selectedServer.id, u.id) : null;
         const stationChForBot = !isDemandBotMember
@@ -8068,6 +8053,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   u => u.username.toLowerCase() === (cp.username || '').toLowerCase()
                 );
 
+              const effAvatar = (cp.avatar && cp.avatar.trim()) ? cp.avatar : (existing?.avatar || null);
+              if (effAvatar) {
+                saveAvatarToPersistentCache(cp.id, effAvatar);
+                if (cp.username) saveAvatarToPersistentCache(cp.username, effAvatar);
+              }
+
               if (existing) {
                 if (existing.id !== cp.id) {
                   byId.delete(existing.id);
@@ -8077,7 +8068,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   id: cp.id,
                   username: cp.username || existing.username,
                   display_name: cp.display_name || existing.display_name,
-                  avatar: (cp.avatar && cp.avatar.trim()) ? cp.avatar : (existing.avatar || null),
+                  avatar: effAvatar,
                   bio: cp.bio ?? existing.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
                   thought: cp.thought ?? existing.thought ?? null,
                   custom_status: cp.thought ?? existing.custom_status,
@@ -8088,7 +8079,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   id: cp.id,
                   username: cp.username,
                   display_name: cp.display_name || cp.username,
-                  avatar: cp.avatar || null,
+                  avatar: effAvatar,
                   role: 'AGENT',
                   status: 'offline',
                   bio: cp.bio || 'Thành viên Spytify từ hệ thống cộng đồng.',
@@ -8113,6 +8104,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               if (existing && existing.id !== profile.id) {
                 byId.delete(existing.id);
               }
+              const effAvatar = (profile.avatar && profile.avatar.trim()) ? profile.avatar : (existing?.avatar || null);
+              if (effAvatar) {
+                saveAvatarToPersistentCache(profile.id, effAvatar);
+                if (profile.username) saveAvatarToPersistentCache(profile.username, effAvatar);
+              }
               byId.set(profile.id, {
                 ...(existing || {
                   id: profile.id,
@@ -8128,7 +8124,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 }),
                 username: profile.username || existing?.username || 'operative',
                 display_name: profile.display_name || existing?.display_name || profile.username,
-                avatar: (profile.avatar && profile.avatar.trim()) ? profile.avatar : (existing?.avatar || null),
+                avatar: effAvatar,
                 bio: profile.bio ?? existing?.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
                 thought: profile.thought ?? existing?.thought ?? null,
                 custom_status: profile.thought ?? existing?.custom_status,
@@ -8220,6 +8216,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     socialCh.on('broadcast', { event: 'user_presence' }, ({ payload }) => {
       if (!payload || !payload.id || payload.id === currentUser.id) return;
+      if (payload.avatar && payload.avatar.trim()) {
+        saveAvatarToPersistentCache(payload.id, payload.avatar);
+        if (payload.username) saveAvatarToPersistentCache(payload.username, payload.avatar);
+      }
       const now = Date.now();
       setRealtimeUserPresences(prev => ({
         ...prev,
@@ -9139,11 +9139,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
         cloudRows.forEach(r => {
           if (r.sender_id && r.sender_id !== 'usr_me') {
+            const known = registeredUsers.find(
+              u => u.id === r.sender_id || (u.username && r.sender_username && u.username.toLowerCase() === r.sender_username.toLowerCase())
+            );
             chatSenders.set(r.sender_id, {
               id: r.sender_id,
-              username: r.sender_username || 'operative',
-              display_name: r.sender_display_name || r.sender_username || 'Operative',
-              avatar: r.sender_avatar || null,
+              username: known?.username || r.sender_username || 'operative',
+              display_name: known?.display_name || r.sender_display_name || r.sender_username || 'Operative',
+              avatar: known?.avatar || r.sender_avatar || null,
             });
           }
         });

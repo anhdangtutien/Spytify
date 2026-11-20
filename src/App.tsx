@@ -456,6 +456,13 @@ export default function App() {
         if (currentUser.username) {
           localStorage.setItem(`spytify_user_avatar_${currentUser.username.toLowerCase()}`, newAvatar);
         }
+        const cacheRaw = localStorage.getItem('spytify_avatar_cache');
+        const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
+        cache[currentUser.id.toLowerCase()] = newAvatar;
+        if (currentUser.username) {
+          cache[currentUser.username.toLowerCase()] = newAvatar;
+        }
+        localStorage.setItem('spytify_avatar_cache', JSON.stringify(cache));
       } catch {}
       try {
         await invoke('auth_update_avatar', { userId: currentUser.id, avatar: newAvatar });

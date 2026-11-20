@@ -653,8 +653,19 @@ export async function cloudSyncPush(userId: string, data: Partial<CloudUserData>
     if (data.themeMode) profilePayload.theme_mode = data.themeMode;
 
     if (Object.keys(profilePayload).length > 2) {
+      let upsertError = null;
       const { error } = await client.from('spytify_profiles').upsert(profilePayload, { onConflict: 'id' });
-      if (error) throw error;
+      if (error) {
+        upsertError = error;
+        if (data.username) {
+          const { error: updateErr } = await client
+            .from('spytify_profiles')
+            .update(profilePayload)
+            .ilike('username', data.username);
+          if (!updateErr) upsertError = null;
+        }
+      }
+      if (upsertError) throw upsertError;
 
       // Phát broadcast cập nhật profile/avatar ngay lập tức đến toàn bộ mạng lưới đang online
       if (data.avatar !== undefined || data.displayName || data.bio !== undefined || data.thought !== undefined) {
