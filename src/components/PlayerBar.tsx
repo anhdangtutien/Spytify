@@ -13,6 +13,7 @@ import { LanguageCode, getTranslation } from '../locales/i18n';
 interface PlayerBarProps {
   currentTrack: Track | null;
   upcomingTrack?: Track | null;
+  previousTrack?: Track | null;
   upcomingModeLabel?: string;
   isPlaying: boolean;
   currentTime: number;
@@ -58,7 +59,7 @@ interface PlayerBarProps {
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
-  currentTrack, upcomingTrack, upcomingModeLabel, isPlaying, currentTime, duration, volume, isFavorite,
+  currentTrack, upcomingTrack, previousTrack, upcomingModeLabel, isPlaying, currentTime, duration, volume, isFavorite,
   repeatMode, isShuffle, onToggleRepeat, onToggleShuffle,
   onTogglePlay, onPrev, onNext, onSeek, onVolumeChange,
   onToggleFavorite, onAddToAlbum, onDownload, isDownloading = false, onToggleVisualizer, showVisualizer,
@@ -281,7 +282,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* Left: Track Info — Spy Minimalist style */}
-      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 max-w-[200px] sm:max-w-[300px] shrink overflow-hidden">
+      <div className="flex items-center gap-2 sm:gap-3 w-[28%] min-w-0 max-w-[340px] z-10 shrink-0 overflow-hidden">
         {currentTrack ? (
           <>
             <div className={`${isCompact ? 'w-8 h-8 rounded-md' : 'w-12 h-12 rounded-lg'} overflow-hidden bg-[#101014] flex-shrink-0 border border-[#202028] relative group shadow-sm transition-all`}>
@@ -370,11 +371,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         )}
       </div>
 
-      {/* Center: Controls + Spy Seekbar */}
-      <div className={`flex items-center justify-center transition-all shrink-0 z-10 ${
+      {/* Center: Controls + Spy Seekbar (100% Dead Center) */}
+      <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center transition-all z-20 pointer-events-auto ${
         isCompact 
-          ? 'gap-2 sm:gap-3.5 px-1 sm:px-2' 
-          : 'flex-col gap-1.5 max-w-[620px] w-2/4 px-2'
+          ? 'gap-2 sm:gap-3.5 whitespace-nowrap' 
+          : 'flex-col gap-1.5 w-full max-w-[580px] px-2'
       }`}>
         <div className={`flex items-center ${isCompact ? 'gap-3.5' : 'gap-6'}`}>
           <button
@@ -387,13 +388,81 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           >
             <Shuffle className="w-3.5 h-3.5" />
           </button>
-          <button 
-            onClick={onPrev} 
-            title={getTranslation(language, 'player.prev')}
-            className="text-[#888] hover:text-white transition-colors cursor-pointer"
-          >
-            <SkipBack className="w-4 h-4 fill-current" />
-          </button>
+
+          {/* Prev Button with Previous Song Pop-up */}
+          <div className="relative group/prev flex items-center">
+            <button 
+              onClick={onPrev} 
+              title={getTranslation(language, 'player.prev')}
+              className="text-[#888] hover:text-white transition-colors cursor-pointer p-1"
+            >
+              <SkipBack className="w-4 h-4 fill-current" />
+            </button>
+
+            {/* Previous Track Preview Pop-up */}
+            <div 
+              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-64 p-3 rounded-xl bg-[#0c0c12]/95 backdrop-blur-md border shadow-2xl opacity-0 group-hover/prev:opacity-100 pointer-events-none group-hover/prev:pointer-events-auto transition-all duration-200 z-50 flex flex-col gap-2"
+              style={{
+                borderColor: `${accentColor}40`,
+                boxShadow: `0 8px 30px rgba(0,0,0,0.8), 0 0 14px ${accentColor}25`
+              }}
+            >
+              <div className="flex items-center justify-between border-b border-[#1c1c28] pb-1.5">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: accentColor }}>
+                  <SkipBack className="w-3 h-3 fill-current" />
+                  {language === 'vi' ? 'Bài trước đó' : 'Previous Track'}
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#161622] text-[#88889f]">
+                  {language === 'vi' ? 'Lịch sử phát' : 'History'}
+                </span>
+              </div>
+
+              {previousTrack ? (
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#161620] flex-shrink-0 border border-[#222]">
+                    {previousTrack.cover_art ? (
+                      <img
+                        src={optimizeThumbnailUrl(previousTrack.cover_art, previousTrack.path_or_url || previousTrack.id)}
+                        alt={previousTrack.title}
+                        referrerPolicy="no-referrer"
+                        onError={(e) => handleImageError(e, previousTrack.path_or_url || previousTrack.id)}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[#555]">
+                        <Music className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="overflow-hidden flex-1">
+                    <p className="text-xs font-bold text-white truncate" title={previousTrack.title}>
+                      {previousTrack.title}
+                    </p>
+                    <p className="text-[10px] text-[#8e8e9f] truncate">
+                      {previousTrack.artist}
+                    </p>
+                  </div>
+                  <button
+                    onClick={onPrev}
+                    style={{ backgroundColor: accentColor, color: getContrastTextColor(accentColor) }}
+                    className="p-1.5 rounded-lg text-white hover:scale-105 transition-transform flex-shrink-0 cursor-pointer"
+                    title={language === 'vi' ? 'Phát bài này' : 'Play this track'}
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-white">
+                    {language === 'vi' ? 'Đầu danh sách phát' : 'Start of Playlist'}
+                  </p>
+                  <p className="text-[11px] text-[#8e8e9f]">
+                    {language === 'vi' ? 'Bấm để phát lại từ đầu bài hiện tại' : 'Click to replay current track from start'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
           <button
             onClick={onTogglePlay}
             disabled={!currentTrack}
@@ -696,7 +765,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Right: Volume + Utils */}
-      <div className={`flex items-center justify-end flex-1 min-w-0 shrink ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
+      <div className={`flex items-center justify-end w-[28%] min-w-0 max-w-[360px] ml-auto z-10 shrink-0 ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
         {/* Next Track Preview / Auto Suggestion Toggle */}
         {onToggleNextTrackPopupEnabled && (
           <button

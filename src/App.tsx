@@ -1914,6 +1914,35 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     return upcomingTrack || preloadedNextTrack;
   }, [recommendMode, preloadedNextTrack, upcomingTrack, currentTrack, isShuffle, activeQueueContext]);
 
+  const previousTrack = useMemo(() => {
+    if (!isScopedPlaylistContext(activeQueueContext) && playbackHistoryStackRef.current.length > 0) {
+      return playbackHistoryStackRef.current[playbackHistoryStackRef.current.length - 1];
+    }
+
+    const queue = getEffectiveQueue();
+    if (!queue.length || !currentTrack) return null;
+
+    const cur = currentTrack;
+    const curPath = cur?.path_or_url || null;
+    const curTitle = cur?.title?.trim().toLowerCase() || null;
+    const curArtist = cur?.artist?.trim().toLowerCase() || null;
+
+    const idx = queue.findIndex(t => 
+      t.id === cur.id ||
+      (curPath && t.path_or_url && t.path_or_url === curPath) ||
+      (curTitle && curArtist && t.title.trim().toLowerCase() === curTitle && t.artist.trim().toLowerCase() === curArtist)
+    );
+
+    if (idx > 0) {
+      return queue[idx - 1];
+    } else if (idx === 0) {
+      return queue.length > 1 ? queue[queue.length - 1] : queue[0];
+    } else if (lastPlaylistIndexRef.current > 0) {
+      return queue[lastPlaylistIndexRef.current - 1] || queue[0];
+    }
+    return queue[0];
+  }, [currentTrack, displayedTracks, activeQueue, activeQueueContext, tracks, favorites]);
+
   // Keep Next Track Floating Popup 100% synchronized with effectiveUpcomingTrack once playback has started
   useEffect(() => {
     if (!isNextTrackPopupEnabledRef.current || !effectiveUpcomingTrack) return;
@@ -4898,6 +4927,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }}
         currentTrack={currentTrack}
         upcomingTrack={effectiveUpcomingTrack}
+        previousTrack={previousTrack}
         upcomingModeLabel={nextTrackPopup?.modeLabel || getPlaylistModeLabel(activeQueueContext)}
         isPlaying={isPlaying}
         currentTime={currentTime}
