@@ -120,6 +120,19 @@ input[type="range"] {
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
+/* Marquee Ping-Pong Text Animation on Hover */
+@keyframes marquee-ping-pong {
+  0%, 15% {
+    transform: translateX(0px);
+  }
+  50%, 65% {
+    transform: translateX(var(--marquee-offset, -30px));
+  }
+  100% {
+    transform: translateX(0px);
+  }
+}
+
 .card-hover-accent:hover {
   border-color: var(--accent-color) !important;
   box-shadow: 0 0 16px rgba(var(--accent-color-rgb, 0, 229, 255), 0.35) !important;

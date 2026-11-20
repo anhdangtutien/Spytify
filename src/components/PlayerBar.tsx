@@ -9,6 +9,7 @@ import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
 import { getContrastTextColor, optimizeThumbnailUrl, handleImageError } from '../utils/trackUtils';
 import { LanguageCode, getTranslation } from '../locales/i18n';
+import { MarqueeText } from './MarqueeText';
 
 interface PlayerBarProps {
   currentTrack: Track | null;
@@ -305,12 +306,16 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               )}
             </div>
             <div className="flex flex-col overflow-hidden pr-2 flex-1 min-w-0">
-              <span className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight truncate`} style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}>
-                {currentTrack.title}
-              </span>
-              <span className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} truncate mt-0.5`} style={{ color: themeMode === 'light' ? '#64748b' : '#8e8e9f' }}>
-                {currentTrack.artist}
-              </span>
+              <MarqueeText
+                text={currentTrack.title}
+                className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight`}
+                style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}
+              />
+              <MarqueeText
+                text={currentTrack.artist}
+                className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} mt-0.5`}
+                style={{ color: themeMode === 'light' ? '#64748b' : '#8e8e9f' }}
+              />
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <button

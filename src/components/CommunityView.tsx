@@ -56,6 +56,7 @@ import { LanguageCode, getTranslation } from '../locales/i18n';
 import { getContrastTextColor } from '../utils/trackUtils';
 import { SpyJamIcon } from './Icons';
 import { livekitVoice } from '../services/livekit';
+import { MarqueeText } from './MarqueeText';
 
 const isTauriRuntime = () =>
   typeof window !== 'undefined' &&
@@ -11824,11 +11825,17 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <>
             {/* Server Header */}
             <div className={`p-3.5 border-b flex items-center justify-between gap-2 ${isLight ? 'border-[#e2e8f0]' : 'border-[#15151e]'}`}>
-              <div className="truncate flex-1">
-                <h2 className={`text-xs font-black tracking-tight flex items-center gap-1.5 truncate ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>
-                  <span>{selectedServer.name}</span>
-                </h2>
-                <p className={`text-[10px] font-mono truncate mt-0.5 ${isLight ? 'text-[#64748b]' : 'text-[#777]'}`}>{selectedServer.description}</p>
+              <div className="min-w-0 flex-1 overflow-hidden pr-1">
+                <MarqueeText
+                  text={selectedServer.name}
+                  className={`text-xs font-black tracking-tight ${isLight ? 'text-[#0f172a]' : 'text-white'}`}
+                />
+                {selectedServer.description && (
+                  <MarqueeText
+                    text={selectedServer.description}
+                    className={`text-[10px] font-mono mt-0.5 ${isLight ? 'text-[#64748b]' : 'text-[#777]'}`}
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-1.5 flex-shrink-0">
