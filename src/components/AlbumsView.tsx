@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, Disc, Play, Trash2, Music, ArrowLeft, Clock3, FolderPlus, 
   Sparkles, Layers, Check, X, Pencil, Image as ImageIcon, GripVertical, Download, Loader2
@@ -96,51 +96,103 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     setIsAddTracksModalOpen(false);
   };
 
-  // Drag-and-drop reordering state
+  // Drag-and-drop reordering state via Pointer Events (Tauri / WebView2 compatible)
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [albumDropPosition, setAlbumDropPosition] = useState<'above' | 'below' | null>(null);
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('button, input, a')) {
-      e.preventDefault();
-      return;
-    }
-    setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(index));
-  };
+  const albumDragRef = useRef<{
+    startIndex: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    overIndex: number | null;
+    position: 'above' | 'below' | null;
+  } | null>(null);
+  const suppressAlbumClickIdxRef = useRef<number | null>(null);
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverIndex !== index) {
-      setDragOverIndex(index);
-    }
-  };
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      const drag = albumDragRef.current;
+      if (!drag) return;
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const sourceIdx = draggedIndex !== null ? draggedIndex : Number(e.dataTransfer.getData('text/plain'));
-    if (isNaN(sourceIdx) || sourceIdx === targetIndex || !selectedAlbum || sourceIdx < 0) {
+      const dx = Math.abs(e.clientX - drag.startX);
+      const dy = Math.abs(e.clientY - drag.startY);
+      if (!drag.moved && dx < 5 && dy < 5) return;
+
+      if (!drag.moved) {
+        drag.moved = true;
+        setDraggedIndex(drag.startIndex);
+      }
+
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const rowSlot = el?.closest('[data-album-track-idx]') as HTMLElement | null;
+      const targetIdxAttr = rowSlot?.getAttribute('data-album-track-idx');
+
+      if (rowSlot && targetIdxAttr !== null && targetIdxAttr !== undefined) {
+        const targetIdx = parseInt(targetIdxAttr, 10);
+        if (!isNaN(targetIdx) && targetIdx !== drag.startIndex) {
+          const rect = rowSlot.getBoundingClientRect();
+          const pos: 'above' | 'below' = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+          drag.overIndex = targetIdx;
+          drag.position = pos;
+          setDragOverIndex(targetIdx);
+          setAlbumDropPosition(pos);
+          return;
+        }
+      }
+
+      drag.overIndex = null;
+      drag.position = null;
+      setDragOverIndex(null);
+      setAlbumDropPosition(null);
+    };
+
+    const handlePointerUp = () => {
+      const drag = albumDragRef.current;
+      if (!drag) return;
+      albumDragRef.current = null;
+
+      if (drag.moved) {
+        suppressAlbumClickIdxRef.current = drag.startIndex;
+        setTimeout(() => {
+          suppressAlbumClickIdxRef.current = null;
+        }, 150);
+
+        if (drag.overIndex !== null && drag.overIndex !== drag.startIndex && selectedAlbum) {
+          const from = drag.startIndex;
+          const to = drag.overIndex;
+          const pos = drag.position || 'above';
+
+          const reordered = [...cleanAlbumTracks];
+          if (from >= 0 && from < reordered.length && to >= 0 && to < reordered.length) {
+            const [movedItem] = reordered.splice(from, 1);
+            let insertIdx = reordered.findIndex((_, i) => i === (from < to ? to - 1 : to));
+            if (insertIdx === -1) insertIdx = to;
+            if (pos === 'below') insertIdx += 1;
+            insertIdx = Math.max(0, Math.min(reordered.length, insertIdx));
+            reordered.splice(insertIdx, 0, movedItem);
+
+            onUpdateAlbum?.(selectedAlbum.id, { tracks: reordered });
+          }
+        }
+      }
+
       setDraggedIndex(null);
       setDragOverIndex(null);
-      return;
-    }
-    const reordered = [...cleanAlbumTracks];
-    if (sourceIdx >= reordered.length || targetIndex >= reordered.length) {
-      setDraggedIndex(null);
-      setDragOverIndex(null);
-      return;
-    }
-    const [movedItem] = reordered.splice(sourceIdx, 1);
-    reordered.splice(targetIndex, 0, movedItem);
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-    onUpdateAlbum?.(selectedAlbum.id, { tracks: reordered });
-  };
+      setAlbumDropPosition(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [cleanAlbumTracks, onUpdateAlbum, selectedAlbum]);
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -719,20 +771,30 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   return (
                     <div
                       key={track.id}
-                      draggable={true}
-                      onDragStart={(e) => handleDragStart(e, idx)}
-                      onDragOver={(e) => handleDragOver(e, idx)}
-                      onDrop={(e) => handleDrop(e, idx)}
-                      onDragEnd={() => { setDraggedIndex(null); setDragOverIndex(null); }}
+                      data-album-track-idx={idx}
+                      onPointerDown={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.closest('button, a, input')) return;
+                        albumDragRef.current = {
+                          startIndex: idx,
+                          startX: e.clientX,
+                          startY: e.clientY,
+                          moved: false,
+                          overIndex: null,
+                          position: null,
+                        };
+                      }}
                       style={isCurrent ? {
                         borderColor: accentColor,
                         backgroundColor: `${accentColor}14`,
                         boxShadow: `0 0 14px ${accentColor}25`
                       } : undefined}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 group transition-all select-none ${
+                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 group transition-all select-none relative cursor-grab active:cursor-grabbing ${
                         draggedIndex === idx ? 'opacity-30 scale-[0.98]' : ''
                       } ${
-                        dragOverIndex === idx ? 'border-dashed border-indigo-400 bg-indigo-500/10' : ''
+                        dragOverIndex === idx && albumDropPosition === 'above' ? 'border-t-2 border-dashed border-cyan-400 bg-cyan-500/10' : ''
+                      } ${
+                        dragOverIndex === idx && albumDropPosition === 'below' ? 'border-b-2 border-dashed border-cyan-400 bg-cyan-500/10' : ''
                       } ${
                         isCurrent
                           ? 'bg-[#12121c]'
@@ -741,14 +803,26 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     >
                       {/* Drag Handle */}
                       <div 
-                        className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-white px-0.5 transition-colors flex-shrink-0"
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          albumDragRef.current = {
+                            startIndex: idx,
+                            startX: e.clientX,
+                            startY: e.clientY,
+                            moved: false,
+                            overIndex: null,
+                            position: null,
+                          };
+                        }}
+                        className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-white px-0.5 transition-colors flex-shrink-0 touch-none"
                         title={language === 'vi' ? 'Kéo thả để đổi vị trí bài hát' : 'Drag to reorder'}
                       >
-                        <GripVertical className="w-3.5 h-3.5" />
+                        <GripVertical className="w-3.5 h-3.5 pointer-events-none" />
                       </div>
 
                       <div
                         onClick={() => {
+                          if (suppressAlbumClickIdxRef.current === idx) return;
                           if (isCurrent) {
                             onTogglePlay();
                           } else {

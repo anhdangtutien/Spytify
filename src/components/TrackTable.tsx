@@ -49,52 +49,108 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   const [filterQuery, setFilterQuery] = useState<string>('');
   const [displayList, setDisplayList] = useState<Track[]>(tracks);
 
-  // Drag and drop reordering
+  // Drag and drop reordering state via Pointer Events (Rock-solid in Tauri / WebView2)
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [dropPosition, setDropPosition] = useState<'above' | 'below' | null>(null);
+
+  const dragRef = useRef<{
+    startIndex: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+    overIndex: number | null;
+    position: 'above' | 'below' | null;
+  } | null>(null);
+  const suppressClickIdxRef = useRef<number | null>(null);
 
   const canReorder = Boolean(onReorderTracks && !filterQuery.trim() && sortBy === 'default');
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
+  useEffect(() => {
     if (!canReorder) return;
-    setDraggedIdx(index);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(index));
-  };
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    if (!canReorder) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
-    if (dragOverIdx !== index) {
-      setDragOverIdx(index);
-    }
-  };
+    const handlePointerMove = (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
 
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
-    if (!canReorder || !onReorderTracks) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const sourceIdx = draggedIdx !== null ? draggedIdx : Number(e.dataTransfer.getData('text/plain'));
-    if (isNaN(sourceIdx) || sourceIdx === targetIndex || sourceIdx < 0) {
+      const dx = Math.abs(e.clientX - drag.startX);
+      const dy = Math.abs(e.clientY - drag.startY);
+      if (!drag.moved && dx < 5 && dy < 5) return;
+
+      if (!drag.moved) {
+        drag.moved = true;
+        setDraggedIdx(drag.startIndex);
+      }
+
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const rowSlot = el?.closest('[data-track-idx]') as HTMLElement | null;
+      const targetIdxAttr = rowSlot?.getAttribute('data-track-idx');
+
+      if (rowSlot && targetIdxAttr !== null && targetIdxAttr !== undefined) {
+        const targetIdx = parseInt(targetIdxAttr, 10);
+        if (!isNaN(targetIdx) && targetIdx !== drag.startIndex) {
+          const rect = rowSlot.getBoundingClientRect();
+          const pos: 'above' | 'below' = e.clientY < rect.top + rect.height / 2 ? 'above' : 'below';
+          drag.overIndex = targetIdx;
+          drag.position = pos;
+          setDragOverIdx(targetIdx);
+          setDropPosition(pos);
+          return;
+        }
+      }
+
+      drag.overIndex = null;
+      drag.position = null;
+      setDragOverIdx(null);
+      setDropPosition(null);
+    };
+
+    const handlePointerUp = () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      dragRef.current = null;
+
+      if (drag.moved) {
+        suppressClickIdxRef.current = drag.startIndex;
+        setTimeout(() => {
+          suppressClickIdxRef.current = null;
+        }, 150);
+
+        if (drag.overIndex !== null && drag.overIndex !== drag.startIndex && onReorderTracks) {
+          const from = drag.startIndex;
+          const to = drag.overIndex;
+          const pos = drag.position || 'above';
+
+          const currentList = displayList.length > 0 ? [...displayList] : [...tracks];
+          if (from >= 0 && from < currentList.length && to >= 0 && to < currentList.length) {
+            const [movedItem] = currentList.splice(from, 1);
+            let insertIdx = currentList.findIndex((_, i) => i === (from < to ? to - 1 : to));
+            if (insertIdx === -1) insertIdx = to;
+            if (pos === 'below') insertIdx += 1;
+            insertIdx = Math.max(0, Math.min(currentList.length, insertIdx));
+            currentList.splice(insertIdx, 0, movedItem);
+
+            setDisplayList(currentList);
+            onReorderTracks(currentList);
+          }
+        }
+      }
+
       setDraggedIdx(null);
       setDragOverIdx(null);
-      return;
-    }
-    const currentList = displayList.length > 0 ? [...displayList] : [...tracks];
-    if (sourceIdx >= currentList.length || targetIndex >= currentList.length) {
-      setDraggedIdx(null);
-      setDragOverIdx(null);
-      return;
-    }
-    const [moved] = currentList.splice(sourceIdx, 1);
-    currentList.splice(targetIndex, 0, moved);
-    setDisplayList(currentList);
-    setDraggedIdx(null);
-    setDragOverIdx(null);
-    onReorderTracks(currentList);
-  };
+      setDropPosition(null);
+    };
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
+    };
+  }, [canReorder, displayList, tracks, onReorderTracks]);
 
   // Native Rust-powered fast filtering and sorting
   useEffect(() => {
@@ -364,21 +420,22 @@ export const TrackTable: React.FC<TrackTableProps> = ({
           return (
             <div
               key={track.id}
-              draggable={canReorder}
-              onDragStart={(e) => {
+              data-track-idx={idx}
+              onPointerDown={(e) => {
                 if (!canReorder) return;
                 const target = e.target as HTMLElement;
-                if (target.closest('button, a, input')) {
-                  e.preventDefault();
-                  return;
-                }
-                handleDragStart(e, idx);
+                if (target.closest('button, a, input')) return;
+                dragRef.current = {
+                  startIndex: idx,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  moved: false,
+                  overIndex: null,
+                  position: null,
+                };
               }}
-              onDragOver={(e) => handleDragOver(e, idx)}
-              onDrop={(e) => handleDrop(e, idx)}
-              onDragEnd={() => { setDraggedIdx(null); setDragOverIdx(null); }}
               onClick={() => {
-                if (draggedIdx !== null) return;
+                if (suppressClickIdxRef.current === idx) return;
                 if (isSelected) {
                   onTogglePlay();
                 } else {
@@ -391,12 +448,14 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 borderLeftColor: isSelected ? accentColor : 'transparent',
                 backgroundColor: isSelected ? `${accentColor}18` : undefined,
               }}
-              className={`grid grid-cols-[40px_1fr_1fr_90px_110px] items-center px-3 rounded-md transition-all group select-none ${
+              className={`grid grid-cols-[40px_1fr_1fr_90px_110px] items-center px-3 rounded-md transition-all group select-none relative ${
                 canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
                 draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5' : ''
               } ${
-                dragOverIdx === idx ? 'border-t-2 border-cyan-400 bg-cyan-500/10' : ''
+                dragOverIdx === idx && dropPosition === 'above' ? 'border-t-2 border-cyan-400 bg-cyan-500/10' : ''
+              } ${
+                dragOverIdx === idx && dropPosition === 'below' ? 'border-b-2 border-cyan-400 bg-cyan-500/10' : ''
               } ${
                 isSelected
                   ? 'text-white border-l-2'
@@ -407,7 +466,18 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               <div className="flex items-center justify-center relative">
                 {canReorder && (
                   <div 
-                    className="hidden group-hover:flex items-center justify-center text-slate-400 hover:text-white p-0.5 absolute -left-1 z-10"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      dragRef.current = {
+                        startIndex: idx,
+                        startX: e.clientX,
+                        startY: e.clientY,
+                        moved: false,
+                        overIndex: null,
+                        position: null,
+                      };
+                    }}
+                    className="hidden group-hover:flex items-center justify-center text-slate-400 hover:text-white p-1 rounded hover:bg-white/10 absolute -left-1 z-20 cursor-grab active:cursor-grabbing touch-none"
                     title={language === 'vi' ? 'Kéo thả để đổi thứ tự bài hát' : 'Drag to reorder'}
                   >
                     <GripVertical className="w-3.5 h-3.5 pointer-events-none" />
