@@ -452,6 +452,12 @@ export default function App() {
   const handleUpdateAvatar = async (newAvatar: string) => {
     if (currentUser) {
       try {
+        localStorage.setItem(`spytify_user_avatar_${currentUser.id}`, newAvatar);
+        if (currentUser.username) {
+          localStorage.setItem(`spytify_user_avatar_${currentUser.username.toLowerCase()}`, newAvatar);
+        }
+      } catch {}
+      try {
         await invoke('auth_update_avatar', { userId: currentUser.id, avatar: newAvatar });
         setCurrentUser(prev => prev ? { ...prev, avatar: newAvatar } : null);
         showNotification(getTranslation(language, 'toast.avatarUpdated'));
@@ -523,14 +529,20 @@ export default function App() {
       localStorage.setItem(`spytify_user_thought_${userId}`, profile.thought ?? '');
       localStorage.setItem('spytify_user_thought', profile.thought ?? '');
     }
-    if (profile.avatar !== undefined) {
-      invoke('auth_update_avatar', { userId, avatar: profile.avatar || '' })
+    if (profile.avatar !== undefined && profile.avatar && profile.avatar.trim() !== '') {
+      try {
+        localStorage.setItem(`spytify_user_avatar_${userId}`, profile.avatar);
+        if (currentUser?.username) {
+          localStorage.setItem(`spytify_user_avatar_${currentUser.username.toLowerCase()}`, profile.avatar);
+        }
+      } catch {}
+      invoke('auth_update_avatar', { userId, avatar: profile.avatar })
         .catch(error => console.warn('Failed to update local avatar from cloud profile:', error));
     }
 
     setCurrentUser(prev => prev ? {
       ...prev,
-      ...(profile.avatar !== undefined ? { avatar: profile.avatar } : {}),
+      ...(profile.avatar !== undefined && profile.avatar && profile.avatar.trim() !== '' ? { avatar: profile.avatar } : {}),
       ...(profile.bio !== undefined ? { bio: profile.bio ?? '' } : {}),
       ...(profile.thought !== undefined ? { thought: profile.thought ?? '' } : {}),
     } : null);
@@ -2176,7 +2188,27 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       let curTime = 0;
       const trueDur = Math.max(durationRef.current || 0, track.duration_secs || 0);
 
-      if (track.source === 'youtube' || track.source === 'soundcloud') {
+      const isAudioElement =
+        track.source === 'local' ||
+        track.source === 'audius' ||
+        (track.source === 'youtube' && ytMusicFallbackActiveRef.current);
+
+      if (isAudioElement) {
+        const audio = activeAudioChannelRef.current === 1 ? onlineAudio1Ref.current : onlineAudio2Ref.current;
+        if (audio && !audio.paused) {
+          curTime = audio.currentTime;
+          currentTimeRef.current = audio.currentTime;
+          if (!isTrayModeRef.current) {
+            setCurrentTime(audio.currentTime);
+          }
+          if (audio.duration > 0 && isFinite(audio.duration) && audio.duration !== durationRef.current) {
+            durationRef.current = audio.duration;
+            if (!isTrayModeRef.current) setDuration(audio.duration);
+          }
+        } else {
+          curTime = currentTimeRef.current || 0;
+        }
+      } else if (track.source === 'youtube' || track.source === 'soundcloud') {
         if (!playStartTimestampRef.current && isPlayingRef.current) {
           playStartTimestampRef.current = Date.now();
         }
@@ -2583,6 +2615,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           (currentTrackRef.current?.source === 'youtube' && ytMusicFallbackActiveRef.current)
         ) {
           currentTimeRef.current = audio.currentTime;
+          if (!isTrayModeRef.current) {
+            setCurrentTime(audio.currentTime);
+          }
           const validDur = (audio.duration > 0 && isFinite(audio.duration)) 
             ? audio.duration 
             : (currentTrackRef.current?.duration_secs || 0);

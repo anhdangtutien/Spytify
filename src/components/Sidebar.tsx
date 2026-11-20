@@ -240,19 +240,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bottom User Area */}
       <div className={`${isCollapsed ? 'p-2 flex justify-center' : 'p-3'} border-t border-[#141418]`}>
-        {currentUser ? (
-          isCollapsed ? (
+        {currentUser ? (() => {
+          const userAvatar = currentUser.avatar ||
+            localStorage.getItem(`spytify_user_avatar_${currentUser.id}`) ||
+            (currentUser.username ? localStorage.getItem(`spytify_user_avatar_${currentUser.username.toLowerCase()}`) : null) ||
+            localStorage.getItem('spytify_guest_avatar') ||
+            null;
+          return isCollapsed ? (
             <button
               onClick={() => onViewChange('profile')}
               title={`${currentUser.display_name} (@${currentUser.username})`}
               className="w-10 h-10 rounded-xl overflow-hidden border border-white/20 text-black font-black text-xs flex items-center justify-center flex-shrink-0 hover:border-white transition-all cursor-pointer"
               style={{ 
-                background: currentUser.avatar ? 'transparent' : `linear-gradient(135deg, ${accentColor} 0%, #ffffff 100%)`,
+                background: userAvatar ? 'transparent' : `linear-gradient(135deg, ${accentColor} 0%, #ffffff 100%)`,
                 boxShadow: `0 0 8px ${accentColor}30` 
               }}
             >
-              {currentUser.avatar ? (
-                <img src={currentUser.avatar} alt={currentUser.display_name} className="w-full h-full object-cover" />
+              {userAvatar ? (
+                <img key={userAvatar} src={userAvatar} alt={currentUser.display_name} className="w-full h-full object-cover" />
               ) : (
                 <span>{currentUser.display_name.charAt(0).toUpperCase()}</span>
               )}
@@ -266,12 +271,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div 
                   className="w-8 h-8 rounded-lg overflow-hidden border border-white/20 text-black font-black text-xs flex items-center justify-center flex-shrink-0"
                   style={{ 
-                    background: currentUser.avatar ? 'transparent' : `linear-gradient(135deg, ${accentColor} 0%, #ffffff 100%)`,
+                    background: userAvatar ? 'transparent' : `linear-gradient(135deg, ${accentColor} 0%, #ffffff 100%)`,
                     boxShadow: `0 0 8px ${accentColor}30` 
                   }}
                 >
-                  {currentUser.avatar ? (
-                    <img src={currentUser.avatar} alt={currentUser.display_name} className="w-full h-full object-cover" />
+                  {userAvatar ? (
+                    <img key={userAvatar} src={userAvatar} alt={currentUser.display_name} className="w-full h-full object-cover" />
                   ) : (
                     <span>{currentUser.display_name.charAt(0).toUpperCase()}</span>
                   )}
@@ -291,8 +296,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
             </button>
-          )
-        ) : (
+          );
+        })() : (
           isCollapsed ? (
             <button
               onClick={onOpenAuth}

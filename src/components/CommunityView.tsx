@@ -995,6 +995,36 @@ const loadUserServersFromStorage = (userId?: string | null): CommunityServer[] =
   return [];
 };
 
+const AVATAR_PERSISTENT_CACHE = new Map<string, string>();
+
+// Pre-hydrate persistent avatar cache from localStorage to permanently eliminate avatar flickering
+try {
+  const stored = localStorage.getItem('spytify_avatar_cache');
+  if (stored) {
+    const parsed = JSON.parse(stored);
+    Object.entries(parsed).forEach(([k, v]) => {
+      if (typeof v === 'string' && v.trim()) {
+        AVATAR_PERSISTENT_CACHE.set(k.toLowerCase(), v);
+      }
+    });
+  }
+} catch {}
+
+const saveAvatarToPersistentCache = (key?: string | null, avatar?: string | null) => {
+  if (!key || !avatar || typeof avatar !== 'string' || !avatar.trim()) return;
+  const normKey = key.toLowerCase();
+  if (AVATAR_PERSISTENT_CACHE.get(normKey) === avatar) return;
+  AVATAR_PERSISTENT_CACHE.set(normKey, avatar);
+  try {
+    const obj: Record<string, string> = {};
+    let count = 0;
+    AVATAR_PERSISTENT_CACHE.forEach((v, k) => {
+      if (count++ < 250) obj[k] = v;
+    });
+    localStorage.setItem('spytify_avatar_cache', JSON.stringify(obj));
+  } catch {}
+};
+
 export const CommunityView: React.FC<CommunityViewProps> = ({
   currentUser,
   currentTrack,
@@ -2939,59 +2969,102 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Helper: hiển thị ảnh đại diện (avatar) từ đám mây hoặc chữ cái đầu nếu chưa có ảnh
   const resolveUserAvatar = (userId?: string | null, fallbackAvatar?: string | null): string | null => {
     if (!userId) return fallbackAvatar || null;
+    const lowerId = userId.toLowerCase();
+
+    // Check if current user
     if (
       userId === 'usr_me' ||
-      (currentUser && (userId === currentUser.id || (currentUser.username && userId.toLowerCase() === currentUser.username.toLowerCase())))
+      (currentUser && (userId === currentUser.id || (currentUser.username && lowerId === currentUser.username.toLowerCase())))
     ) {
-      return currentUser?.avatar || fallbackAvatar || null;
+      const myAv = currentUser?.avatar || fallbackAvatar || null;
+      if (myAv && myAv.trim()) {
+        if (currentUser?.id) saveAvatarToPersistentCache(currentUser.id, myAv);
+        if (currentUser?.username) saveAvatarToPersistentCache(currentUser.username, myAv);
+        return myAv;
+      }
+      const cached = (currentUser?.id ? AVATAR_PERSISTENT_CACHE.get(currentUser.id.toLowerCase()) : null) ||
+                     (currentUser?.username ? AVATAR_PERSISTENT_CACHE.get(currentUser.username.toLowerCase()) : null) ||
+                     (currentUser?.id ? localStorage.getItem(`spytify_user_avatar_${currentUser.id}`) : null) ||
+                     (currentUser?.username ? localStorage.getItem(`spytify_user_avatar_${currentUser.username.toLowerCase()}`) : null);
+      if (cached) return cached;
+      return null;
     }
 
-    // 1. ƯU TIÊN SỐ 1: registeredUsers (được đồng bộ trực tiếp từ bảng spytify_profiles trên Supabase Cloud - nguồn chuẩn nhất)
+    // 1. ƯU TIÊN SỐ 1: registeredUsers (được đồng bộ trực tiếp từ bảng spytify_profiles trên Supabase Cloud)
     const reg = registeredUsers.find(
-      u => u.id === userId || (u.username && u.username.toLowerCase() === userId.toLowerCase())
+      u => u.id === userId || (u.username && u.username.toLowerCase() === lowerId)
     );
-    if (reg?.avatar) return reg.avatar;
+    if (reg?.avatar && reg.avatar.trim()) {
+      saveAvatarToPersistentCache(reg.id, reg.avatar);
+      if (reg.username) saveAvatarToPersistentCache(reg.username, reg.avatar);
+      return reg.avatar;
+    }
 
     // 2. Tiếp theo: realtimeUserPresences (bộ đệm trực tuyến theo ID hoặc Username)
     const rt =
       realtimeUserPresences[userId] ||
       Object.values(realtimeUserPresences).find(
-        p => p.id === userId || (p.username && p.username.toLowerCase() === userId.toLowerCase())
+        p => p.id === userId || (p.username && p.username.toLowerCase() === lowerId)
       );
-    if (rt?.avatar) return rt.avatar;
+    if (rt?.avatar && rt.avatar.trim()) {
+      saveAvatarToPersistentCache(rt.id, rt.avatar);
+      if (rt.username) saveAvatarToPersistentCache(rt.username, rt.avatar);
+      return rt.avatar;
+    }
 
     // 3. Kiểm tra thông tin trong follow graph / danh sách người theo dõi
     const fol =
       followersOfMeMap[userId] ||
       Object.values(followersOfMeMap).find(
-        f => f.followerId === userId || (f.followerUsername && f.followerUsername.toLowerCase() === userId.toLowerCase())
+        f => f.followerId === userId || (f.followerUsername && f.followerUsername.toLowerCase() === lowerId)
       );
-    if (fol?.followerAvatar) return fol.followerAvatar;
+    if (fol?.followerAvatar && fol.followerAvatar.trim()) {
+      saveAvatarToPersistentCache(fol.followerId, fol.followerAvatar);
+      if (fol.followerUsername) saveAvatarToPersistentCache(fol.followerUsername, fol.followerAvatar);
+      return fol.followerAvatar;
+    }
 
     // 4. Fallback về avatar có sẵn truyền vào từ component cha/dữ liệu cục bộ
-    if (fallbackAvatar) return fallbackAvatar;
+    if (fallbackAvatar && fallbackAvatar.trim()) {
+      saveAvatarToPersistentCache(userId, fallbackAvatar);
+      return fallbackAvatar;
+    }
 
     // 5. Dự phòng cuối cùng từ lịch sử tin nhắn DM hoặc tin nhắn Server
     const dmMsg = dmMessages.find(
-      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === userId.toLowerCase())) && m.avatar
+      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === lowerId)) && m.avatar && m.avatar.trim()
     );
-    if (dmMsg?.avatar) return dmMsg.avatar;
+    if (dmMsg?.avatar) {
+      saveAvatarToPersistentCache(userId, dmMsg.avatar);
+      return dmMsg.avatar;
+    }
 
     const srvMsg = messages.find(
-      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === userId.toLowerCase())) && m.avatar
+      m => (m.user_id === userId || (m.username && m.username.toLowerCase() === lowerId)) && m.avatar && m.avatar.trim()
     );
-    if (srvMsg?.avatar) return srvMsg.avatar;
+    if (srvMsg?.avatar) {
+      saveAvatarToPersistentCache(userId, srvMsg.avatar);
+      return srvMsg.avatar;
+    }
+
+    // 6. Persistent Cache (chống giật/nháy khi đồng bộ dữ liệu nền)
+    const cached = AVATAR_PERSISTENT_CACHE.get(lowerId) || localStorage.getItem(`spytify_user_avatar_${lowerId}`);
+    if (cached) return cached;
 
     return null;
   };
 
   const renderAvatarContent = (name?: string | null, avatar?: string | null) => {
-    if (avatar) {
+    if (avatar && avatar.trim()) {
       return (
         <img
+          key={avatar}
           src={avatar}
           alt={name || 'avatar'}
           className="w-full h-full object-cover rounded-[inherit]"
+          onError={(e) => {
+            (e.target as HTMLElement).style.display = 'none';
+          }}
         />
       );
     }
@@ -6446,7 +6519,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           .find(m => m.user_id === u.id && m.avatar);
         const effStatus = getEffectiveStatus(u);
         const effName = rt?.display_name || u.display_name;
-        const effAvatar = rt?.avatar || u.avatar || latestMsgWithAvatar?.avatar || followersOfMeMap[u.id]?.followerAvatar || null;
+        const effAvatar = resolveUserAvatar(u.id, u.avatar) || (rt?.avatar && rt.avatar.trim() ? rt.avatar : null) || (u.avatar && u.avatar.trim() ? u.avatar : null) || (latestMsgWithAvatar?.avatar && latestMsgWithAvatar.avatar.trim() ? latestMsgWithAvatar.avatar : null) || (followersOfMeMap[u.id]?.followerAvatar && followersOfMeMap[u.id]?.followerAvatar?.trim() ? followersOfMeMap[u.id]?.followerAvatar : null) || null;
         const isDemandBotMember = isDemandBotId(u.id);
         const demandBotState = isDemandBotMember ? getServerRythmBot(selectedServer.id, u.id) : null;
         const stationChForBot = !isDemandBotMember
@@ -7826,7 +7899,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             localStorage.setItem('spytify_user_thought', thought);
           } catch {}
           onCloudProfileUpdate?.({
-            avatar: ownProfileUpdate.avatar,
+            avatar: (ownProfileUpdate.avatar && ownProfileUpdate.avatar.trim()) ? ownProfileUpdate.avatar : currentUser.avatar,
             bio: ownProfileUpdate.bio,
             thought: ownProfileUpdate.thought,
           });
@@ -8004,7 +8077,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   id: cp.id,
                   username: cp.username || existing.username,
                   display_name: cp.display_name || existing.display_name,
-                  avatar: cp.avatar !== undefined ? cp.avatar : (existing.avatar || null),
+                  avatar: (cp.avatar && cp.avatar.trim()) ? cp.avatar : (existing.avatar || null),
                   bio: cp.bio ?? existing.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
                   thought: cp.thought ?? existing.thought ?? null,
                   custom_status: cp.thought ?? existing.custom_status,
@@ -8055,7 +8128,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 }),
                 username: profile.username || existing?.username || 'operative',
                 display_name: profile.display_name || existing?.display_name || profile.username,
-                avatar: profile.avatar !== undefined ? profile.avatar : (existing?.avatar || null),
+                avatar: (profile.avatar && profile.avatar.trim()) ? profile.avatar : (existing?.avatar || null),
                 bio: profile.bio ?? existing?.bio ?? 'Thành viên Spytify từ hệ thống cộng đồng.',
                 thought: profile.thought ?? existing?.thought ?? null,
                 custom_status: profile.thought ?? existing?.custom_status,
@@ -8088,7 +8161,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 if (next === prev) next = { ...prev };
                 next[cp.id] = {
                   ...existing,
-                  avatar: cp.avatar !== undefined ? cp.avatar : existing.avatar,
+                  avatar: (cp.avatar && cp.avatar.trim()) ? cp.avatar : existing.avatar,
                   display_name: cp.display_name || existing.display_name,
                   bio: cp.bio ?? existing.bio,
                   thought: cp.thought ?? existing.thought,
@@ -8108,7 +8181,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               if (next === prev) next = { ...prev };
               next[profile.id] = {
                 ...existing,
-                avatar: profile.avatar,
+                avatar: (profile.avatar && profile.avatar.trim()) ? profile.avatar : existing.avatar,
                 bio: profile.bio ?? existing.bio ?? null,
                 thought: profile.thought ?? existing.thought ?? null,
                 custom_status: profile.thought ?? existing.custom_status ?? null,
@@ -8158,7 +8231,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           thought: payload.thought ?? payload.custom_status ?? prev[payload.id]?.thought ?? null,
           custom_status: payload.custom_status ?? payload.thought ?? prev[payload.id]?.custom_status ?? null,
           bio: payload.bio ?? prev[payload.id]?.bio ?? null,
-          avatar: payload.avatar || prev[payload.id]?.avatar || null,
+          avatar: (payload.avatar && payload.avatar.trim()) ? payload.avatar : (prev[payload.id]?.avatar || null),
           tags: payload.tags ?? prev[payload.id]?.tags ?? null,
           lastSeen: now,
         },
@@ -8174,7 +8247,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             id: payload.id,
             username: payload.username || updated[idx].username,
             display_name: payload.display_name || updated[idx].display_name,
-            avatar: payload.avatar || updated[idx].avatar,
+            avatar: (payload.avatar && payload.avatar.trim()) ? payload.avatar : (updated[idx].avatar || null),
             bio: payload.bio ?? updated[idx].bio,
             thought: payload.thought ?? updated[idx].thought,
             custom_status: payload.custom_status ?? payload.thought ?? updated[idx].custom_status,
@@ -9330,7 +9403,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           thought: payload.thought ?? payload.custom_status ?? prev[payload.id]?.thought ?? null,
           custom_status: payload.custom_status ?? payload.thought ?? prev[payload.id]?.custom_status ?? null,
           bio: payload.bio ?? prev[payload.id]?.bio ?? null,
-          avatar: payload.avatar || prev[payload.id]?.avatar || null,
+          avatar: (payload.avatar && payload.avatar.trim()) ? payload.avatar : (prev[payload.id]?.avatar || null),
           tags: payload.tags ?? prev[payload.id]?.tags ?? null,
           lastSeen: now,
         },
