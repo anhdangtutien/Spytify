@@ -3,7 +3,7 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
-  ChevronDown, ChevronUp, Disc, Activity, Sliders
+  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -53,6 +53,8 @@ interface PlayerBarProps {
   isMinimized?: boolean;
   onMinimize?: () => void;
   onToggleMinimize?: () => void;
+  onOpenEqualizer?: () => void;
+  isEqualizerActive?: boolean;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -79,6 +81,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   isMinimized = false,
   onMinimize,
   onToggleMinimize = onMinimize,
+  onOpenEqualizer,
+  isEqualizerActive = true,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -1007,6 +1011,27 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         >
           <Activity className="w-4 h-4" />
         </button>
+
+        {/* Equalizer (EQ) Toggle & Modal */}
+        {onOpenEqualizer && (
+          <button
+            onClick={onOpenEqualizer}
+            title={language === 'vi' ? 'Bộ lọc âm Equalizer (EQ)' : 'Audio Equalizer (EQ)'}
+            style={isEqualizerActive ? {
+              color: accentColor,
+              backgroundColor: `${accentColor}18`,
+              borderColor: `${accentColor}50`,
+              boxShadow: `0 0 10px ${accentColor}30`,
+            } : undefined}
+            className={`p-1.5 rounded-md transition-colors cursor-pointer border ${
+              isEqualizerActive
+                ? ''
+                : 'text-[#666] hover:text-white border-transparent'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Source Badge */}
         {currentTrack && getSourceBadge(currentTrack.source)}

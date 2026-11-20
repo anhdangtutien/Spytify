@@ -15,6 +15,8 @@ import { CommunityView } from './components/CommunityView';
 import { HomeTrendingView } from './components/HomeTrendingView';
 import { AlbumsView } from './components/AlbumsView';
 import { AddToAlbumModal } from './components/AddToAlbumModal';
+import { EqualizerModal } from './components/EqualizerModal';
+import { attachAudioElementToEqualizer, loadEqualizerState, applyEqualizerStateToGraph } from './services/equalizer';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
 import { checkGitHubUpdate, UpdateInfo, CURRENT_VERSION } from './services/updater';
@@ -105,6 +107,10 @@ export default function App() {
   // Software Update & Close-to-Tray State
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  // Audio Equalizer (EQ) State
+  const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
+  const [isEqualizerActive, setIsEqualizerActive] = useState(() => loadEqualizerState().enabled);
 
   // Realtime Remote Config & Broadcast Banner
   const [remoteBroadcast, setRemoteBroadcast] = useState<RemoteBroadcastNotification | null>(null);
@@ -2450,6 +2456,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     onlineAudio2Ref.current = audio2;
     onlineAudioRef.current = audio1;
 
+    try {
+      attachAudioElementToEqualizer(audio1);
+      attachAudioElementToEqualizer(audio2);
+      applyEqualizerStateToGraph(loadEqualizerState());
+    } catch (e) {
+      console.warn('Equalizer audio graph attach notice:', e);
+    }
+
     const setupAudioListeners = (audio: HTMLAudioElement, channel: 1 | 2) => {
       const onTimeUpdate = () => {
         if (activeAudioChannelRef.current !== channel) return;
@@ -3952,6 +3966,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               onClose={() => setIsUpdateModalOpen(false)}
             />
           )}
+
+          {/* Audio Equalizer (EQ) Modal */}
+          <EqualizerModal
+            isOpen={isEqualizerOpen}
+            onClose={() => {
+              setIsEqualizerOpen(false);
+              setIsEqualizerActive(loadEqualizerState().enabled);
+            }}
+            accentColor={activeAccentColor}
+            themeMode={themeMode}
+            language={language}
+          />
         </>
       )}
 
@@ -4704,6 +4730,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         crossfadeDuration={crossfadeDuration}
         onUpdateCrossfadeDuration={setCrossfadeDuration}
         isCrossfading={isCrossfading}
+        onOpenEqualizer={() => setIsEqualizerOpen(true)}
+        isEqualizerActive={isEqualizerActive}
       />
     </div>
   );
