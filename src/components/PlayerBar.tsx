@@ -284,7 +284,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* Left: Track Info — Spy Minimalist style */}
-      <div className="flex items-center gap-2 sm:gap-3 max-w-[130px] sm:max-w-[200px] md:w-[28%] md:max-w-[340px] z-10 shrink-0 overflow-hidden">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 max-w-[160px] sm:max-w-[220px] md:max-w-[260px] xl:w-[26%] xl:max-w-[320px] z-10 shrink-0 overflow-hidden">
         {currentTrack ? (
           <>
             <div className={`${isCompact ? 'w-8 h-8 rounded-md' : 'w-12 h-12 rounded-lg'} overflow-hidden bg-[#101014] flex-shrink-0 border border-[#202028] relative group shadow-sm transition-all`}>
@@ -373,8 +373,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         )}
       </div>
 
-      {/* Center: Controls + Spy Seekbar — Left-aligned on small screens, Dead Center on md+ */}
-      <div className={`flex items-center justify-center shrink-0 z-20 pointer-events-auto transition-all ml-1 sm:ml-2 md:ml-0 md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 ${
+      {/* Center: Controls + Spy Seekbar — Left-aligned on small screens, Dead Center on xl+ */}
+      <div className={`flex items-center justify-center shrink-0 z-20 pointer-events-auto transition-all ml-2 sm:ml-4 xl:ml-0 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2 ${
         isCompact 
           ? 'gap-2 sm:gap-3.5 whitespace-nowrap' 
           : 'flex-col gap-1.5 w-full max-w-[580px] px-2'
@@ -777,7 +777,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Right: Volume + Utils */}
-      <div className={`flex items-center justify-end shrink-0 ml-auto z-10 md:w-[28%] md:max-w-[360px] ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
+      <div className={`flex items-center justify-end shrink-0 ml-auto z-10 xl:w-[26%] xl:max-w-[360px] ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
         {/* Next Track Preview / Auto Suggestion Toggle */}
         {onToggleNextTrackPopupEnabled && (
           <button
