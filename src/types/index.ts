@@ -185,6 +185,7 @@ export interface CommunityServer {
   custom_bots?: CommunityUserProfile[];
   message_limit?: number;
   auto_delete_hours?: 0 | 6 | 12 | 24;
+  pending_cloud_sync?: boolean;
 }
 
 export interface RequestBotTrack {

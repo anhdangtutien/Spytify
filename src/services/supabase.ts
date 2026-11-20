@@ -1246,6 +1246,44 @@ export async function removeCloudFollow(followerId: string, targetId: string): P
 
 const SERVERS_REGISTRY_ROOM_ID = 'spytify_servers_registry';
 const SERVER_INVITES_ROOM_ID = 'spytify_server_invites';
+const GLOBAL_DELETED_SERVERS_KEY = 'spytify_deleted_server_ids_global';
+
+export function getDeletedServerIds(userId?: string | null): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const globalRaw = localStorage.getItem(GLOBAL_DELETED_SERVERS_KEY);
+    if (globalRaw) {
+      const parsed = JSON.parse(globalRaw);
+      if (Array.isArray(parsed)) parsed.forEach(id => typeof id === 'string' && ids.add(id));
+    }
+    if (userId) {
+      const userRaw = localStorage.getItem(`spytify_deleted_server_ids_${userId}`);
+      if (userRaw) {
+        const parsed = JSON.parse(userRaw);
+        if (Array.isArray(parsed)) parsed.forEach(id => typeof id === 'string' && ids.add(id));
+      }
+    }
+  } catch {}
+  return ids;
+}
+
+export function recordDeletedServerId(serverId: string, userId?: string | null): void {
+  if (!serverId || serverId === 'srv_none') return;
+  try {
+    const current = getDeletedServerIds(userId);
+    current.add(serverId);
+    const arr = Array.from(current);
+    localStorage.setItem(GLOBAL_DELETED_SERVERS_KEY, JSON.stringify(arr));
+    if (userId) {
+      localStorage.setItem(`spytify_deleted_server_ids_${userId}`, JSON.stringify(arr));
+    }
+  } catch {}
+}
+
+export function isServerDeleted(serverId: string, userId?: string | null): boolean {
+  if (!serverId || serverId === 'srv_none') return false;
+  return getDeletedServerIds(userId).has(serverId);
+}
 
 export interface CloudServerInvite {
   id: string;
@@ -1268,6 +1306,10 @@ export interface CloudServerInvite {
 export async function pushCloudServer(server: any): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client || !server?.id || server.id === 'srv_none') return false;
+  if (isServerDeleted(server.id, server.owner_id)) {
+    console.warn(`[pushCloudServer] Blocked resurrecting deleted server: ${server.id}`);
+    return false;
+  }
   try {
     const sentAt = new Date().toISOString();
     const { error: communityError } = await client.from('spytify_community_servers').upsert(
@@ -1309,9 +1351,10 @@ export async function pushCloudServer(server: any): Promise<boolean> {
   }
 }
 
-export async function deleteCloudServer(serverId: string): Promise<void> {
+export async function deleteCloudServer(serverId: string, userId?: string | null): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !serverId) return;
+  recordDeletedServerId(serverId, userId);
   const updatedAt = new Date().toISOString();
 
   // 1. Xóa toàn bộ tin nhắn chat thuộc máy chủ này trong Supabase Cloud để giải phóng dung lượng
@@ -1323,20 +1366,38 @@ export async function deleteCloudServer(serverId: string): Promise<void> {
   } catch (err) {
     console.warn('Could not purge cloud messages for deleted server:', err);
   }
+  try {
+    await client
+      .from('spytify_direct_messages')
+      .delete()
+      .like('room_id', `spytify_srv_chat_${serverId}%`);
+  } catch (err) {
+    console.warn('Could not purge legacy direct messages for deleted server:', err);
+  }
+  try {
+    await client
+      .from('spytify_direct_messages')
+      .delete()
+      .like('id', `srv_inv_${serverId}%`);
+  } catch (err) {
+    console.warn('Could not purge legacy server invites for deleted server:', err);
+  }
 
   // 2. Đánh dấu xóa server để thông báo Realtime cho các client khác
-  const { error: communityError } = await client.from('spytify_community_servers').upsert(
-    {
-      id: serverId,
-      owner_id: '',
-      server_data: { id: serverId, deleted: true },
-      deleted: true,
-      updated_at: updatedAt,
-    },
-    { onConflict: 'id' }
-  );
+  try {
+    await client.from('spytify_community_servers').upsert(
+      {
+        id: serverId,
+        owner_id: '',
+        server_data: { id: serverId, deleted: true },
+        deleted: true,
+        updated_at: updatedAt,
+      },
+      { onConflict: 'id' }
+    );
+  } catch {}
 
-  // 3. Đánh dấu bản ghi legacy registry là deleted để các client cũ/mới biết và tự động gỡ khỏi danh sách máy chủ
+  // 3. Đánh dấu bản ghi legacy registry là deleted vĩnh viễn để mọi client tự động gỡ bỏ
   const { error: legacyError } = await client
     .from('spytify_direct_messages')
     .upsert(
@@ -1345,14 +1406,14 @@ export async function deleteCloudServer(serverId: string): Promise<void> {
         room_id: SERVERS_REGISTRY_ROOM_ID,
         sender_id: 'system',
         receiver_id: serverId,
+        sender_username: 'System',
+        sender_display_name: 'System',
         content: JSON.stringify({ id: serverId, deleted: true }),
         sent_at: updatedAt,
       },
       { onConflict: 'id' }
     );
-  if (communityError) console.warn('Cloud server deletion marker failed:', communityError);
   if (legacyError) console.warn('Legacy cloud server deletion failed:', legacyError);
-  if (communityError && legacyError) throw new Error(communityError.message);
 }
 
 export async function fetchCloudServerById(serverId: string): Promise<any | null> {
@@ -1360,6 +1421,8 @@ export async function fetchCloudServerById(serverId: string): Promise<any | null
   if (!client || !serverId) return null;
   try {
     const cleanId = serverId.trim().replace(/^spytify:\/\/station\/join\//i, '').trim();
+    if (isServerDeleted(cleanId)) return null;
+
     const { data: communityRow, error: communityError } = await client
       .from('spytify_community_servers')
       .select('server_data, deleted')
@@ -1368,7 +1431,10 @@ export async function fetchCloudServerById(serverId: string): Promise<any | null
     if (communityError) {
       console.warn('Dedicated community server fetch failed; trying legacy registry:', communityError);
     } else if (communityRow) {
-      if (communityRow.deleted) return null;
+      if (communityRow.deleted) {
+        recordDeletedServerId(cleanId);
+        return null;
+      }
       const server =
         typeof communityRow.server_data === 'string'
           ? JSON.parse(communityRow.server_data)
@@ -1383,7 +1449,11 @@ export async function fetchCloudServerById(serverId: string): Promise<any | null
       .maybeSingle();
     if (error || !data?.content) return null;
     const server = JSON.parse(data.content);
-    return server?.deleted ? null : server;
+    if (server?.deleted) {
+      recordDeletedServerId(cleanId);
+      return null;
+    }
+    return server;
   } catch {
     return null;
   }
@@ -1438,7 +1508,9 @@ export async function fetchCloudServerMembershipAudit(
     (legacyResult.data || []).forEach(row => {
       if (!row?.content) return;
       try {
-        addServerRecord(JSON.parse(row.content), row.sent_at || undefined);
+        const parsed = JSON.parse(row.content);
+        const isDeleted = Boolean(parsed?.deleted);
+        addServerRecord(parsed, row.sent_at || undefined, isDeleted);
       } catch (error) {
         console.warn('Could not parse a legacy community server record:', error);
       }
@@ -1455,7 +1527,8 @@ export async function fetchCloudServerMembershipAudit(
     for (const [serverId, record] of serversById) {
       const { server, timestamp, deleted } = record;
       if (timestamp && (!syncCursor || timestamp > syncCursor)) syncCursor = timestamp;
-      if (deleted || server.deleted) {
+      if (deleted || server.deleted || isServerDeleted(serverId, userId)) {
+        recordDeletedServerId(serverId, userId);
         removedServerIds.push(serverId);
         continue;
       }

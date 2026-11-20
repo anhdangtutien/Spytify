@@ -32,6 +32,9 @@ import {
   CloudFollowEdge,
   pushCloudServer,
   deleteCloudServer,
+  getDeletedServerIds,
+  recordDeletedServerId,
+  isServerDeleted,
   fetchCloudServerById,
   fetchCloudServersForUser,
   fetchCloudServerMembershipAudit,
@@ -940,7 +943,9 @@ const loadUserServersFromStorage = (userId?: string | null): CommunityServer[] =
     if (saved) {
       const migratedFlag = localStorage.getItem('spytify_custom_srv_zero_members_v1');
       const parsed: CommunityServer[] = JSON.parse(saved);
+      const deletedIds = getDeletedServerIds(userId);
       const cleaned = parsed
+        .filter(s => !deletedIds.has(s.id))
         .filter(s => s.id.startsWith('srv_custom_') || s.is_custom)
         .filter(
           s =>
@@ -5521,13 +5526,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const handleDeleteServer = (srvId: string) => {
     if (!isServerOwner) return;
+    recordDeletedServerId(srvId, currentUser?.id);
     if (connectedVoiceServerId === srvId) {
       handleLeaveVoiceCall();
     }
     // 1. Dọn dẹp sạch toàn bộ tin nhắn máy chủ trong SQLite nội bộ
     invoke('db_delete_server_messages', { serverId: srvId }).catch(console.warn);
     // 2. Dọn dẹp sạch toàn bộ tin nhắn & máy chủ trong Supabase Cloud
-    deleteCloudServer(srvId).catch(() => {});
+    deleteCloudServer(srvId, currentUser?.id).catch(() => {});
     // 3. Xóa tin nhắn khỏi bộ nhớ đệm UI
     setMessages(prev => prev.filter(m => m.server_id !== srvId));
 
@@ -7829,12 +7835,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         setIncomingServerInvites(serverInvites.incoming);
         setOutgoingServerInvites(serverInvites.outgoing);
 
-        const removedServerSet = new Set<string>(serverAudit.removedServerIds || []);
+        const deletedIds = getDeletedServerIds(currentUser.id);
+        const removedServerSet = new Set<string>([
+          ...(serverAudit.removedServerIds || []),
+          ...Array.from(deletedIds),
+        ]);
         serverAudit.removedServerIds.forEach(removedSrvId => {
+          recordDeletedServerId(removedSrvId, currentUser.id);
           evictSelfFromKickedServerRef.current(removedSrvId);
         });
 
-        const cloudServers = serverAudit.activeServers;
+        const cloudServers = (serverAudit.activeServers || []).filter(
+          (cs: CommunityServer) => cs?.id && !removedServerSet.has(cs.id)
+        );
         if (cloudServers && cloudServers.length > 0) {
           const mergeServerWithCloud = (localSrv: CommunityServer | undefined, cs: CommunityServer): CommunityServer => {
             const kickedSet = new Set<string>([
@@ -7882,16 +7895,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               byId.set(cs.id, mergeServerWithCloud(localExisting, cs));
             });
 
-            // 2. Bảo toàn các server mà chính currentUser là chủ sở hữu (Owner) hoặc server mặc định
+            // 2. Chỉ bảo toàn server vừa được tạo offline VÀ có cờ pending_cloud_sync
+            // Tuyệt đối không re-push hay giữ lại các server cũ đã bị xóa trên Cloud!
             prev.forEach(s => {
               if (!s?.id || s.id === 'srv_none') return;
               if (removedServerSet.has(s.id)) return;
               if (byId.has(s.id)) return;
 
-              const isOwner = s.owner_id === currentUser.id || s.owner_id === 'usr_me';
-              if (isOwner) {
+              if (s.pending_cloud_sync && (s.owner_id === currentUser.id || s.owner_id === 'usr_me')) {
                 byId.set(s.id, s);
-                pushCloudServer(s).catch(() => {});
+                pushCloudServer(s).then(success => {
+                  if (success) {
+                    delete s.pending_cloud_sync;
+                    persistServers(Array.from(byId.values()));
+                  }
+                }).catch(() => {});
               }
             });
 
@@ -8503,6 +8521,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
     socialCh.on('broadcast', { event: 'server_updated' }, ({ payload }) => {
       if (!payload || !payload.id || !currentUser) return;
+      if (isServerDeleted(payload.id, currentUser.id)) return;
       const upd: CommunityServer = payload;
       if (
         upd.owner_id !== currentUser.id &&
@@ -8542,6 +8561,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     socialCh.on('broadcast', { event: 'server_deleted' }, ({ payload }) => {
       if (!payload?.serverId) return;
       const srvId = payload.serverId;
+      recordDeletedServerId(srvId, currentUser?.id);
       setServers(prev => {
         const next = prev.filter(s => s.id !== srvId);
         persistServers(next);
@@ -8981,6 +9001,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       fetchCloudServerById(currentSrvId),
       fetchCloudDirectMessages(`spytify_srv_chat_${currentSrvId}`),
     ]).then(([cloudSrv, cloudRows]) => {
+      // Nếu server này đã bị xóa hoặc không còn tồn tại trên Cloud -> Trục xuất và dọn dẹp ngay
+      if (!cloudSrv || isServerDeleted(currentSrvId, currentUser.id)) {
+        recordDeletedServerId(currentSrvId, currentUser.id);
+        evictSelfFromKickedServerRef.current(
+          currentSrvId,
+          'Máy chủ này đã bị xóa hoặc không còn tồn tại.'
+        );
+        return;
+      }
+
       // Nếu bản ghi Cloud cho thấy user hiện tại đã bị kick hoặc bị xóa khỏi danh sách thành viên -> trục xuất ngay lập tức
       if (cloudSrv && cloudSrv.owner_id !== currentUser.id) {
         const cloudKicked =
@@ -9132,7 +9162,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       });
       setSelectedServer(prev => (prev.id === currentSrvId ? mergedSrv : prev));
       const cloudNeedsMemberSync =
-        !cloudSrv ||
+        cloudSrv &&
         (effectiveOwnerId !== currentUser.id &&
           (!Array.isArray(cloudSrv.member_ids) || !cloudSrv.member_ids.includes(currentUser.id)));
       if (cloudNeedsMemberSync) {
