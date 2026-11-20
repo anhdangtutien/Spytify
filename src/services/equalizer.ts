@@ -220,9 +220,28 @@ let audioCtx: AudioContext | null = null;
 let preampNode: GainNode | null = null;
 let filterNodes: BiquadFilterNode[] = [];
 let bassBoostNode: BiquadFilterNode | null = null;
-let spatialPannerNode: StereoPannerNode | null = null;
 let masterGainNode: GainNode | null = null;
 let analyserNode: AnalyserNode | null = null;
+
+// 3D Spatial Audio Engine Nodes (Binaural Haas Crossfeed + Diffuse Atmosphere)
+let spatialDryGain: GainNode | null = null;
+let spatialWetGain: GainNode | null = null;
+let spatialSplitter: ChannelSplitterNode | null = null;
+let spatialMerger: ChannelMergerNode | null = null;
+let spatialDirectGainL: GainNode | null = null;
+let spatialDirectGainR: GainNode | null = null;
+let spatialDelayL: DelayNode | null = null;
+let spatialDelayR: DelayNode | null = null;
+let spatialFilterL: BiquadFilterNode | null = null;
+let spatialFilterR: BiquadFilterNode | null = null;
+let spatialCrossGainL: GainNode | null = null;
+let spatialCrossGainR: GainNode | null = null;
+let spatialRoomDelayL: DelayNode | null = null;
+let spatialRoomDelayR: DelayNode | null = null;
+let spatialRoomFilterL: BiquadFilterNode | null = null;
+let spatialRoomFilterR: BiquadFilterNode | null = null;
+let spatialRoomGain: GainNode | null = null;
+
 const connectedSources = new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>();
 
 export function getOrCreateAudioContext(): AudioContext | null {
@@ -248,7 +267,7 @@ export function ensureAudioContextRunning(): void {
 export function initAudioGraph(): boolean {
   const ctx = getOrCreateAudioContext();
   if (!ctx) return false;
-  if (filterNodes.length === EQ_FREQUENCIES.length && preampNode && masterGainNode) {
+  if (filterNodes.length === EQ_FREQUENCIES.length && preampNode && masterGainNode && spatialDryGain && spatialWetGain) {
     return true;
   }
 
@@ -277,11 +296,59 @@ export function initAudioGraph(): boolean {
     bassBoostNode.frequency.value = 80;
     bassBoostNode.gain.value = 0;
 
-    // Stereo spatial node if supported
-    if (ctx.createStereoPanner) {
-      spatialPannerNode = ctx.createStereoPanner();
-      spatialPannerNode.pan.value = 0;
-    }
+    // --- 3D Spatial Audio Engine (Binaural Haas Crossfeed + Diffuse Studio Ambience) ---
+    spatialDryGain = ctx.createGain();
+    spatialDryGain.gain.value = 1.0;
+
+    spatialWetGain = ctx.createGain();
+    spatialWetGain.gain.value = 0.0;
+
+    spatialSplitter = ctx.createChannelSplitter(2);
+    spatialMerger = ctx.createChannelMerger(2);
+
+    // Direct binaural gains (L to L, R to R)
+    spatialDirectGainL = ctx.createGain();
+    spatialDirectGainL.gain.value = 0.95;
+    spatialDirectGainR = ctx.createGain();
+    spatialDirectGainR.gain.value = 0.95;
+
+    // Haas Crossfeed (simulating head shadow and interaural time difference for headphone holographic stage)
+    spatialDelayL = ctx.createDelay(0.1);
+    spatialDelayL.delayTime.value = 0.016; // 16ms ITD
+    spatialDelayR = ctx.createDelay(0.1);
+    spatialDelayR.delayTime.value = 0.016;
+
+    spatialFilterL = ctx.createBiquadFilter();
+    spatialFilterL.type = 'lowpass';
+    spatialFilterL.frequency.value = 2400; // head shadowing attenuates high frequencies
+
+    spatialFilterR = ctx.createBiquadFilter();
+    spatialFilterR.type = 'lowpass';
+    spatialFilterR.frequency.value = 2400;
+
+    spatialCrossGainL = ctx.createGain();
+    spatialCrossGainL.gain.value = -0.38; // Haas out-of-phase crossfeed for dramatic soundstage expansion
+    spatialCrossGainR = ctx.createGain();
+    spatialCrossGainR.gain.value = -0.38;
+
+    // Diffuse Room Reflection (early reflections providing open 3D room perception)
+    spatialRoomDelayL = ctx.createDelay(0.1);
+    spatialRoomDelayL.delayTime.value = 0.024; // 24ms
+    spatialRoomDelayR = ctx.createDelay(0.1);
+    spatialRoomDelayR.delayTime.value = 0.038; // 38ms asymmetric reflection
+
+    spatialRoomFilterL = ctx.createBiquadFilter();
+    spatialRoomFilterL.type = 'highshelf';
+    spatialRoomFilterL.frequency.value = 3200;
+    spatialRoomFilterL.gain.value = -3.5;
+
+    spatialRoomFilterR = ctx.createBiquadFilter();
+    spatialRoomFilterR.type = 'highshelf';
+    spatialRoomFilterR.frequency.value = 3200;
+    spatialRoomFilterR.gain.value = -3.5;
+
+    spatialRoomGain = ctx.createGain();
+    spatialRoomGain.gain.value = 0.22;
 
     // Analyser node for real-time visual response
     analyserNode = ctx.createAnalyser();
@@ -291,7 +358,7 @@ export function initAudioGraph(): boolean {
     masterGainNode = ctx.createGain();
     masterGainNode.gain.value = 1.0;
 
-    // Connect chain: preamp -> filters[0..N] -> bassBoost -> spatialPanner -> masterGain -> analyser -> destination
+    // Connect chain: preamp -> filters[0..N] -> bassBoost
     let previousNode: AudioNode = preampNode;
     for (const filter of filterNodes) {
       previousNode.connect(filter);
@@ -299,16 +366,70 @@ export function initAudioGraph(): boolean {
     }
 
     previousNode.connect(bassBoostNode);
-    previousNode = bassBoostNode;
 
-    if (spatialPannerNode) {
-      previousNode.connect(spatialPannerNode);
-      previousNode = spatialPannerNode;
-    }
+    // 1) Dry path: bassBoost -> spatialDryGain -> masterGainNode
+    bassBoostNode.connect(spatialDryGain);
+    spatialDryGain.connect(masterGainNode);
 
-    previousNode.connect(masterGainNode);
+    // 2) 3D Wet path: bassBoost -> spatialSplitter -> [Binaural Matrix] -> spatialMerger -> spatialWetGain -> masterGainNode
+    bassBoostNode.connect(spatialSplitter);
+
+    // Direct L -> L, Direct R -> R
+    spatialSplitter.connect(spatialDirectGainL, 0);
+    spatialDirectGainL.connect(spatialMerger, 0, 0);
+
+    spatialSplitter.connect(spatialDirectGainR, 1);
+    spatialDirectGainR.connect(spatialMerger, 0, 1);
+
+    // Crossfeed L -> lowpass L -> delay L -> crossGain L -> Right ear (Merger 1)
+    spatialSplitter.connect(spatialFilterL, 0);
+    spatialFilterL.connect(spatialDelayL);
+    spatialDelayL.connect(spatialCrossGainL);
+    spatialCrossGainL.connect(spatialMerger, 0, 1);
+
+    // Crossfeed R -> lowpass R -> delay R -> crossGain R -> Left ear (Merger 0)
+    spatialSplitter.connect(spatialFilterR, 1);
+    spatialFilterR.connect(spatialDelayR);
+    spatialDelayR.connect(spatialCrossGainR);
+    spatialCrossGainR.connect(spatialMerger, 0, 0);
+
+    // Room reflection L -> Left ear
+    spatialSplitter.connect(spatialRoomFilterL, 0);
+    spatialRoomFilterL.connect(spatialRoomDelayL);
+    spatialRoomDelayL.connect(spatialRoomGain);
+    spatialRoomGain.connect(spatialMerger, 0, 0);
+
+    // Room reflection R -> Right ear
+    spatialSplitter.connect(spatialRoomFilterR, 1);
+    spatialRoomFilterR.connect(spatialRoomDelayR);
+    spatialRoomDelayR.connect(spatialRoomGain);
+    spatialRoomGain.connect(spatialMerger, 0, 1);
+
+    // Wet output: merger -> spatialWetGain -> masterGainNode
+    spatialMerger.connect(spatialWetGain);
+    spatialWetGain.connect(masterGainNode);
+
+    // Master -> Analyser -> Destination
     masterGainNode.connect(analyserNode);
     analyserNode.connect(ctx.destination);
+
+    // Initialize with saved state
+    const saved = loadEqualizerState();
+    if (preampNode) {
+      const targetDb = saved.enabled ? saved.preamp : 0;
+      preampNode.gain.value = Math.pow(10, targetDb / 20);
+    }
+    filterNodes.forEach((node, i) => {
+      node.gain.value = saved.enabled ? (saved.gains[i] ?? 0) : 0;
+    });
+    if (bassBoostNode) {
+      bassBoostNode.gain.value = saved.enabled ? (saved.bassBoost / 100) * 15 : 0;
+    }
+    if (spatialDryGain && spatialWetGain) {
+      const is3DActive = saved.enabled && Boolean(saved.spatial3D);
+      spatialDryGain.gain.value = is3DActive ? 0.0 : 1.0;
+      spatialWetGain.gain.value = is3DActive ? 1.0 : 0.0;
+    }
 
     return true;
   } catch (err) {
@@ -376,7 +497,7 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
     ctx.resume().catch(() => {});
   }
 
-  const { enabled, gains, preamp, bassBoost } = state;
+  const { enabled, gains, preamp, bassBoost, spatial3D } = state;
 
   // 1. Preamp Gain (Instant 0ms real-time parameter update)
   if (preampNode) {
@@ -398,6 +519,17 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
     const extraBassDb = enabled ? (bassBoost / 100) * 15 : 0;
     bassBoostNode.gain.cancelScheduledValues(ctx.currentTime);
     bassBoostNode.gain.setValueAtTime(extraBassDb, ctx.currentTime);
+  }
+
+  // 4. 3D Spatial Audio Engine (Smooth click-free transition)
+  if (spatialDryGain && spatialWetGain) {
+    const is3DActive = enabled && Boolean(spatial3D);
+    const dryTarget = is3DActive ? 0.0 : 1.0;
+    const wetTarget = is3DActive ? 1.0 : 0.0;
+    spatialDryGain.gain.cancelScheduledValues(ctx.currentTime);
+    spatialDryGain.gain.setTargetAtTime(dryTarget, ctx.currentTime, 0.02);
+    spatialWetGain.gain.cancelScheduledValues(ctx.currentTime);
+    spatialWetGain.gain.setTargetAtTime(wetTarget, ctx.currentTime, 0.02);
   }
 }
 
