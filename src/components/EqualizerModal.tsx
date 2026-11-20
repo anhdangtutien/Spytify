@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, RotateCcw, Power, Sliders, Volume2, Sparkles, 
-  Headphones, Flame, Check, AlertCircle, CheckCircle2, Music 
+  Headphones, Flame, Check, AlertCircle, CheckCircle2, Music, Activity
 } from 'lucide-react';
 import { 
   EQ_FREQUENCIES, EQ_LABELS, EQ_PRESETS, EqualizerState,
@@ -17,6 +17,10 @@ interface EqualizerModalProps {
   accentColor?: string;
   themeMode?: 'dark' | 'light';
   language?: LanguageCode;
+  crossfadeDuration?: number;
+  onUpdateCrossfadeDuration?: (durationSecs: number) => void;
+  showVisualizer?: boolean;
+  onToggleVisualizer?: () => void;
 }
 
 export const EqualizerModal: React.FC<EqualizerModalProps> = ({
@@ -26,6 +30,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   accentColor = '#ff2a55',
   themeMode = 'dark',
   language = 'vi',
+  crossfadeDuration = 0,
+  onUpdateCrossfadeDuration,
+  showVisualizer = false,
+  onToggleVisualizer,
 }) => {
   const isLight = themeMode === 'light';
   const [eqState, setEqState] = useState<EqualizerState>(() => loadEqualizerState());
@@ -221,7 +229,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold font-mono tracking-tight">EQUALIZER (EQ)</h2>
+                <h2 className="text-base font-bold font-mono tracking-tight">
+                  {language === 'vi' ? 'CÀI ĐẶT ÂM THANH & EQ' : 'AUDIO SETTINGS & EQ'}
+                </h2>
                 <span 
                   className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase transition-colors"
                   style={{
@@ -229,11 +239,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                     color: eqState.enabled ? accentColor : (isLight ? '#64748b' : '#94a3b8'),
                   }}
                 >
-                  {eqState.enabled ? 'Hi-Fi 10-Band' : 'Bypassed'}
+                  {eqState.enabled ? 'Hi-Fi 10-Band' : 'EQ Bypassed'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 font-sans">
-                {language === 'vi' ? 'Bộ cân bằng tần số âm thanh chuyên nghiệp' : 'Professional Audio Frequency Equalizer'}
+                {language === 'vi' ? 'Bộ cân bằng tần số 10-Band, Chuyển tiếp mượt & Sóng nhạc' : '10-Band Equalizer, Crossfade & Audio Visualizer'}
               </p>
             </div>
           </div>
@@ -316,6 +326,79 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
         {/* Body Content */}
         <div className="p-6 space-y-5 max-h-[75vh] overflow-y-auto">
+          {/* Quick Playback Settings (Crossfade & Visualizer) */}
+          <div className={`p-3.5 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'
+          }`}>
+            {/* Crossfade Transition */}
+            <div className="flex flex-col justify-between gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  {language === 'vi' ? 'Chuyển bài mượt (Crossfade)' : 'Crossfade Transition'}
+                </span>
+                <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
+                  {crossfadeDuration > 0 ? `${crossfadeDuration}s` : (language === 'vi' ? 'Tắt' : 'Off')}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { sec: 0, label: language === 'vi' ? 'Tắt' : 'Off' },
+                  { sec: 3, label: '3s' },
+                  { sec: 5, label: language === 'vi' ? '5s (Khuyên dùng)' : '5s (Rec)' },
+                  { sec: 8, label: '8s' },
+                  { sec: 12, label: '12s' },
+                ].map(opt => {
+                  const isSelected = crossfadeDuration === opt.sec;
+                  return (
+                    <button
+                      key={opt.sec}
+                      type="button"
+                      onClick={() => onUpdateCrossfadeDuration?.(opt.sec)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'border-transparent font-bold text-white shadow-sm'
+                          : isLight
+                          ? 'bg-slate-200/60 border-slate-300/60 text-slate-600 hover:bg-slate-200'
+                          : 'bg-[#181824] border-[#272738] text-slate-400 hover:text-white hover:bg-[#202030]'
+                      }`}
+                      style={isSelected ? { backgroundColor: accentColor } : undefined}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Visualizer Waveform Toggle */}
+            <div className="flex items-center justify-between sm:border-l sm:border-white/10 sm:pl-4">
+              <div className="flex flex-col">
+                <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  {language === 'vi' ? 'Sóng nhạc động (Visualizer)' : 'Audio Visualizer'}
+                </span>
+                <span className="text-[11px] text-slate-500 font-sans mt-0.5">
+                  {language === 'vi' ? 'Hiệu ứng sóng âm thanh trên thanh phát' : 'Real-time waveform on player bar'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onToggleVisualizer}
+                className={`w-11 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ml-2 ${
+                  showVisualizer ? '' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
+                }`}
+                style={showVisualizer ? { backgroundColor: accentColor } : undefined}
+              >
+                <div 
+                  className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${
+                    showVisualizer ? 'translate-x-6' : 'translate-x-1'
+                  }`} 
+                />
+              </button>
+            </div>
+          </div>
+
           {/* Preset Pills (Now with flex-wrap so ALL PRESETS ARE IMMEDIATELY VISIBLE & CLICKABLE) */}
           <div>
             <div className="flex items-center justify-between mb-2.5">

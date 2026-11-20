@@ -88,7 +88,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState(0);
   const [showTimerMenu, setShowTimerMenu] = useState(false);
-  const [showCrossfadeMenu, setShowCrossfadeMenu] = useState(false);
   const [customMinutesInput, setCustomMinutesInput] = useState('');
 
   const formatTimerRemaining = () => {
@@ -175,12 +174,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const getSourceBadge = (source: string) => {
     if (isLive) {
       return (
-        <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[var(--accent-color, #ff2a55)]/15 text-[var(--accent-color, #ff2a55)] border border-[var(--accent-color, #ff2a55)]/40 flex items-center gap-1.5 font-mono">
-          <span className="relative flex h-1.5 w-1.5">
+        <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[var(--accent-color, #ff2a55)]/15 text-[var(--accent-color, #ff2a55)] border border-[var(--accent-color, #ff2a55)]/40 inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0">
+          <span className="relative flex h-1.5 w-1.5 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent-color, #ff2a55)] opacity-75"></span>
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--accent-color, #ff2a55)]"></span>
           </span>
-          LIVE
+          <span className="whitespace-nowrap">LIVE</span>
         </span>
       );
     }
@@ -188,25 +187,28 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     switch (source) {
       case 'youtube':
         return (
-          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-[#ff4e6b] border border-[var(--accent-color, #ff2a55)]/30 flex items-center gap-1 font-mono">
-            <YoutubeIcon className="w-2.5 h-2.5" />YT STREAM
+          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-[#ff4e6b] border border-[var(--accent-color, #ff2a55)]/30 inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0">
+            <YoutubeIcon className="w-2.5 h-2.5 shrink-0" />
+            <span className="whitespace-nowrap">YT STREAM</span>
           </span>
         );
       case 'soundcloud':
         return (
-          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-orange-400 border border-orange-500/30 flex items-center gap-1 font-mono">
-            <SoundCloudIcon className="w-2.5 h-2.5" />SOUNDCLOUD
+          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-orange-400 border border-orange-500/30 inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0">
+            <SoundCloudIcon className="w-2.5 h-2.5 shrink-0" />
+            <span className="whitespace-nowrap">SOUNDCLOUD</span>
           </span>
         );
       case 'audius':
         return (
-          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-white border border-white/20 flex items-center gap-1 font-mono">
-            <AudiusIcon className="w-2.5 h-2.5 text-[var(--accent-color, #ff2a55)]" />AUDIUS 320K
+          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-white border border-white/20 inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0">
+            <AudiusIcon className="w-2.5 h-2.5 text-[var(--accent-color, #ff2a55)] shrink-0" />
+            <span className="whitespace-nowrap">AUDIUS 320K</span>
           </span>
         );
       default:
         return (
-          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-white border border-white/20 font-mono">
+          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-white border border-white/20 font-mono whitespace-nowrap shrink-0">
             LOSSLESS
           </span>
         );
@@ -904,132 +906,35 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </div>
         )}
 
-        {/* Crossfade Songs Toggle & Menu */}
-        {onUpdateCrossfadeDuration && (
-          <div className="relative">
-            <button
-              onClick={() => setShowCrossfadeMenu(p => !p)}
-              title={
-                isCrossfading
-                  ? getTranslation(language, 'player.crossfadeActive')
-                  : `${getTranslation(language, 'player.crossfade')}: ${crossfadeDuration > 0 ? `${crossfadeDuration}s` : getTranslation(language, 'settings.crossfadeOff')}`
-              }
-              style={crossfadeDuration > 0 ? {
-                color: accentColor,
-                backgroundColor: `${accentColor}18`,
-                borderColor: `${accentColor}50`,
-                boxShadow: `0 0 10px ${accentColor}30`,
-              } : undefined}
-              className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 relative ${
-                crossfadeDuration > 0
-                  ? ''
-                  : 'text-[#666] hover:text-white border-transparent'
-              } ${isCrossfading ? 'animate-pulse' : ''}`}
-            >
-              <Sliders className="w-4 h-4" />
-              {crossfadeDuration > 0 && (
-                <span className="text-[10px] font-mono font-bold leading-none">
-                  {crossfadeDuration}s
-                </span>
-              )}
-              {isCrossfading && (
-                <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                  <span
-                    className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-                    style={{ backgroundColor: accentColor }}
-                  />
-                  <span
-                    className="relative inline-flex rounded-full h-2 w-2"
-                    style={{ backgroundColor: accentColor }}
-                  />
-                </span>
-              )}
-            </button>
-
-            {/* Crossfade Popup Menu */}
-            {showCrossfadeMenu && (
-              <div 
-                className="absolute bottom-12 right-0 w-60 p-2.5 rounded-xl bg-[#0c0c12] border border-[#22222e] shadow-2xl z-50 select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#1c1c28]">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
-                    <Sliders className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                    {getTranslation(language, 'player.crossfade')}
-                  </span>
-                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
-                    {crossfadeDuration > 0 ? `${crossfadeDuration}s` : getTranslation(language, 'settings.crossfadeOff')}
-                  </span>
-                </div>
-
-                <div className="space-y-1">
-                  {[
-                    { sec: 0, label: getTranslation(language, 'settings.crossfadeOff') },
-                    { sec: 3, label: '3s' },
-                    { sec: 5, label: `5s (${getTranslation(language, 'settings.crossfadeRecommended')})` },
-                    { sec: 8, label: '8s' },
-                    { sec: 12, label: '12s' },
-                  ].map(opt => {
-                    const isSelected = crossfadeDuration === opt.sec;
-                    return (
-                      <button
-                        key={opt.sec}
-                        onClick={() => {
-                          onUpdateCrossfadeDuration(opt.sec);
-                          setShowCrossfadeMenu(false);
-                        }}
-                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
-                          isSelected ? 'bg-white/10 text-white font-bold' : 'text-[#888] hover:text-white hover:bg-[#161622]'
-                        }`}
-                      >
-                        <span>{opt.label}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Visualizer Toggle */}
-        <button
-          onClick={onToggleVisualizer}
-          title={getTranslation(language, 'player.visualizer')}
-          style={showVisualizer ? {
-            color: accentColor,
-            backgroundColor: `${accentColor}18`,
-            borderColor: `${accentColor}50`,
-            boxShadow: `0 0 10px ${accentColor}30`,
-          } : undefined}
-          className={`p-1.5 rounded-md transition-colors cursor-pointer border ${
-            showVisualizer
-              ? ''
-              : 'text-[#666] hover:text-white border-transparent'
-          }`}
-        >
-          <Activity className="w-4 h-4" />
-        </button>
-
-        {/* Equalizer (EQ) Toggle & Modal */}
+        {/* Unified Audio Settings (Equalizer, Crossfade & Visualizer) */}
         {onOpenEqualizer && (
           <button
             onClick={onOpenEqualizer}
-            title={language === 'vi' ? 'Bộ lọc âm Equalizer (EQ)' : 'Audio Equalizer (EQ)'}
-            style={isEqualizerActive ? {
+            title={language === 'vi' ? 'Cài đặt âm thanh (EQ, Crossfade, Sóng nhạc)' : 'Audio Settings (EQ, Crossfade, Visualizer)'}
+            style={(isEqualizerActive || crossfadeDuration > 0 || showVisualizer) ? {
               color: accentColor,
               backgroundColor: `${accentColor}18`,
               borderColor: `${accentColor}50`,
               boxShadow: `0 0 10px ${accentColor}30`,
             } : undefined}
-            className={`p-1.5 rounded-md transition-colors cursor-pointer border ${
-              isEqualizerActive
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 relative ${
+              (isEqualizerActive || crossfadeDuration > 0 || showVisualizer)
                 ? ''
                 : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
             <SlidersHorizontal className="w-4 h-4" />
+            {crossfadeDuration > 0 && (
+              <span className="text-[10px] font-mono font-bold leading-none">
+                {crossfadeDuration}s
+              </span>
+            )}
+            {showVisualizer && (
+              <span 
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ backgroundColor: accentColor }}
+              />
+            )}
           </button>
         )}
 

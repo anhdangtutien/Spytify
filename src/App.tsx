@@ -3978,6 +3978,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             accentColor={activeAccentColor}
             themeMode={themeMode}
             language={language}
+            crossfadeDuration={crossfadeDuration}
+            onUpdateCrossfadeDuration={setCrossfadeDuration}
+            showVisualizer={showVisualizer}
+            onToggleVisualizer={() => setShowVisualizer(p => !p)}
           />
         </>
       )}
