@@ -242,7 +242,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold font-mono tracking-tight">
+                <h2 className={`text-base font-bold font-mono tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   {language === 'vi' ? 'CÀI ĐẶT ÂM THANH & EQ' : 'AUDIO SETTINGS & EQ'}
                 </h2>
                 <span 
@@ -357,11 +357,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   {crossfadeDuration > 0 ? `${crossfadeDuration}s` : (language === 'vi' ? 'Tắt' : 'Off')}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="grid grid-cols-5 gap-1.5 w-full">
                 {[
                   { sec: 0, label: language === 'vi' ? 'Tắt' : 'Off' },
                   { sec: 3, label: '3s' },
-                  { sec: 5, label: language === 'vi' ? '5s (Khuyên dùng)' : '5s (Rec)' },
+                  { sec: 5, label: '5s ★' },
                   { sec: 8, label: '8s' },
                   { sec: 12, label: '12s' },
                 ].map(opt => {
@@ -371,7 +371,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       key={opt.sec}
                       type="button"
                       onClick={() => onUpdateCrossfadeDuration?.(opt.sec)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer border ${
+                      className={`py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer border text-center w-full ${
                         isSelected
                           ? 'border-transparent font-bold text-white shadow-sm'
                           : isLight

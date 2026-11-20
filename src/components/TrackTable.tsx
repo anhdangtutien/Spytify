@@ -169,32 +169,32 @@ export const TrackTable: React.FC<TrackTableProps> = ({
       case 'youtube':
         return (
           <div 
-            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141414] border"
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141414] border whitespace-nowrap shrink-0"
             style={{ color: accentColor, borderColor: `${accentColor}40` }}
           >
-            <YoutubeIcon className="w-3 h-3" />
-            <span>YT</span>
+            <YoutubeIcon className="w-3 h-3 shrink-0" />
+            <span className="whitespace-nowrap">YT</span>
           </div>
         );
       case 'soundcloud':
         return (
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141414] text-orange-400 border border-orange-500/20">
-            <SoundCloudIcon className="w-3 h-3 text-orange-400" />
-            <span>SC</span>
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141414] text-orange-400 border border-orange-500/20 whitespace-nowrap shrink-0">
+            <SoundCloudIcon className="w-3 h-3 text-orange-400 shrink-0" />
+            <span className="whitespace-nowrap">SC</span>
           </div>
         );
       case 'audius':
         return (
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141416] text-white border border-white/20">
-            <AudiusIcon className="w-3 h-3" style={{ color: accentColor }} />
-            <span>AUDIUS</span>
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141416] text-white border border-white/20 whitespace-nowrap shrink-0">
+            <AudiusIcon className="w-3 h-3 shrink-0" style={{ color: accentColor }} />
+            <span className="whitespace-nowrap">AUDIUS</span>
           </div>
         );
       default:
         return (
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141418] text-white border border-white/20">
-            <HardDrive className="w-3 h-3 text-white" />
-            <span>LOSSLESS</span>
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-[#141418] text-white border border-white/20 whitespace-nowrap shrink-0">
+            <HardDrive className="w-3 h-3 text-white shrink-0" />
+            <span className="whitespace-nowrap">LOSSLESS</span>
           </div>
         );
     }

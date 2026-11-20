@@ -492,7 +492,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
         source: 'youtube',
       });
 
-      const onlineTracks: Track[] = (searchResults || []).slice(0, 12).map((res, idx) => ({
+      const onlineTracks: Track[] = (searchResults || []).slice(0, 24).map((res, idx) => ({
         id: `genre_${genre}_${idx}_${Date.now()}`,
         title: res.title,
         artist: res.artist,
@@ -796,7 +796,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
       )}
 
       {/* ─── GENRE-BASED RECOMMENDATIONS (Đề xuất theo thể loại hay nghe) ─── */}
-      <div className="mb-8 p-5 rounded-2xl bg-[#0a0a0e] border border-[#181822] shadow-sm">
+      <div className="mb-8 p-5 rounded-2xl bg-[#0a0a0e] border border-[#181822] shadow-sm w-full">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div>
             <div className="flex items-center gap-2">
@@ -899,7 +899,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
             <p className="text-xs">{getTranslation(language, 'aimix.noGenreTracks')}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 w-full">
             {genreTracks.map((track) => {
               const isLiveItem = track.source === 'youtube' && (!track.duration_secs || track.duration_secs <= 0);
               const mins = Math.floor(track.duration_secs / 60);
@@ -910,7 +910,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                 <div
                   key={track.id}
                   onClick={() => onPlayTrack(track)}
-                  className="p-2.5 rounded-xl bg-[#0e0e13] hover:bg-[#15151e] border border-[#1a1a24] hover:border-[#2a2a38] transition-all flex items-center justify-between gap-3 cursor-pointer group shadow-sm"
+                  className="p-3 rounded-xl bg-[#0e0e13] hover:bg-[#15151e] border border-[#1a1a24] hover:border-[#2a2a38] transition-all flex items-center justify-between gap-3 cursor-pointer group shadow-sm w-full min-w-0"
                 >
                   <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
                     <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#161620] flex-shrink-0 relative">

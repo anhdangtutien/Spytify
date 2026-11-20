@@ -891,7 +891,17 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [ytVideoId1, setYtVideoId1] = useState<string | null>(null);
   const [ytVideoId2, setYtVideoId2] = useState<string | null>(null);
-  const [scTrackUrl, setScTrackUrl] = useState<string | null>(null);
+  // Dual-channel SoundCloud players for seamless Crossfade overlap
+  const [scTrackUrl1, setScTrackUrl1] = useState<string | null>(null);
+  const [scTrackUrl2, setScTrackUrl2] = useState<string | null>(null);
+  const scIframe1Ref = useRef<HTMLIFrameElement | null>(null);
+  const scIframe2Ref = useRef<HTMLIFrameElement | null>(null);
+  const activeScChannelRef = useRef<1 | 2>(1);
+  const scTrackUrl = activeScChannelRef.current === 1 ? scTrackUrl1 : scTrackUrl2;
+  const setScTrackUrl = (url: string | null) => {
+    if (activeScChannelRef.current === 1) setScTrackUrl1(url);
+    else setScTrackUrl2(url);
+  };
 
   // Spotify-style Equal-Power Crossfade State
   const [crossfadeDuration, setCrossfadeDuration] = useState<number>(() => {
@@ -930,7 +940,6 @@ export default function App() {
   const ytHasStartedPlayingRef = useRef(false);
   const ytMusicFallbackActiveRef = useRef(false);
   const ytMusicFallbackTriedRef = useRef(false);
-  const scIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Dual-channel HTML5 audio elements
   const onlineAudio1Ref = useRef<HTMLAudioElement | null>(null);
@@ -2217,7 +2226,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       try {
         const isFrom1 = ytIframe1Ref.current && event.source === ytIframe1Ref.current.contentWindow;
         const isFrom2 = ytIframe2Ref.current && event.source === ytIframe2Ref.current.contentWindow;
-        const isFromSc = scIframeRef.current && event.source === scIframeRef.current.contentWindow;
+        const isFromSc1 = scIframe1Ref.current && event.source === scIframe1Ref.current.contentWindow;
+        const isFromSc2 = scIframe2Ref.current && event.source === scIframe2Ref.current.contentWindow;
+        const isFromSc = isFromSc1 || isFromSc2;
+        const scChannel: 1 | 2 = isFromSc1 ? 1 : 2;
 
         // Bỏ qua tin nhắn không phải từ iframe của Spytify
         if (!isFrom1 && !isFrom2 && !isFromSc) {
@@ -2375,21 +2387,27 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             }
           }
           if (scEvent === 'play') {
-            isPlayingRef.current = true;
-            setIsPlaying(true);
-            playStartTimestampRef.current = Date.now();
-            sendScCmd('setVolume', volumeRef.current * 100);
+            if (scChannel === activeScChannelRef.current) {
+              isPlayingRef.current = true;
+              setIsPlaying(true);
+              playStartTimestampRef.current = Date.now();
+              if (!crossfadeActiveRef.current) {
+                sendScCmd('setVolume', volumeRef.current * 100, scChannel);
+              }
+            }
           }
           if (scEvent === 'pause') {
-            isPlayingRef.current = false;
-            setIsPlaying(false);
-            if (playStartTimestampRef.current) {
-              accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
-              playStartTimestampRef.current = null;
+            if (scChannel === activeScChannelRef.current) {
+              isPlayingRef.current = false;
+              setIsPlaying(false);
+              if (playStartTimestampRef.current) {
+                accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
+                playStartTimestampRef.current = null;
+              }
             }
           }
           if (scEvent === 'finish') {
-            if (!crossfadeActiveRef.current) {
+            if (scChannel === activeScChannelRef.current && !crossfadeActiveRef.current) {
               isPlayingRef.current = false;
               setIsPlaying(false);
               playStartTimestampRef.current = null;
@@ -2398,13 +2416,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             }
           }
           if (scEvent === 'playProgress') {
-            const rawPos = data.data?.currentPosition ?? data.value?.currentPosition ?? 0;
-            const posSecs = rawPos / 1000;
-            if (posSecs > 0) {
-              currentTimeRef.current = posSecs;
-              accumulatedTimeRef.current = posSecs;
-              if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
-              if (!isTrayModeRef.current) setCurrentTime(posSecs);
+            if (scChannel === activeScChannelRef.current) {
+              const rawPos = data.data?.currentPosition ?? data.value?.currentPosition ?? 0;
+              const posSecs = rawPos / 1000;
+              if (posSecs > 0) {
+                currentTimeRef.current = posSecs;
+                accumulatedTimeRef.current = posSecs;
+                if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
+                if (!isTrayModeRef.current) setCurrentTime(posSecs);
+              }
             }
           }
         }
@@ -2465,13 +2485,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           (currentTrackRef.current?.source === 'youtube' && ytMusicFallbackActiveRef.current)
         ) {
           currentTimeRef.current = audio.currentTime;
-          if (audio.duration > 0 && !isNaN(audio.duration)) {
-            durationRef.current = audio.duration;
-          }
-          if (!isTrayModeRef.current) {
-            setCurrentTime(audio.currentTime);
-            if (audio.duration > 0 && !isNaN(audio.duration)) {
-              setDuration(audio.duration);
+          const validDur = (audio.duration > 0 && isFinite(audio.duration)) 
+            ? audio.duration 
+            : (currentTrackRef.current?.duration_secs || 0);
+          if (validDur > 0) {
+            durationRef.current = validDur;
+            if (!isTrayModeRef.current) {
+              setDuration(validDur);
             }
           }
         }
@@ -2555,9 +2575,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
   };
 
-  const sendScCmd = (method: string, value?: unknown) => {
-    if (scIframeRef.current?.contentWindow) {
-      scIframeRef.current.contentWindow.postMessage(
+  const sendScCmd = (method: string, value?: unknown, channel?: 1 | 2) => {
+    const ch = channel ?? activeScChannelRef.current;
+    const target = ch === 1 ? scIframe1Ref.current : scIframe2Ref.current;
+    if (target?.contentWindow) {
+      target.contentWindow.postMessage(
         JSON.stringify({ method, value }), '*'
       );
     }
@@ -2758,8 +2780,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         setYtVideoId1(null);
         setYtVideoId2(null);
         setShowYoutubeVideo(false);
-        sendScCmd('pause');
-        setScTrackUrl(null);
+        sendScCmd('pause', undefined, 1);
+        sendScCmd('pause', undefined, 2);
+        setScTrackUrl1(null);
+        setScTrackUrl2(null);
 
         activeAudioChannelRef.current = 1;
         onlineAudioRef.current = onlineAudio1Ref.current;
@@ -2799,8 +2823,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       } else if (track.source === 'youtube') {
         try { await invoke('stop_track'); } catch {}
-        sendScCmd('pause');
-        setScTrackUrl(null);
+        sendScCmd('pause', undefined, 1);
+        sendScCmd('pause', undefined, 2);
+        setScTrackUrl1(null);
+        setScTrackUrl2(null);
         onlineAudio1Ref.current?.pause();
         if (onlineAudio1Ref.current) onlineAudio1Ref.current.src = '';
         onlineAudio2Ref.current?.pause();
@@ -2878,8 +2904,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           } catch {}
         }
         if (scUrl) {
-          setScTrackUrl(scUrl);
-          sendScCmd('setVolume', volumeRef.current * 100);
+          activeScChannelRef.current = 1;
+          sendScCmd('pause', undefined, 2);
+          setScTrackUrl2(null);
+          setScTrackUrl1(scUrl);
+          sendScCmd('setVolume', volumeRef.current * 100, 1);
           isPlayingRef.current = true;
           setIsPlaying(true);
           showNotification(`▶ SoundCloud: ${track.title}`);
@@ -2894,8 +2923,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         setYtVideoId1(null);
         setYtVideoId2(null);
         setShowYoutubeVideo(false);
-        sendScCmd('pause');
-        setScTrackUrl(null);
+        sendScCmd('pause', undefined, 1);
+        sendScCmd('pause', undefined, 2);
+        setScTrackUrl1(null);
+        setScTrackUrl2(null);
 
         activeAudioChannelRef.current = 1;
         onlineAudioRef.current = onlineAudio1Ref.current;
@@ -2951,12 +2982,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const outAudioChannel = activeAudioChannelRef.current;
     const outAudio = outAudioChannel === 1 ? onlineAudio1Ref.current : onlineAudio2Ref.current;
     const outYtChannel = activeYtChannelRef.current;
+    const outScChannel = activeScChannelRef.current;
     const outSc = outSource === 'soundcloud';
 
     // Pick alternate incoming channels
     const inAudioChannel: 1 | 2 = outAudioChannel === 1 ? 2 : 1;
     const inAudio = inAudioChannel === 1 ? onlineAudio1Ref.current : onlineAudio2Ref.current;
     const inYtChannel: 1 | 2 = outYtChannel === 1 ? 2 : 1;
+    const inScChannel: 1 | 2 = outScChannel === 1 ? 2 : 1;
 
     // Toast notification for Spotify Crossfade
     showNotification(`🔀 ${getTranslation(language, 'settings.crossfadingToast', { seconds: crossfadeDurationRef.current })}: ${track.title} - ${track.artist}`);
@@ -3029,10 +3062,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
 
     } else if (track.source === 'soundcloud') {
+      activeScChannelRef.current = inScChannel;
       let scUrl = track.path_or_url;
       if (scUrl) {
-        setScTrackUrl(scUrl);
-        sendScCmd('setVolume', 0);
+        if (inScChannel === 1) {
+          setScTrackUrl1(scUrl);
+        } else {
+          setScTrackUrl2(scUrl);
+        }
+        sendScCmd('setVolume', 0, inScChannel);
         isPlayingRef.current = true;
         setIsPlaying(true);
       }
@@ -3060,7 +3098,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       } else if (outSource === 'youtube') {
         sendYtCmd('setVolume', [Math.max(0, Math.min(100, outVol * 100))], outYtChannel);
       } else if (outSc) {
-        sendScCmd('setVolume', Math.max(0, Math.min(100, outVol * 100)));
+        sendScCmd('setVolume', Math.max(0, Math.min(100, outVol * 100)), outScChannel);
       }
 
       // Fade in incoming channel
@@ -3069,7 +3107,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       } else if (track.source === 'youtube') {
         sendYtCmd('setVolume', [Math.max(0, Math.min(100, inVol * 100))], inYtChannel);
       } else if (track.source === 'soundcloud') {
-        sendScCmd('setVolume', Math.max(0, Math.min(100, inVol * 100)));
+        sendScCmd('setVolume', Math.max(0, Math.min(100, inVol * 100)), inScChannel);
       }
 
       if (progress >= 1) {
@@ -3091,8 +3129,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           if (outYtChannel === 1) setYtVideoId1(null);
           else setYtVideoId2(null);
         } else if (outSc) {
-          sendScCmd('pause');
-          setScTrackUrl(null);
+          sendScCmd('pause', undefined, outScChannel);
+          if (outScChannel === 1) setScTrackUrl1(null);
+          else setScTrackUrl2(null);
         }
 
         // Finalize incoming volume to set volume (use current volumeRef in case user moved slider during crossfade)
@@ -3103,7 +3142,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         } else if (track.source === 'youtube') {
           sendYtCmd('setVolume', [finalPct], inYtChannel);
         } else if (track.source === 'soundcloud') {
-          sendScCmd('setVolume', finalPct);
+          sendScCmd('setVolume', finalPct, inScChannel);
         }
       }
     }, 50);
@@ -4099,19 +4138,56 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </div>
       )}
 
-      {/* SoundCloud Widget — hidden player */}
-      {scTrackUrl && (
+      {/* SoundCloud Widget 1 — hidden player */}
+      {scTrackUrl1 && (
         <div className="fixed -top-1 -left-1 w-1 h-1 overflow-hidden opacity-0 pointer-events-none">
           <iframe
-            key={scTrackUrl}
-            ref={scIframeRef}
-            src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(scTrackUrl)}&auto_play=true&hide_related=true&show_artwork=false&show_user=false&show_reposts=false&visual=false&color=%2300e5ff`}
+            key={scTrackUrl1}
+            ref={scIframe1Ref}
+            src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(scTrackUrl1)}&auto_play=true&hide_related=true&show_artwork=false&show_user=false&show_reposts=false&visual=false&color=%2300e5ff`}
             onLoad={() => {
               try {
-                sendScCmd('setVolume', volumeRef.current * 100);
+                sendScCmd('addEventListener', 'play', 1);
+                sendScCmd('addEventListener', 'pause', 1);
+                sendScCmd('addEventListener', 'finish', 1);
+                sendScCmd('addEventListener', 'playProgress', 1);
+                sendScCmd('addEventListener', 'seek', 1);
+                if (!crossfadeActiveRef.current) {
+                  sendScCmd('setVolume', volumeRef.current * 100, 1);
+                } else if (activeScChannelRef.current === 1) {
+                  sendScCmd('setVolume', 0, 1);
+                }
               } catch {}
             }}
-            title="SoundCloud Player"
+            title="SoundCloud Player 1"
+            className="w-full h-full border-0"
+            allow="autoplay"
+          />
+        </div>
+      )}
+
+      {/* SoundCloud Widget 2 — hidden player */}
+      {scTrackUrl2 && (
+        <div className="fixed -top-1 -left-1 w-1 h-1 overflow-hidden opacity-0 pointer-events-none">
+          <iframe
+            key={scTrackUrl2}
+            ref={scIframe2Ref}
+            src={`https://w.soundcloud.com/player/?url=${encodeURIComponent(scTrackUrl2)}&auto_play=true&hide_related=true&show_artwork=false&show_user=false&show_reposts=false&visual=false&color=%2300e5ff`}
+            onLoad={() => {
+              try {
+                sendScCmd('addEventListener', 'play', 2);
+                sendScCmd('addEventListener', 'pause', 2);
+                sendScCmd('addEventListener', 'finish', 2);
+                sendScCmd('addEventListener', 'playProgress', 2);
+                sendScCmd('addEventListener', 'seek', 2);
+                if (!crossfadeActiveRef.current) {
+                  sendScCmd('setVolume', volumeRef.current * 100, 2);
+                } else if (activeScChannelRef.current === 2) {
+                  sendScCmd('setVolume', 0, 2);
+                }
+              } catch {}
+            }}
+            title="SoundCloud Player 2"
             className="w-full h-full border-0"
             allow="autoplay"
           />
