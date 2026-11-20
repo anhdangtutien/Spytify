@@ -70,7 +70,7 @@ export const AddToAlbumModal: React.FC<AddToAlbumModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 select-none">
+    <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 select-none animate-in fade-in duration-150">
       <div className="w-full max-w-sm bg-[#0a0a0d] border border-[#1e1e28] rounded-2xl p-5 shadow-2xl relative">
         <button
           onClick={onClose}

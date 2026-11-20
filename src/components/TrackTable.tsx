@@ -297,7 +297,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
       )}
 
       {/* Header — Spy Minimalist with Rust native sorting */}
-      <div className="grid grid-cols-[40px_1fr_1fr_90px_90px] px-3 py-2 border-b border-[#141418] text-[10px] font-bold text-[#666677] uppercase tracking-wider sticky top-0 bg-black/90 backdrop-blur z-10 font-mono">
+      <div className="grid grid-cols-[40px_1fr_1fr_90px_110px] px-3 py-2 border-b border-[#141418] text-[10px] font-bold text-[#666677] uppercase tracking-wider sticky top-0 bg-black/90 backdrop-blur z-10 font-mono">
         <span 
           onClick={() => { setSortBy('default'); setSortAsc(true); }}
           className="text-center cursor-pointer hover:text-white transition-colors"
@@ -371,7 +371,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 borderLeftColor: isSelected ? accentColor : 'transparent',
                 backgroundColor: isSelected ? `${accentColor}18` : undefined,
               }}
-              className={`grid grid-cols-[40px_1fr_1fr_90px_90px] items-center px-3 rounded-md transition-colors group cursor-pointer select-none ${
+              className={`grid grid-cols-[40px_1fr_1fr_90px_110px] items-center px-3 rounded-md transition-colors group cursor-pointer select-none ${
                 draggedIdx === idx ? 'opacity-30 scale-[0.99]' : ''
               } ${
                 dragOverIdx === idx ? 'border-t-2 border-indigo-400 bg-indigo-500/10' : ''
@@ -527,8 +527,8 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                       e.stopPropagation();
                       onAddToAlbum(track);
                     }}
-                    title={getTranslation(language, 'player.addToAlbum')}
-                    className="p-1 transition-colors cursor-pointer opacity-0 group-hover:opacity-100 text-[#666] hover:text-white"
+                    title={language === 'vi' ? `Thêm "${track.title}" vào Album riêng` : getTranslation(language, 'player.addToAlbum')}
+                    className="p-1 transition-all cursor-pointer opacity-70 group-hover:opacity-100 text-[#888] hover:text-white hover:scale-110 active:scale-95"
                   >
                     <FolderPlus className="w-3.5 h-3.5" />
                   </button>

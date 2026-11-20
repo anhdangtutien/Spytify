@@ -15,6 +15,7 @@ import { CommunityView } from './components/CommunityView';
 import { HomeTrendingView } from './components/HomeTrendingView';
 import { AlbumsView } from './components/AlbumsView';
 import { AddToAlbumModal } from './components/AddToAlbumModal';
+import { CreateAlbumFromSelectionModal } from './components/CreateAlbumFromSelectionModal';
 import { EqualizerModal } from './components/EqualizerModal';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph } from './services/equalizer';
 import { SplashScreen } from './components/SplashScreen';
@@ -568,6 +569,7 @@ export default function App() {
   }, [currentUser?.id]);
   const [trackToAddToAlbum, setTrackToAddToAlbum] = useState<Track | null>(null);
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
+  const [isCreateAlbumFromSelectionOpen, setIsCreateAlbumFromSelectionOpen] = useState(false);
 
   const handleCreateAlbum = (title: string, description: string): UserAlbum => {
     const userId = currentUserRef.current?.id;
@@ -596,17 +598,18 @@ export default function App() {
       showNotification(language === 'vi' ? 'Chưa có bài hát nào được tải xuống máy!' : 'No downloaded songs found!');
       return;
     }
-    const now = new Date();
-    const dateStr = `${now.getDate()}/${now.getMonth() + 1}`;
-    const defaultTitle = language === 'vi' ? `Nhạc Tải Về (${dateStr})` : `Downloaded Music (${dateStr})`;
-    const newAlbum = handleCreateAlbum(defaultTitle, language === 'vi' ? `Album gồm ${downloaded.length} bài hát đã tải về máy` : `${downloaded.length} offline downloaded songs`);
+    setIsCreateAlbumFromSelectionOpen(true);
+  };
+
+  const handleCreateAlbumWithSelectedTracks = (title: string, description: string, selectedTracks: Track[]) => {
+    const newAlbum = handleCreateAlbum(title, description || (language === 'vi' ? `Album gồm ${selectedTracks.length} bài hát đã tải về máy` : `${selectedTracks.length} offline downloaded songs`));
     
-    // Add all downloaded tracks into this new album
+    // Add selected downloaded tracks into this new album
     const userId = currentUserRef.current?.id;
     setAlbums(prev => {
       const updated = prev.map(a => {
         if (a.id === newAlbum.id) {
-          return { ...a, tracks: deduplicateTracks(downloaded) };
+          return { ...a, tracks: deduplicateTracks(selectedTracks) };
         }
         return a;
       });
@@ -617,7 +620,7 @@ export default function App() {
       return updated;
     });
 
-    showNotification(language === 'vi' ? `Đã tạo Album "${defaultTitle}" (${downloaded.length} bài hát)!` : `Created Album "${defaultTitle}" (${downloaded.length} songs)!`);
+    showNotification(language === 'vi' ? `Đã tạo Album "${title}" (${selectedTracks.length} bài hát)!` : `Created Album "${title}" (${selectedTracks.length} songs)!`);
     setCurrentView('albums');
   };
 
@@ -4044,6 +4047,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             accentColor={activeAccentColor}
           />
 
+          {/* Create Custom Album from Selected Downloaded Tracks Modal */}
+          <CreateAlbumFromSelectionModal
+            isOpen={isCreateAlbumFromSelectionOpen}
+            onClose={() => setIsCreateAlbumFromSelectionOpen(false)}
+            availableTracks={tracks.filter(t => t.source === 'local')}
+            onCreateAlbum={handleCreateAlbumWithSelectedTracks}
+            language={language}
+            accentColor={activeAccentColor}
+          />
+
           {/* Auth Modal */}
           <AuthModal
             isOpen={isAuthModalOpen}
@@ -4519,6 +4532,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onTogglePlay={handleTogglePlay}
                 accentColor={activeAccentColor}
                 language={language}
+                availableTracks={tracks.filter(t => t.source === 'local')}
               />
             ) : currentView === 'library' ? (
               <HomeTrendingView
