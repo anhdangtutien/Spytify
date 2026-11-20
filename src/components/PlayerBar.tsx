@@ -305,15 +305,17 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </div>
               )}
             </div>
-            <div className="flex flex-col overflow-hidden pr-2 flex-1 min-w-0">
+            <div className="flex flex-col justify-center overflow-hidden pr-2 flex-1 min-w-0">
               <MarqueeText
                 text={currentTrack.title}
-                className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight`}
+                wrapperClassName="leading-none"
+                className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight leading-none block`}
                 style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}
               />
               <MarqueeText
                 text={currentTrack.artist}
-                className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} mt-0.5`}
+                wrapperClassName="leading-none mt-1"
+                className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} leading-none block`}
                 style={{ color: themeMode === 'light' ? '#64748b' : '#8e8e9f' }}
               />
             </div>

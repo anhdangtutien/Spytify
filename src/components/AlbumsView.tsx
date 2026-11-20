@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Plus, Disc, Play, Trash2, Music, ArrowLeft, Clock3, FolderPlus, 
-  Sparkles, Layers, Check, X, Pencil, Image as ImageIcon, GripVertical
+  Sparkles, Layers, Check, X, Pencil, Image as ImageIcon, GripVertical, Download, Loader2
 } from 'lucide-react';
 import { Track, UserAlbum } from '../types';
 import { TrackTable } from './TrackTable';
@@ -24,6 +24,9 @@ interface AlbumsViewProps {
   accentColor?: string;
   language?: LanguageCode;
   availableTracks?: Track[];
+  onDownloadAlbum?: (album: UserAlbum) => void;
+  onDownloadTrack?: (track: Track) => void;
+  downloadingTrackIds?: Set<string>;
 }
 
 export const AlbumsView: React.FC<AlbumsViewProps> = ({
@@ -42,6 +45,9 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   accentColor = '#ff2a55',
   language = 'vi',
   availableTracks = [],
+  onDownloadAlbum,
+  onDownloadTrack,
+  downloadingTrackIds,
 }) => {
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -646,6 +652,25 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   <FolderPlus className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   <span>{language === 'vi' ? 'Thêm bài hát' : 'Add Tracks'}</span>
                 </button>
+                {onDownloadAlbum && (
+                  <button
+                    onClick={() => onDownloadAlbum({ ...selectedAlbum, tracks: cleanAlbumTracks })}
+                    disabled={cleanAlbumTracks.length === 0 || (downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)))}
+                    className="px-4 py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold disabled:opacity-40"
+                    title={language === 'vi' ? 'Tải xuống toàn bộ bài hát trong album về máy' : 'Download all tracks in this album to local disk'}
+                  >
+                    {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)) ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accentColor }} />
+                    ) : (
+                      <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                    )}
+                    <span>
+                      {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id))
+                        ? (language === 'vi' ? 'Đang tải album...' : 'Downloading...')
+                        : (language === 'vi' ? 'Tải xuống Album' : 'Download Album')}
+                    </span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     if (confirm(getTranslation(language, 'album.deleteConfirm', { title: selectedAlbum.title }))) {
@@ -800,7 +825,30 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {track.source !== 'local' && !track.is_downloaded && onDownloadTrack && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDownloadTrack(track);
+                            }}
+                            disabled={downloadingTrackIds?.has(track.id)}
+                            title={language === 'vi' ? 'Tải bài hát này về máy' : 'Download track'}
+                            className="p-1.5 text-[#666] hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-40"
+                          >
+                            {downloadingTrackIds?.has(track.id) ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accentColor }} />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
+                        {(track.source === 'local' || track.is_downloaded) && (
+                          <span className="flex items-center gap-1 text-[9px] font-mono text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                            <Check className="w-2.5 h-2.5" />
+                            <span>LOSSLESS</span>
+                          </span>
+                        )}
                         <span className="text-[10px] text-[#666] font-mono uppercase px-2 py-0.5 rounded bg-[#14141c]">
                           {track.source}
                         </span>
@@ -921,6 +969,19 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       >
                         <Play className="w-4 h-4 fill-current ml-0.5" />
                       </div>
+
+                      {onDownloadAlbum && album.tracks.some(t => t.source !== 'local' && !t.is_downloaded) && (
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDownloadAlbum({ ...album, tracks: deduplicateTracks(album.tracks) });
+                          }}
+                          className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-[#101018]/90 hover:bg-[#1a1a24] text-white border border-[#2a2a38] flex items-center justify-center shadow-lg opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all cursor-pointer"
+                          title={language === 'vi' ? 'Tải xuống album này' : 'Download this album'}
+                        >
+                          <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                        </div>
+                      )}
                     </div>
 
                     <p className="text-xs font-bold text-white truncate transition-colors">

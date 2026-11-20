@@ -256,6 +256,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     nextGains[index] = value;
     const next: EqualizerState = {
       ...eqState,
+      enabled: true,
       gains: nextGains,
       presetId: 'custom',
     };
@@ -265,14 +266,14 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   };
 
   const handlePreampChange = (value: number) => {
-    const next: EqualizerState = { ...eqState, preamp: value, presetId: 'custom' };
+    const next: EqualizerState = { ...eqState, enabled: true, preamp: value, presetId: 'custom' };
     setEqState(next);
     applyEqualizerStateToGraph(next);
     debouncedSave(next);
   };
 
   const handleBassBoostChange = (value: number) => {
-    const next: EqualizerState = { ...eqState, bassBoost: value, presetId: 'custom' };
+    const next: EqualizerState = { ...eqState, enabled: true, bassBoost: value, presetId: 'custom' };
     setEqState(next);
     applyEqualizerStateToGraph(next);
     debouncedSave(next);
@@ -702,10 +703,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   max="15"
                   step="0.5"
                   value={eqState.preamp}
-                  disabled={!eqState.enabled}
                   onChange={e => handlePreampChange(parseFloat(e.target.value))}
                   onWheel={e => (e.target as HTMLElement).blur()}
-                  className="w-full h-1 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
+                  className="w-full h-1 rounded-full appearance-none cursor-pointer outline-none transition-opacity touch-none"
                   style={{
                     accentColor: accentColor,
                     backgroundColor: isLight ? '#cbd5e1' : '#222232',
@@ -731,10 +731,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   max="100"
                   step="5"
                   value={eqState.bassBoost}
-                  disabled={!eqState.enabled}
                   onChange={e => handleBassBoostChange(parseInt(e.target.value))}
                   onWheel={e => (e.target as HTMLElement).blur()}
-                  className="w-full h-1 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
+                  className="w-full h-1 rounded-full appearance-none cursor-pointer outline-none transition-opacity touch-none"
                   style={{
                     accentColor: '#f59e0b',
                     backgroundColor: isLight ? '#cbd5e1' : '#222232',
@@ -820,15 +819,18 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                       >
                         <input
                           type="range"
+                          // @ts-expect-error orient is supported in standard HTML5
+                          orient="vertical"
                           min="-15"
                           max="15"
                           step="0.5"
                           value={gain}
-                          disabled={!eqState.enabled}
                           onChange={e => handleBandGainChange(index, parseFloat(e.target.value))}
                           onWheel={e => (e.target as HTMLElement).blur()}
-                          className="h-20 w-2 appearance-none rounded-full cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none select-none"
+                          className="h-20 w-3.5 cursor-pointer outline-none transition-all touch-none select-none"
                           style={{
+                            writingMode: 'vertical-lr',
+                            direction: 'rtl',
                             WebkitAppearance: 'slider-vertical',
                             accentColor: accentColor,
                             backgroundColor: isLight ? '#cbd5e1' : '#222232',

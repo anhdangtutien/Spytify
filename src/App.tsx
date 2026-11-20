@@ -3647,6 +3647,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
   };
 
+  const handleDownloadAlbum = async (album: UserAlbum) => {
+    const cleanTracks = deduplicateTracks(album.tracks || []);
+    const tracksToDownload = cleanTracks.filter(t => t.source !== 'local' && !t.is_downloaded);
+    if (tracksToDownload.length === 0) {
+      showNotification(language === 'vi' ? 'Toàn bộ bài hát trong album này đã được tải về máy!' : 'All songs in this album are already downloaded!');
+      return;
+    }
+    showNotification(`⏳ ${language === 'vi' ? `Bắt đầu tải ${tracksToDownload.length} bài hát trong album "${album.title}"...` : `Starting download of ${tracksToDownload.length} tracks in album "${album.title}"...`}`);
+    for (const track of tracksToDownload) {
+      await handleDownloadTrack(track);
+    }
+    showNotification(`✅ ${language === 'vi' ? `Hoàn tất tải xuống toàn bộ album "${album.title}"!` : `Successfully downloaded album "${album.title}"!`}`);
+  };
+
   const handleChangeDownloadFolder = async () => {
     try {
       const selected = await open({
@@ -4599,6 +4613,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 accentColor={activeAccentColor}
                 language={language}
                 availableTracks={tracks.filter(t => t.source === 'local')}
+                onDownloadAlbum={handleDownloadAlbum}
+                onDownloadTrack={handleDownloadTrack}
+                downloadingTrackIds={downloadingTrackIds}
               />
             ) : currentView === 'library' ? (
               <HomeTrendingView

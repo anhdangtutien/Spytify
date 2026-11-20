@@ -505,6 +505,7 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
     const linearGain = Math.pow(10, targetDb / 20);
     preampNode.gain.cancelScheduledValues(ctx.currentTime);
     preampNode.gain.setValueAtTime(linearGain, ctx.currentTime);
+    preampNode.gain.value = linearGain;
   }
 
   // 2. 10 Bands (Instant 0ms real-time parameter update)
@@ -512,6 +513,7 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
     const targetGain = enabled ? (gains[i] ?? 0) : 0;
     node.gain.cancelScheduledValues(ctx.currentTime);
     node.gain.setValueAtTime(targetGain, ctx.currentTime);
+    node.gain.value = targetGain;
   });
 
   // 3. Bass Booster (0 to +15dB at 80Hz, Instant 0ms real-time update)
@@ -519,6 +521,7 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
     const extraBassDb = enabled ? (bassBoost / 100) * 15 : 0;
     bassBoostNode.gain.cancelScheduledValues(ctx.currentTime);
     bassBoostNode.gain.setValueAtTime(extraBassDb, ctx.currentTime);
+    bassBoostNode.gain.value = extraBassDb;
   }
 
   // 4. 3D Spatial Audio Engine (Smooth click-free transition)
@@ -528,8 +531,10 @@ export function applyEqualizerStateToGraph(state: EqualizerState): void {
     const wetTarget = is3DActive ? 1.0 : 0.0;
     spatialDryGain.gain.cancelScheduledValues(ctx.currentTime);
     spatialDryGain.gain.setTargetAtTime(dryTarget, ctx.currentTime, 0.02);
+    spatialDryGain.gain.value = dryTarget;
     spatialWetGain.gain.cancelScheduledValues(ctx.currentTime);
     spatialWetGain.gain.setTargetAtTime(wetTarget, ctx.currentTime, 0.02);
+    spatialWetGain.gain.value = wetTarget;
   }
 }
 
