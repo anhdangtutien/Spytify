@@ -314,7 +314,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               />
               <MarqueeText
                 text={currentTrack.artist}
-                wrapperClassName="leading-none mt-1"
+                wrapperClassName="leading-none -mt-0.5"
                 className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} leading-none block`}
                 style={{ color: themeMode === 'light' ? '#64748b' : '#8e8e9f' }}
               />

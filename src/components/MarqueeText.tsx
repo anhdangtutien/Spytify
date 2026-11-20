@@ -44,13 +44,14 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
         setIsHovered(true);
       }}
       onMouseLeave={() => setIsHovered(false)}
-      className={`overflow-hidden whitespace-nowrap min-w-0 select-none cursor-default ${wrapperClassName}`}
+      className={`overflow-hidden whitespace-nowrap min-w-0 select-none cursor-default leading-none ${wrapperClassName}`}
       title={text || ''}
     >
       <span
         ref={textRef}
         style={{
           display: 'inline-block',
+          lineHeight: 1.15,
           ...(isHovered && offset > 0
             ? {
                 animation: `marquee-ping-pong ${animationDuration}s ease-in-out infinite`,
