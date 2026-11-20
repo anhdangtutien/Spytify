@@ -2878,6 +2878,10 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const messageMentionsEveryone = (content?: string | null) =>
     Boolean(content && /(^|\s)@everyone(?=$|[\s.,!?;:，。！？])/i.test(content));
   const shouldCountUnreadMessage = (serverId: string, message: CommunityMessage) => {
+    const srv = servers.find(s => s.id === serverId);
+    if (srv?.auto_delete_hours && srv.auto_delete_hours > 0) {
+      return false; // Máy chủ đã bật tin nhắn tự xóa -> không hiện số thông báo chưa đọc
+    }
     const mode = serverNotificationModesRef.current[serverId] || 'all';
     const isImportantMention =
       messageMentionsEveryone(message.content) || messageMentionsCurrentUser(message.content);
@@ -2936,19 +2940,19 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       return currentUser?.avatar || fallbackAvatar || null;
     }
 
-    // 1. Ưu tiên kiểm tra trong realtimeUserPresences (bộ đệm trực tuyến theo ID hoặc Username)
+    // 1. ƯU TIÊN SỐ 1: registeredUsers (được đồng bộ trực tiếp từ bảng spytify_profiles trên Supabase Cloud - nguồn chuẩn nhất)
+    const reg = registeredUsers.find(
+      u => u.id === userId || (u.username && u.username.toLowerCase() === userId.toLowerCase())
+    );
+    if (reg?.avatar) return reg.avatar;
+
+    // 2. Tiếp theo: realtimeUserPresences (bộ đệm trực tuyến theo ID hoặc Username)
     const rt =
       realtimeUserPresences[userId] ||
       Object.values(realtimeUserPresences).find(
         p => p.id === userId || (p.username && p.username.toLowerCase() === userId.toLowerCase())
       );
     if (rt?.avatar) return rt.avatar;
-
-    // 2. Ưu tiên kiểm tra trong registeredUsers (được đồng bộ trực tiếp từ bảng spytify_profiles trên Supabase Cloud)
-    const reg = registeredUsers.find(
-      u => u.id === userId || (u.username && u.username.toLowerCase() === userId.toLowerCase())
-    );
-    if (reg?.avatar) return reg.avatar;
 
     // 3. Kiểm tra thông tin trong follow graph / danh sách người theo dõi
     const fol =
@@ -4886,6 +4890,20 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     persistServers(updatedList);
     pushCloudServer(updatedSrv).catch(() => {});
     purgeServerExpiredMessages(updatedSrv);
+    if (editServerAutoDeleteHours > 0) {
+      setUnreadChannelCounts(prev => {
+        const next = { ...prev };
+        updatedSrv.channels.forEach(ch => {
+          delete next[ch.id];
+        });
+        try {
+          if (currentUser?.id) {
+            localStorage.setItem(`spytify_unread_ch_${currentUser.id}`, JSON.stringify(next));
+          }
+        } catch {}
+        return next;
+      });
+    }
     activeChannelRef.current?.send({
       type: 'broadcast',
       event: 'server_updated',
@@ -8041,6 +8059,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           });
         }
 
+        if (cloudProfiles.length > 0) {
+          setRealtimeUserPresences(prev => {
+            let next = prev;
+            cloudProfiles.forEach(cp => {
+              if (!cp.id) return;
+              const existing = prev[cp.id];
+              if (existing) {
+                if (next === prev) next = { ...prev };
+                next[cp.id] = {
+                  ...existing,
+                  avatar: cp.avatar !== undefined ? cp.avatar : existing.avatar,
+                  display_name: cp.display_name || existing.display_name,
+                  bio: cp.bio ?? existing.bio,
+                  thought: cp.thought ?? existing.thought,
+                };
+              }
+            });
+            return next;
+          });
+        }
+
         if (profileUpdates.length > 0) {
           setRealtimeUserPresences(prev => {
             let next = prev;
@@ -8831,20 +8870,53 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     bio: myBio,
   };
   const publishedProfilePresenceRef = useRef(pendingProfilePresenceRef.current);
+  publishedProfilePresenceRef.current.avatar = currentUser?.avatar || null;
+  publishedProfilePresenceRef.current.bio = myBio || '';
+
   const myPresencePayloadRef = useRef<any>(null);
   myPresencePayloadRef.current = {
     id: currentUser?.id || myParticipantIdRef.current,
     username: currentUser?.username || currentUser?.email?.split('@')[0] || 'operative',
     display_name: myServerDisplayName,
-    avatar: publishedProfilePresenceRef.current.avatar,
+    avatar: currentUser?.avatar || publishedProfilePresenceRef.current.avatar || null,
     status: myStatus === 'invisible' ? 'offline' : myStatus,
-    bio: publishedProfilePresenceRef.current.bio,
+    bio: myBio || publishedProfilePresenceRef.current.bio,
     thought: myUserThought,
     custom_status: myUserThought,
     tags: resolveMemberTags('usr_me', selectedServer).map(t => t.id),
     listening: myVisibleListening,
     listeningTrack: myVisibleTrack,
   };
+
+  // Đồng bộ ngay lập tức avatar mới khi currentUser.avatar thay đổi vào presence broadcast
+  useEffect(() => {
+    if (currentUser?.avatar !== undefined) {
+      publishedProfilePresenceRef.current.avatar = currentUser.avatar || null;
+      if (myPresencePayloadRef.current) {
+        myPresencePayloadRef.current.avatar = currentUser.avatar || null;
+      }
+      if (activeChannelRef.current) {
+        activeChannelRef.current.send({
+          type: 'broadcast',
+          event: 'user_presence',
+          payload: {
+            ...myPresencePayloadRef.current,
+            avatar: currentUser.avatar || null,
+          },
+        }).catch(() => {});
+      }
+      if (globalSocialChannelRef.current) {
+        globalSocialChannelRef.current.send({
+          type: 'broadcast',
+          event: 'user_presence',
+          payload: {
+            ...myPresencePayloadRef.current,
+            avatar: currentUser.avatar || null,
+          },
+        }).catch(() => {});
+      }
+    }
+  }, [currentUser?.avatar]);
 
   const publishDeferredProfilePresence = () => {
     const pending = pendingProfilePresenceRef.current;
@@ -10969,7 +11041,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const isStage = selectedChannel.type === 'stage';
   const isVoice = selectedChannel.type === 'voice';
-  const selectedChannelUnreadCount = unreadChannelCounts[selectedChannel.id] || 0;
+  const isSelectedServerAutoDelete = Boolean(selectedServer.auto_delete_hours && selectedServer.auto_delete_hours > 0);
+  const selectedChannelUnreadCount = isSelectedServerAutoDelete ? 0 : (unreadChannelCounts[selectedChannel.id] || 0);
   const selectedChannelFirstUnreadMessage = messages.find(message =>
     message.id === firstUnreadMessageIds[selectedChannel.id] &&
     message.channel_id === selectedChannel.id &&
@@ -11285,10 +11358,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         <div className="flex-1 w-full flex flex-col items-center gap-2 overflow-y-auto no-scrollbar py-1">
           {servers.map(srv => {
             const isSelected = !isFriendsTabActive && selectedServer.id === srv.id;
-            const srvUnreadCount = srv.channels.reduce(
-              (acc, ch) => acc + (unreadChannelCounts[ch.id] || 0),
-              0
-            );
+            const isAutoDeleteServer = Boolean(srv.auto_delete_hours && srv.auto_delete_hours > 0);
+            const srvUnreadCount = isAutoDeleteServer
+              ? 0
+              : srv.channels.reduce(
+                  (acc, ch) => acc + (unreadChannelCounts[ch.id] || 0),
+                  0
+                );
             const isDraggingThis = draggedServerId === srv.id;
             const isDropTarget = dragOverServerId === srv.id && draggedServerId !== srv.id;
             return (
@@ -11840,7 +11916,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 .map(channel => {
                   const isCur = selectedChannel.id === channel.id;
                   const textCount = selectedServer.channels.filter(c => c.type === 'text').length;
-                  const chUnread = unreadChannelCounts[channel.id] || 0;
+                  const isServerAutoDelete = Boolean(selectedServer.auto_delete_hours && selectedServer.auto_delete_hours > 0);
+                  const chUnread = isServerAutoDelete ? 0 : (unreadChannelCounts[channel.id] || 0);
                   return (
                     <div
                       key={channel.id}

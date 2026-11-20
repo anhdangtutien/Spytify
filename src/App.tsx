@@ -442,6 +442,18 @@ export default function App() {
           avatar: newAvatar,
         }).catch(() => {});
       }
+      try {
+        const raw = localStorage.getItem('spytify_registered_users');
+        if (raw) {
+          const list = JSON.parse(raw);
+          const updated = list.map((u: any) =>
+            u.id === currentUser.id || (currentUser.username && u.username?.toLowerCase() === currentUser.username.toLowerCase())
+              ? { ...u, avatar: newAvatar }
+              : u
+          );
+          localStorage.setItem('spytify_registered_users', JSON.stringify(updated));
+        }
+      } catch {}
     } else {
       localStorage.setItem('spytify_guest_avatar', newAvatar);
       showNotification(getTranslation(language, 'toast.avatarSaved'));
