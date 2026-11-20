@@ -447,6 +447,12 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
     isDraggingRef.current = false;
   };
 
+  const scrollGenres = (offset: number) => {
+    if (genreScrollRef.current) {
+      genreScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
   useEffect(() => {
     setSelectedGenre(timeVibe.genres[0] || getDefaultGenreForLang(language));
   }, [language, timeVibe.period]);
@@ -821,6 +827,26 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
+            {/* Quick Genre Scroll Left / Right Buttons */}
+            <div className="flex items-center gap-1 bg-[#14141c] p-0.5 rounded-lg border border-[#22222e]">
+              <button
+                type="button"
+                onClick={() => scrollGenres(-220)}
+                className="p-1 rounded text-[#888] hover:text-white hover:bg-[#20202e] transition-colors cursor-pointer"
+                title={language === 'vi' ? 'Cuộn thể loại sang trái' : 'Scroll genres left'}
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollGenres(220)}
+                className="p-1 rounded text-[#888] hover:text-white hover:bg-[#20202e] transition-colors cursor-pointer"
+                title={language === 'vi' ? 'Cuộn thể loại sang phải' : 'Scroll genres right'}
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             {genreTracks.length > 0 && (
               <button
                 onClick={() => onPlayTrack(genreTracks[0])}
@@ -853,7 +879,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUpOrLeave}
           onMouseLeave={handleMouseUpOrLeave}
-          className="flex items-center gap-2 overflow-x-auto pb-2.5 mb-4 hover-scrollbar select-none cursor-grab active:cursor-grabbing w-full scroll-smooth"
+          className="flex items-center gap-2 overflow-x-auto pb-2.5 mb-4 hover-scrollbar select-none cursor-grab active:cursor-grabbing w-full"
         >
           {availableGenres.map((genre, idx) => {
             const isSelected = selectedGenre === genre;

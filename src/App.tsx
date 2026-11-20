@@ -23,9 +23,9 @@ import { UpdateModal } from './components/UpdateModal';
 import { checkGitHubUpdate, UpdateInfo, CURRENT_VERSION } from './services/updater';
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
-import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle } from './utils/trackUtils';
+import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
-import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './components/Icons';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
 import { initRemoteConfigSync, RemoteBroadcastNotification } from './services/remoteConfigListener';
@@ -1981,10 +1981,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         return;
       }
 
-      // 2. Repeat off and NOT in recommendation mode (stop when reaching end of playlist)
+      // 2. Repeat off and NOT in recommendation mode (stop only when reaching true end of playlist)
       if (!isManualSkip && repeatModeRef.current === 'off' && recommendModeRef.current === 'off') {
-        const curIdx = cur ? all.findIndex(t => t.id === cur.id) : -1;
-        if (curIdx === -1 || curIdx >= all.length - 1) {
+        const curPath = cur?.path_or_url;
+        const curTitle = cur?.title?.trim().toLowerCase();
+        const curArtist = cur?.artist?.trim().toLowerCase();
+        const curIdx = cur ? all.findIndex(t => 
+          t.id === cur.id ||
+          (curPath && t.path_or_url && t.path_or_url === curPath) ||
+          (curTitle && curArtist && t.title.trim().toLowerCase() === curTitle && t.artist.trim().toLowerCase() === curArtist)
+        ) : -1;
+        if (curIdx !== -1 && curIdx >= all.length - 1) {
           setIsPlaying(false);
           crossfadeActiveRef.current = false;
           setIsCrossfading(false);
@@ -2849,7 +2856,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             playedViaBrowser = true;
             showNotification(`▶ ${track.title} - ${track.artist}`);
           } catch (e) {
-            console.warn('Browser convertFileSrc play failed, fallback to Rodio:', e);
+            try {
+              onlineAudio1Ref.current.removeAttribute('crossorigin');
+              const fileUrl = convertFileSrc(track.path_or_url);
+              onlineAudio1Ref.current.src = fileUrl;
+              onlineAudio1Ref.current.volume = volumeRef.current;
+              await onlineAudio1Ref.current.play();
+              isPlayingRef.current = true;
+              setIsPlaying(true);
+              playedViaBrowser = true;
+              showNotification(`▶ ${track.title} - ${track.artist}`);
+            } catch (e2) {
+              console.warn('Browser convertFileSrc play failed, fallback to Rodio:', e2);
+            }
           }
         }
 
@@ -4814,15 +4833,26 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     )}
                     {displayedTracks.length > 0 && (
                       <button
-                        onClick={() => handlePlayTrack(displayedTracks[0])}
-                        style={{
-                          backgroundColor: accentColor,
-                          color: '#ffffff',
-                          boxShadow: `0 0 16px ${accentColor}50`
+                        onClick={() => {
+                          if (isPlaying && currentTrack && displayedTracks.some(t => t.id === currentTrack.id)) {
+                            handleTogglePlay();
+                          } else {
+                            handlePlayTrack(displayedTracks[0]);
+                          }
                         }}
-                        className="w-11 h-11 rounded-full hover:scale-105 active:scale-95 flex items-center justify-center transition-all cursor-pointer"
+                        style={{
+                          backgroundColor: activeAccentColor,
+                          color: getContrastTextColor(activeAccentColor),
+                          boxShadow: `0 0 16px ${activeAccentColor}50`
+                        }}
+                        className="w-11 h-11 rounded-full hover:scale-105 active:scale-95 flex items-center justify-center transition-all cursor-pointer shadow-lg"
+                        title={isPlaying && currentTrack && displayedTracks.some(t => t.id === currentTrack.id) ? (language === 'vi' ? 'Tạm dừng' : 'Pause') : (language === 'vi' ? 'Phát tất cả' : 'Play all')}
                       >
-                        <Disc className="w-5 h-5 fill-current" />
+                        {isPlaying && currentTrack && displayedTracks.some(t => t.id === currentTrack.id) ? (
+                          <Pause className="w-5 h-5 fill-current" />
+                        ) : (
+                          <Play className="w-5 h-5 fill-current ml-0.5" />
+                        )}
                       </button>
                     )}
                   </div>

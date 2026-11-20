@@ -242,8 +242,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   }
 
   return (
-    <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-50 relative transition-all duration-300 ease-in-out flex-shrink-0 ${
-      isCompact ? 'h-[52px] px-4 flex items-center justify-between' : 'h-22 px-6 flex items-center justify-between'
+    <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-50 relative transition-all duration-300 ease-in-out flex-shrink-0 overflow-hidden ${
+      isCompact ? 'h-[52px] px-2 sm:px-4 flex items-center justify-between' : 'h-22 px-3 sm:px-6 flex items-center justify-between'
     }`}>
       {/* Sleek Top-Edge Progress Bar in Compact Mode */}
       {isCompact && (
@@ -281,7 +281,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* Left: Track Info — Spy Minimalist style */}
-      <div className={`flex items-center ${isCompact ? 'gap-2 w-1/4 min-w-[200px] max-w-[340px]' : 'gap-3.5 w-1/4 min-w-[220px]'}`}>
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 max-w-[200px] sm:max-w-[300px] shrink overflow-hidden">
         {currentTrack ? (
           <>
             <div className={`${isCompact ? 'w-8 h-8 rounded-md' : 'w-12 h-12 rounded-lg'} overflow-hidden bg-[#101014] flex-shrink-0 border border-[#202028] relative group shadow-sm transition-all`}>
@@ -371,10 +371,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Center: Controls + Spy Seekbar */}
-      <div className={`flex items-center justify-center transition-all ${
+      <div className={`flex items-center justify-center transition-all shrink-0 z-10 ${
         isCompact 
-          ? 'gap-3 max-w-[480px] w-2/4' 
-          : 'flex-col gap-1.5 max-w-[620px] w-2/4'
+          ? 'gap-2 sm:gap-3.5 px-1 sm:px-2' 
+          : 'flex-col gap-1.5 max-w-[620px] w-2/4 px-2'
       }`}>
         <div className={`flex items-center ${isCompact ? 'gap-3.5' : 'gap-6'}`}>
           <button
@@ -567,7 +567,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Compact Mode Inline Time Display */}
         {isCompact && (
-          <div className="hidden sm:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none pl-1">
+          <div className="hidden lg:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none pl-1 shrink-0 whitespace-nowrap">
             <span className="font-semibold text-white/90">{formatTime(displayTime)}</span>
             <span className="text-[#555]">/</span>
             <span>{isLive ? 'LIVE' : formatTime(effectiveDuration)}</span>
@@ -696,7 +696,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Right: Volume + Utils */}
-      <div className={`flex items-center justify-end ${isCompact ? 'gap-2.5 w-1/4 min-w-[180px]' : 'gap-3.5 w-1/4 min-w-[220px]'}`}>
+      <div className={`flex items-center justify-end flex-1 min-w-0 shrink ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
         {/* Next Track Preview / Auto Suggestion Toggle */}
         {onToggleNextTrackPopupEnabled && (
           <button
@@ -712,7 +712,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               borderColor: `${accentColor}50`,
               boxShadow: `0 0 10px ${accentColor}30`,
             } : undefined}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center justify-center ${
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
               isNextTrackPopupEnabled
                 ? ''
                 : 'text-[#666] hover:text-white border-transparent'
@@ -728,7 +728,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Sleep Timer Toggle & Menu */}
         {onSetSleepTimer && (
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setShowTimerMenu(p => !p)}
               title={getTranslation(language, 'timer.title')}
@@ -738,7 +738,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 borderColor: `${accentColor}50`,
                 boxShadow: `0 0 10px ${accentColor}30`,
               } : undefined}
-              className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 ${
+              className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 shrink-0 ${
                 sleepTimerMinutes !== null
                   ? ''
                   : 'text-[#666] hover:text-white border-transparent'
@@ -917,7 +917,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               borderColor: `${accentColor}50`,
               boxShadow: `0 0 10px ${accentColor}30`,
             } : undefined}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 relative ${
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 relative shrink-0 ${
               (isEqualizerActive || crossfadeDuration > 0 || showVisualizer)
                 ? ''
                 : 'text-[#666] hover:text-white border-transparent'
@@ -939,17 +939,21 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         )}
 
         {/* Source Badge */}
-        {currentTrack && getSourceBadge(currentTrack.source)}
+        {currentTrack && (
+          <div className="hidden md:inline-flex shrink-0">
+            {getSourceBadge(currentTrack.source)}
+          </div>
+        )}
 
         {/* Volume Slider */}
         {(() => {
           const safeVolume = Math.max(0, Math.min(1, typeof volume === 'number' && !isNaN(volume) ? volume : 0.8));
           return (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={handleMuteToggle}
                 title={safeVolume === 0 ? 'Bật âm lượng' : 'Tắt tiếng'}
-                className="text-[#777] hover:text-white transition-colors cursor-pointer"
+                className="text-[#777] hover:text-white transition-colors cursor-pointer shrink-0"
               >
                 {safeVolume === 0 ? <VolumeX className="w-4 h-4" style={{ color: accentColor }} /> : <Volume2 className="w-4 h-4" />}
               </button>
@@ -961,7 +965,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   const next = Math.max(0, Math.min(1, Math.round((safeVolume + step) * 100) / 100));
                   onVolumeChange(next);
                 }}
-                className={`relative flex items-center ${isCompact ? 'w-14 sm:w-16' : 'w-20'} h-4 group cursor-pointer transition-all`}
+                className={`relative hidden sm:flex items-center ${isCompact ? 'w-14 sm:w-16' : 'w-20'} h-4 group cursor-pointer transition-all`}
               >
                 <div 
                   className="absolute w-full h-[4px] rounded-full group-hover:h-[6px] transition-all overflow-hidden border border-black/5"
@@ -992,7 +996,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           <button
             onClick={onToggleMinimize || onMinimize}
             title={getTranslation(language, 'player.minimizeBar')}
-            className="p-1.5 rounded-lg text-[#777] hover:text-white hover:bg-[#161622] transition-colors cursor-pointer flex items-center justify-center ml-1"
+            className="p-1.5 rounded-lg text-[#777] hover:text-white hover:bg-[#161622] transition-colors cursor-pointer flex items-center justify-center ml-1 shrink-0"
           >
             <ChevronDown className="w-4 h-4" />
           </button>

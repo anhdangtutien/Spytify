@@ -353,8 +353,6 @@ export const TrackTable: React.FC<TrackTableProps> = ({
           return (
             <div
               key={track.id}
-              draggable={Boolean(onReorderTracks)}
-              onDragStart={(e) => handleDragStart(e, idx)}
               onDragOver={(e) => handleDragOver(e, idx)}
               onDrop={(e) => handleDrop(e, idx)}
               onDragEnd={() => { setDraggedIdx(null); setDragOverIdx(null); }}
@@ -385,10 +383,15 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               <div className="flex items-center justify-center relative">
                 {onReorderTracks && (
                   <div 
-                    className="hidden group-hover:flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-white p-0.5 absolute -left-1"
+                    draggable={true}
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      handleDragStart(e, idx);
+                    }}
+                    className="hidden group-hover:flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-white p-0.5 absolute -left-1 z-10"
                     title={language === 'vi' ? 'Kéo thả đổi thứ tự' : 'Drag to reorder'}
                   >
-                    <GripVertical className="w-3.5 h-3.5" />
+                    <GripVertical className="w-3.5 h-3.5 pointer-events-none" />
                   </div>
                 )}
                 {isSelected && isPlaying ? (
