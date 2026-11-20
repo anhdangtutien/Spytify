@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, RotateCcw, Power, Sliders, Volume2, Sparkles, 
   Headphones, Flame, Check, AlertCircle, CheckCircle2, Music, Activity,
-  BookmarkPlus, Trash2, Bookmark
+  BookmarkPlus, Trash2, Bookmark, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { 
   EQ_FREQUENCIES, EQ_LABELS, EQ_PRESETS, EqualizerState, CustomEqualizerPreset,
@@ -57,6 +57,21 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   const [newPresetName, setNewPresetName] = useState('');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
+
+  // Horizontal Presets Scroll & Drag-to-Browse
+  const presetsScrollRef = useRef<HTMLDivElement | null>(null);
+  const isMouseDownRef = useRef(false);
+  const startXRef = useRef(0);
+  const scrollLeftRef = useRef(0);
+
+  const scrollPresets = (direction: 'left' | 'right') => {
+    if (presetsScrollRef.current) {
+      presetsScrollRef.current.scrollBy({
+        left: direction === 'left' ? -160 : 160,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -411,28 +426,56 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               )}
             </div>
 
-            {/* Presets Panel */}
-            <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'}`}>
+            {/* Presets Panel — Completely Wheel-Isolated & Drag-to-Scroll */}
+            <div 
+              onWheel={(e) => {
+                // Completely stop wheel from scrolling parent modal down!
+                e.stopPropagation();
+              }}
+              className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'}`}
+            >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-mono text-slate-300 font-semibold uppercase tracking-wider flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   {language === 'vi' ? 'Cấu hình âm thanh (Presets)' : 'Sound Presets'}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setIsSavingPreset(p => !p)}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-mono font-medium transition-all cursor-pointer border ${
-                    isSavingPreset 
-                      ? 'border-transparent text-white shadow-sm'
-                      : isLight 
-                      ? 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300' 
-                      : 'bg-[#1a1a28] border-[#2e2e42] text-slate-300 hover:text-white hover:bg-[#252538]'
-                  }`}
-                  style={isSavingPreset ? { backgroundColor: accentColor } : undefined}
-                >
-                  <BookmarkPlus className="w-3 h-3" />
-                  <span>{language === 'vi' ? '+ Lưu cấu hình' : '+ Save Preset'}</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {/* Left / Right arrow navigation buttons */}
+                  <div className="flex items-center gap-0.5 bg-black/30 rounded-lg p-0.5 border border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => scrollPresets('left')}
+                      title="Cuộn sang trái"
+                      className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollPresets('right')}
+                      title="Cuộn sang phải"
+                      className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsSavingPreset(p => !p)}
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-mono font-medium transition-all cursor-pointer border ${
+                      isSavingPreset 
+                        ? 'border-transparent text-white shadow-sm'
+                        : isLight 
+                        ? 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300' 
+                        : 'bg-[#1a1a28] border-[#2e2e42] text-slate-300 hover:text-white hover:bg-[#252538]'
+                    }`}
+                    style={isSavingPreset ? { backgroundColor: accentColor } : undefined}
+                  >
+                    <BookmarkPlus className="w-3 h-3" />
+                    <span>{language === 'vi' ? '+ Lưu cấu hình' : '+ Save Preset'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Inline Save Preset Form */}
@@ -472,14 +515,36 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 </form>
               )}
 
-              {/* Presets horizontal row */}
+              {/* Presets horizontal row — Drag-to-scroll & Wheel-isolated */}
               <div 
-                className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 scroll-smooth"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                ref={presetsScrollRef}
+                className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 scroll-smooth cursor-grab active:cursor-grabbing select-none"
+                style={{ 
+                  scrollbarWidth: 'none', 
+                  msOverflowStyle: 'none',
+                  overscrollBehavior: 'contain',
+                }}
                 onWheel={(e) => {
-                  if (e.deltaY !== 0) {
-                    e.currentTarget.scrollLeft += e.deltaY;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (presetsScrollRef.current) {
+                    presetsScrollRef.current.scrollLeft += (e.deltaY * 1.5 || e.deltaX);
                   }
+                }}
+                onMouseDown={(e) => {
+                  if (!presetsScrollRef.current) return;
+                  isMouseDownRef.current = true;
+                  startXRef.current = e.pageX - presetsScrollRef.current.offsetLeft;
+                  scrollLeftRef.current = presetsScrollRef.current.scrollLeft;
+                }}
+                onMouseLeave={() => { isMouseDownRef.current = false; }}
+                onMouseUp={() => { isMouseDownRef.current = false; }}
+                onMouseMove={(e) => {
+                  if (!isMouseDownRef.current || !presetsScrollRef.current) return;
+                  e.preventDefault();
+                  const x = e.pageX - presetsScrollRef.current.offsetLeft;
+                  const walk = (x - startXRef.current) * 1.5;
+                  presetsScrollRef.current.scrollLeft = scrollLeftRef.current - walk;
                 }}
               >
                 {/* User Custom Saved Presets */}
