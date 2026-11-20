@@ -16,7 +16,7 @@ import { HomeTrendingView } from './components/HomeTrendingView';
 import { AlbumsView } from './components/AlbumsView';
 import { AddToAlbumModal } from './components/AddToAlbumModal';
 import { EqualizerModal } from './components/EqualizerModal';
-import { attachAudioElementToEqualizer, loadEqualizerState, applyEqualizerStateToGraph } from './services/equalizer';
+import { loadEqualizerState } from './services/equalizer';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
 import { checkGitHubUpdate, UpdateInfo, CURRENT_VERSION } from './services/updater';
@@ -2456,14 +2456,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     onlineAudio2Ref.current = audio2;
     onlineAudioRef.current = audio1;
 
-    try {
-      attachAudioElementToEqualizer(audio1);
-      attachAudioElementToEqualizer(audio2);
-      applyEqualizerStateToGraph(loadEqualizerState());
-    } catch (e) {
-      console.warn('Equalizer audio graph attach notice:', e);
-    }
-
     const setupAudioListeners = (audio: HTMLAudioElement, channel: 1 | 2) => {
       const onTimeUpdate = () => {
         if (activeAudioChannelRef.current !== channel) return;
@@ -2629,8 +2621,27 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     return false;
   };
 
-  // â”€â”€â”€ Core play function â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const playTrackInternal = async (track: Track, isBackOrForward = false, isCrossfade = false) => {
+  // ─── Core play function ──────────────────────────────────────────────────
+  const playTrackInternal = async (rawTrack: Track, isBackOrForward = false, isCrossfade = false) => {
+    // If this track was downloaded to local disk, automatically switch to offline local track for instant, crisp Hi-Fi playback!
+    let track = rawTrack;
+    if (track.source !== 'local') {
+      const localMatch = tracks.find(t => 
+        t.source === 'local' && t.path_or_url && (
+          t.id === rawTrack.id ||
+          t.id === `local_${rawTrack.id}` ||
+          (t.title && t.title.trim().toLowerCase() === rawTrack.title?.trim().toLowerCase() &&
+           t.artist && t.artist.trim().toLowerCase() === rawTrack.artist?.trim().toLowerCase())
+        )
+      );
+      if (localMatch) {
+        track = {
+          ...localMatch,
+          cover_art: rawTrack.cover_art || localMatch.cover_art,
+        };
+      }
+    }
+
     // Record true previously playing track into playback history stack before switching
     if (!isBackOrForward && currentTrackRef.current && currentTrackRef.current.id !== track.id) {
       playbackHistoryStackRef.current.push(currentTrackRef.current);

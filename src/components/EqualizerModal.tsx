@@ -10,6 +10,19 @@ import {
 import { LanguageCode } from '../locales/i18n';
 import { Track } from '../types';
 
+const getContrastTextColor = (hexColor: string): string => {
+  if (!hexColor) return '#ffffff';
+  const hex = hexColor.replace('#', '');
+  if (hex.length === 6) {
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+    return yiq >= 140 ? '#0b0b12' : '#ffffff';
+  }
+  return '#ffffff';
+};
+
 interface EqualizerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -253,15 +266,18 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             <button
               onClick={handleToggleEnable}
               title={eqState.enabled ? 'Tắt bộ lọc EQ (Bypass)' : 'Bật bộ lọc EQ'}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border shadow-sm ${
                 eqState.enabled 
-                  ? 'border-transparent shadow-md text-white'
-                  : (isLight ? 'bg-slate-100 border-slate-200 text-slate-500' : 'bg-[#181824] border-[#2c2c3c] text-slate-400')
+                  ? 'border-transparent shadow-md'
+                  : (isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-[#181824] border-[#2c2c3c] text-slate-400')
               }`}
-              style={eqState.enabled ? { backgroundColor: accentColor } : undefined}
+              style={eqState.enabled ? { 
+                backgroundColor: accentColor,
+                color: getContrastTextColor(accentColor),
+              } : undefined}
             >
-              <Power className="w-3.5 h-3.5" />
-              <span>{eqState.enabled ? 'ON' : 'OFF'}</span>
+              <Power className="w-3.5 h-3.5 shrink-0" />
+              <span className="font-bold tracking-wider">{eqState.enabled ? 'ON' : 'OFF'}</span>
             </button>
 
             {/* Reset to Flat */}
@@ -362,7 +378,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                           ? 'bg-slate-200/60 border-slate-300/60 text-slate-600 hover:bg-slate-200'
                           : 'bg-[#181824] border-[#272738] text-slate-400 hover:text-white hover:bg-[#202030]'
                       }`}
-                      style={isSelected ? { backgroundColor: accentColor } : undefined}
+                      style={isSelected ? { 
+                        backgroundColor: accentColor,
+                        color: getContrastTextColor(accentColor),
+                      } : undefined}
                     >
                       {opt.label}
                     </button>
@@ -399,9 +418,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
           </div>
 
-          {/* Preset Pills (Now with flex-wrap so ALL PRESETS ARE IMMEDIATELY VISIBLE & CLICKABLE) */}
+          {/* Preset Pills (1 clean horizontal row with smooth scroll) */}
           <div>
-            <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-mono text-slate-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
                 {language === 'vi' ? 'Cấu hình âm thanh (Presets)' : 'Sound Presets'}
@@ -411,11 +430,17 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               </span>
             </div>
 
-            {/* Presets in responsive wrap grid so all 10 are visible without stuck scroll */}
+            {/* Presets in 1 clean horizontal line with smooth horizontal scrolling */}
             <div 
-              className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1"
+              className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 scroll-smooth"
+              style={{
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+              }}
               onWheel={(e) => {
-                e.stopPropagation();
+                if (e.deltaY !== 0) {
+                  e.currentTarget.scrollLeft += e.deltaY;
+                }
               }}
             >
               {EQ_PRESETS.map(preset => {
@@ -425,7 +450,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   <button
                     key={preset.id}
                     onClick={() => handleSelectPreset(preset.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer border flex items-center gap-1.5 ${
                       isSelected
                         ? 'border-transparent font-bold shadow-md'
                         : isLight
@@ -433,7 +458,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                         : 'bg-[#151520] border-[#242434] text-slate-400 hover:text-white hover:bg-[#1a1a28]'
                     }`}
                     style={isSelected ? {
-                      backgroundColor: `${accentColor}20`,
+                      backgroundColor: `${accentColor}25`,
                       borderColor: accentColor,
                       color: accentColor,
                       boxShadow: `0 0 12px ${accentColor}30`,
