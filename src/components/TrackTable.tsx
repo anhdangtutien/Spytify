@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap } from 'lucide-react';
+import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap, GripVertical } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
 import { HoverMarquee } from './HoverMarquee';
@@ -20,6 +20,7 @@ interface TrackTableProps {
   downloadingTrackIds?: Set<string>;
   accentColor?: string;
   language?: LanguageCode;
+  onReorderTracks?: (newTracks: Track[]) => void;
 }
 
 const ROW_HEIGHT = 54;
@@ -38,6 +39,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   downloadingTrackIds,
   accentColor = '#ff2a55',
   language = 'vi',
+  onReorderTracks,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -46,6 +48,42 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [filterQuery, setFilterQuery] = useState<string>('');
   const [displayList, setDisplayList] = useState<Track[]>(tracks);
+
+  // Drag and drop reordering
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    if (!onReorderTracks) return;
+    setDraggedIdx(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    if (!onReorderTracks) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIdx !== index) {
+      setDragOverIdx(index);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    if (!onReorderTracks) return;
+    e.preventDefault();
+    if (draggedIdx === null || draggedIdx === targetIndex) {
+      setDraggedIdx(null);
+      setDragOverIdx(null);
+      return;
+    }
+    const reordered = [...tracks];
+    const [moved] = reordered.splice(draggedIdx, 1);
+    reordered.splice(targetIndex, 0, moved);
+    setDraggedIdx(null);
+    setDragOverIdx(null);
+    onReorderTracks(reordered);
+  };
 
   // Native Rust-powered fast filtering and sorting
   useEffect(() => {
@@ -315,6 +353,11 @@ export const TrackTable: React.FC<TrackTableProps> = ({
           return (
             <div
               key={track.id}
+              draggable={Boolean(onReorderTracks)}
+              onDragStart={(e) => handleDragStart(e, idx)}
+              onDragOver={(e) => handleDragOver(e, idx)}
+              onDrop={(e) => handleDrop(e, idx)}
+              onDragEnd={() => { setDraggedIdx(null); setDragOverIdx(null); }}
               onClick={() => {
                 if (isSelected) {
                   onTogglePlay();
@@ -328,14 +371,26 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 borderLeftColor: isSelected ? accentColor : 'transparent',
                 backgroundColor: isSelected ? `${accentColor}18` : undefined,
               }}
-              className={`grid grid-cols-[40px_1fr_1fr_90px_90px] items-center px-3 rounded-md transition-colors group cursor-pointer ${
+              className={`grid grid-cols-[40px_1fr_1fr_90px_90px] items-center px-3 rounded-md transition-colors group cursor-pointer select-none ${
+                draggedIdx === idx ? 'opacity-30 scale-[0.99]' : ''
+              } ${
+                dragOverIdx === idx ? 'border-t-2 border-indigo-400 bg-indigo-500/10' : ''
+              } ${
                 isSelected
                   ? 'text-white border-l-2'
                   : 'hover:bg-[#0c0c10] text-[#888899] hover:text-white border-l-2 border-transparent'
               }`}
             >
-              {/* Col 1: Play button / Number / Equalizer */}
+              {/* Col 1: Play button / Number / Equalizer / Drag handle */}
               <div className="flex items-center justify-center relative">
+                {onReorderTracks && (
+                  <div 
+                    className="hidden group-hover:flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-500 hover:text-white p-0.5 absolute -left-1"
+                    title={language === 'vi' ? 'Kéo thả đổi thứ tự' : 'Drag to reorder'}
+                  >
+                    <GripVertical className="w-3.5 h-3.5" />
+                  </div>
+                )}
                 {isSelected && isPlaying ? (
                   <div className="flex items-end justify-center gap-[2.5px] h-3.5 group-hover:hidden">
                     <span 

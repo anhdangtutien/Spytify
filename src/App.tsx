@@ -590,6 +590,37 @@ export default function App() {
     return newAlbum;
   };
 
+  const handleCreateAlbumFromDownloaded = () => {
+    const downloaded = tracks.filter(t => t.source === 'local');
+    if (downloaded.length === 0) {
+      showNotification(language === 'vi' ? 'Chưa có bài hát nào được tải xuống máy!' : 'No downloaded songs found!');
+      return;
+    }
+    const now = new Date();
+    const dateStr = `${now.getDate()}/${now.getMonth() + 1}`;
+    const defaultTitle = language === 'vi' ? `Nhạc Tải Về (${dateStr})` : `Downloaded Music (${dateStr})`;
+    const newAlbum = handleCreateAlbum(defaultTitle, language === 'vi' ? `Album gồm ${downloaded.length} bài hát đã tải về máy` : `${downloaded.length} offline downloaded songs`);
+    
+    // Add all downloaded tracks into this new album
+    const userId = currentUserRef.current?.id;
+    setAlbums(prev => {
+      const updated = prev.map(a => {
+        if (a.id === newAlbum.id) {
+          return { ...a, tracks: deduplicateTracks(downloaded) };
+        }
+        return a;
+      });
+      persistAlbumsForUser(userId, updated);
+      if (userId && isSupabaseConfigured()) {
+        cloudSyncPush(userId, { albums: updated }).catch(console.error);
+      }
+      return updated;
+    });
+
+    showNotification(language === 'vi' ? `Đã tạo Album "${defaultTitle}" (${downloaded.length} bài hát)!` : `Created Album "${defaultTitle}" (${downloaded.length} songs)!`);
+    setCurrentView('albums');
+  };
+
   const handleDeleteAlbum = (albumId: string) => {
     const userId = currentUserRef.current?.id;
     setAlbums(prev => {
@@ -4621,6 +4652,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onAddToAlbum={(track) => {
+                    setTrackToAddToAlbum(track);
+                    setIsAddToAlbumModalOpen(true);
+                  }}
                   onToggleFavorite={(id) => {
                     const t = displayedTracks.find(x => x.id === id);
                     if (t) handleToggleFavorite(t);
@@ -4672,6 +4707,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onAddToAlbum={(track) => {
+                    setTrackToAddToAlbum(track);
+                    setIsAddToAlbumModalOpen(true);
+                  }}
                   onToggleFavorite={(id) => {
                     const t = displayedTracks.find(x => x.id === id);
                     if (t) handleToggleFavorite(t);
@@ -4723,6 +4762,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onAddToAlbum={(track) => {
+                    setTrackToAddToAlbum(track);
+                    setIsAddToAlbumModalOpen(true);
+                  }}
                   onToggleFavorite={(id) => {
                     const t = displayedTracks.find(x => x.id === id);
                     if (t) handleToggleFavorite(t);
@@ -4742,19 +4785,33 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     </h2>
                     <p className="text-xs text-[#777] mt-0.5">{getTranslation(language, 'view.dbSyncedCount', { count: displayedTracks.length })}</p>
                   </div>
-                  {displayedTracks.length > 0 && (
-                    <button
-                      onClick={() => handlePlayTrack(displayedTracks[0])}
-                      style={{
-                        backgroundColor: accentColor,
-                        color: '#ffffff',
-                        boxShadow: `0 0 16px ${accentColor}50`
-                      }}
-                      className="w-11 h-11 rounded-full hover:scale-105 active:scale-95 flex items-center justify-center transition-all cursor-pointer"
-                    >
-                      <Disc className="w-5 h-5 fill-current" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {currentView === 'local' && displayedTracks.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleCreateAlbumFromDownloaded}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border bg-[#14141c] hover:bg-[#1a1a24] text-white border-[#272738] shadow-sm hover:scale-[1.02]"
+                        style={{ borderColor: `${accentColor}50` }}
+                        title={language === 'vi' ? 'Tạo album mới từ tất cả bài hát đã tải về máy' : 'Create new album from downloaded tracks'}
+                      >
+                        <FolderPlus className="w-4 h-4" style={{ color: accentColor }} />
+                        <span>{language === 'vi' ? 'Tạo Album từ nhạc tải xuống' : 'Create Album from Downloaded'}</span>
+                      </button>
+                    )}
+                    {displayedTracks.length > 0 && (
+                      <button
+                        onClick={() => handlePlayTrack(displayedTracks[0])}
+                        style={{
+                          backgroundColor: accentColor,
+                          color: '#ffffff',
+                          boxShadow: `0 0 16px ${accentColor}50`
+                        }}
+                        className="w-11 h-11 rounded-full hover:scale-105 active:scale-95 flex items-center justify-center transition-all cursor-pointer"
+                      >
+                        <Disc className="w-5 h-5 fill-current" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <TrackTable
                   tracks={displayedTracks}
@@ -4767,6 +4824,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onAddToAlbum={(track) => {
+                    setTrackToAddToAlbum(track);
+                    setIsAddToAlbumModalOpen(true);
+                  }}
+                  onReorderTracks={currentView === 'local' ? (newTracks) => setTracks(newTracks) : undefined}
                   onToggleFavorite={(id) => {
                     const t = displayedTracks.find(x => x.id === id);
                     if (t) handleToggleFavorite(t);

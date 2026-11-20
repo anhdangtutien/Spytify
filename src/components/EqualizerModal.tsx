@@ -63,7 +63,6 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
       const current = loadEqualizerState();
       setEqState(current);
       setCustomPresets(loadCustomPresets());
-      // Ensure Web Audio graph reflects state immediately
       applyEqualizerStateToGraph(current);
     }
   }, [isOpen]);
@@ -103,7 +102,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     // Curve points
     const points: { x: number; y: number }[] = [];
     const numBands = EQ_FREQUENCIES.length;
-    const paddingX = 30;
+    const paddingX = 25;
     const availableWidth = width - paddingX * 2;
     const stepX = availableWidth / (numBands - 1);
 
@@ -246,7 +245,6 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
       presetId: 'custom',
     };
     setEqState(next);
-    // Instant 0ms Web Audio update!
     applyEqualizerStateToGraph(next);
     debouncedSave(next);
   };
@@ -281,11 +279,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
-        className={`relative w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden transition-all duration-300 ${
+        className={`relative w-full max-w-5xl rounded-2xl border shadow-2xl overflow-hidden transition-all duration-300 ${
           isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#0e0e14] border-[#22222e] text-white'
         }`}
         onClick={e => e.stopPropagation()}
@@ -308,7 +306,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className={`text-sm sm:text-base font-bold font-mono tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {language === 'vi' ? 'CÀI ĐẶT ÂM THANH & EQ' : 'AUDIO SETTINGS & EQ'}
+                  {language === 'vi' ? 'CÀI ĐẶT ÂM THANH & EQ (STUDIO MIXER)' : 'AUDIO SETTINGS & EQ (STUDIO MIXER)'}
                 </h2>
                 <span 
                   className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase transition-colors"
@@ -317,11 +315,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                     color: eqState.enabled ? accentColor : (isLight ? '#64748b' : '#94a3b8'),
                   }}
                 >
-                  {eqState.enabled ? 'Hi-Fi 10-Band' : 'EQ Bypassed'}
+                  {eqState.enabled ? 'Hi-Fi 10-Band Active' : 'EQ Bypassed'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-sans">
-                {language === 'vi' ? 'Bộ cân bằng tần số 10-Band, Chuyển tiếp mượt & Sóng nhạc' : '10-Band Equalizer, Crossfade & Audio Visualizer'}
+                {language === 'vi' ? 'Bộ cân bằng tần số ngang 10-Band, Chuyển tiếp mượt & Bộ lọc âm thanh' : '10-Band Studio Mixer Console, Realtime DSP & Visualizer'}
               </p>
             </div>
           </div>
@@ -371,437 +369,425 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
         </div>
 
-        {/* Audio Source Status Notice */}
-        <div className="px-5 pt-2.5">
-          {isYoutubeSource ? (
-            <div className="flex items-start gap-2 p-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-sans leading-relaxed">
-              <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-              <div className="text-[11px]">
-                <span className="font-bold">
-                  {language === 'vi' ? 'Đang phát qua YouTube Web Iframe: ' : 'Playing via YouTube Web Iframe: '}
-                </span>
-                <span className="text-amber-200/80">
-                  {language === 'vi' 
-                    ? 'Do sandbox trình duyệt, luồng YouTube phát ra loa không cho can thiệp EQ. Bấm TẢI XUỐNG bài hát để cảm nhận trọn vẹn EQ!' 
-                    : 'Browser sandbox prevents Web Audio interception on YouTube iframe. Download song to experience full EQ!'}
-                </span>
-              </div>
+        {/* Horizontal Landscape Body (2-Column Studio Console Layout) */}
+        <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch max-h-[calc(100vh-100px)] overflow-y-auto">
+          
+          {/* ─── LEFT COLUMN (5/12): Settings, Presets & Audio Enhancements ─── */}
+          <div className="lg:col-span-5 flex flex-col justify-between space-y-3.5">
+            {/* Audio Source Status Notice */}
+            <div>
+              {isYoutubeSource ? (
+                <div className="flex items-start gap-2 p-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 text-xs font-sans leading-relaxed">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="text-[11px]">
+                    <span className="font-bold">
+                      {language === 'vi' ? 'Đang phát qua YouTube Web Iframe: ' : 'Playing via YouTube Web Iframe: '}
+                    </span>
+                    <span className="text-amber-200/80">
+                      {language === 'vi' 
+                        ? 'Sandbox trình duyệt không cho can thiệp EQ. Bấm TẢI XUỐNG bài hát để cảm nhận trọn vẹn EQ!' 
+                        : 'Browser sandbox prevents Web Audio interception. Download song to experience full EQ!'}
+                    </span>
+                  </div>
+                </div>
+              ) : isDirectAudioSource ? (
+                <div className="flex items-center gap-2 p-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-sans">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="font-medium text-[11px]">
+                    {language === 'vi' 
+                      ? `Đang áp dụng EQ thời gian thực cho: "${currentTrack?.title}" (Hi-Fi Direct Audio)` 
+                      : `Realtime EQ actively processing: "${currentTrack?.title}"`}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-2 rounded-xl border border-slate-500/20 bg-slate-500/5 text-slate-400 text-xs font-sans">
+                  <Music className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-[11px]">
+                    {language === 'vi'
+                      ? 'Phát nhạc từ Thư viện máy (Local) hoặc bài tải về để cảm nhận rõ nhất độ biến đổi âm thanh!'
+                      : 'Play local or downloaded songs to experience live audio filtering!'}
+                  </span>
+                </div>
+              )}
             </div>
-          ) : isDirectAudioSource ? (
-            <div className="flex items-center gap-2 p-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-sans">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="font-medium text-[11px]">
-                {language === 'vi' 
-                  ? `Đang áp dụng EQ thời gian thực cho: "${currentTrack?.title}" (Hi-Fi Direct Audio)` 
-                  : `Realtime EQ actively processing: "${currentTrack?.title}"`}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 p-2 rounded-xl border border-slate-500/20 bg-slate-500/5 text-slate-400 text-xs font-sans">
-              <Music className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span className="text-[11px]">
-                {language === 'vi'
-                  ? 'Gợi ý: Phát nhạc từ Thư viện máy (Local Music) hoặc bài đã tải về để cảm nhận rõ rệt độ biến đổi âm thanh!'
-                  : 'Play local or downloaded songs to experience live audio filtering!'}
-              </span>
-            </div>
-          )}
-        </div>
 
-        {/* Body Content */}
-        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-          {/* Quick Playback Settings (Crossfade & Visualizer) */}
-          <div className={`p-3 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-3 ${
-            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'
-          }`}>
-            {/* Crossfade Transition */}
-            <div className="flex flex-col justify-between gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Sliders className="w-3 h-3" style={{ color: accentColor }} />
-                  {language === 'vi' ? 'Chuyển bài mượt (Crossfade)' : 'Crossfade Transition'}
+            {/* Presets Panel */}
+            <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-mono text-slate-300 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  {language === 'vi' ? 'Cấu hình âm thanh (Presets)' : 'Sound Presets'}
                 </span>
-                <span className="text-xs font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
-                  {crossfadeDuration > 0 ? `${crossfadeDuration}s` : (language === 'vi' ? 'Tắt' : 'Off')}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsSavingPreset(p => !p)}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-mono font-medium transition-all cursor-pointer border ${
+                    isSavingPreset 
+                      ? 'border-transparent text-white shadow-sm'
+                      : isLight 
+                      ? 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300' 
+                      : 'bg-[#1a1a28] border-[#2e2e42] text-slate-300 hover:text-white hover:bg-[#252538]'
+                  }`}
+                  style={isSavingPreset ? { backgroundColor: accentColor } : undefined}
+                >
+                  <BookmarkPlus className="w-3 h-3" />
+                  <span>{language === 'vi' ? '+ Lưu cấu hình' : '+ Save Preset'}</span>
+                </button>
               </div>
-              <div className="grid grid-cols-5 gap-1.5 w-full">
-                {[
-                  { sec: 0, label: language === 'vi' ? 'Tắt' : 'Off' },
-                  { sec: 3, label: '3s' },
-                  { sec: 5, label: '5s ★' },
-                  { sec: 8, label: '8s' },
-                  { sec: 12, label: '12s' },
-                ].map(opt => {
-                  const isSelected = crossfadeDuration === opt.sec;
+
+              {/* Inline Save Preset Form */}
+              {isSavingPreset && (
+                <form 
+                  onSubmit={handleSaveCustom}
+                  className={`flex items-center gap-1.5 p-1.5 rounded-lg mb-2 border animate-in fade-in duration-150 ${
+                    isLight ? 'bg-white border-slate-300' : 'bg-[#181826] border-[#2c2c40]'
+                  }`}
+                >
+                  <Bookmark className="w-3.5 h-3.5 ml-1 shrink-0" style={{ color: accentColor }} />
+                  <input
+                    type="text"
+                    autoFocus
+                    value={newPresetName}
+                    onChange={e => setNewPresetName(e.target.value)}
+                    placeholder={language === 'vi' ? 'Tên cấu hình (VD: Siêu Bass, Gaming...)' : 'Preset name...'}
+                    className={`flex-1 text-[11px] px-2 py-1 rounded outline-none border transition-colors ${
+                      isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-[#0f0f18] border-[#2f2f45] text-white'
+                    }`}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newPresetName.trim()}
+                    className="px-2.5 py-1 rounded text-[11px] font-mono font-bold text-white transition-opacity disabled:opacity-40 cursor-pointer"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    {language === 'vi' ? 'Lưu' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsSavingPreset(false); setNewPresetName(''); }}
+                    className="px-1.5 py-1 text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    {language === 'vi' ? 'Hủy' : 'Cancel'}
+                  </button>
+                </form>
+              )}
+
+              {/* Presets horizontal row */}
+              <div 
+                className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 scroll-smooth"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                onWheel={(e) => {
+                  if (e.deltaY !== 0) {
+                    e.currentTarget.scrollLeft += e.deltaY;
+                  }
+                }}
+              >
+                {/* User Custom Saved Presets */}
+                {customPresets.map(preset => {
+                  const isSelected = eqState.presetId === preset.id;
                   return (
-                    <button
-                      key={opt.sec}
-                      type="button"
-                      onClick={() => onUpdateCrossfadeDuration?.(opt.sec)}
-                      className={`py-1 rounded-lg text-xs font-mono transition-all cursor-pointer border text-center w-full ${
+                    <div
+                      key={preset.id}
+                      onClick={() => handleSelectCustomPreset(preset)}
+                      className={`group px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer border flex items-center gap-1.5 ${
                         isSelected
-                          ? 'border-transparent font-bold text-white shadow-sm'
+                          ? 'border-transparent font-bold shadow-md'
                           : isLight
-                          ? 'bg-slate-200/60 border-slate-300/60 text-slate-600 hover:bg-slate-200'
-                          : 'bg-[#181824] border-[#272738] text-slate-400 hover:text-white hover:bg-[#202030]'
+                          ? 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
+                          : 'bg-[#181712] border-amber-500/30 text-amber-300 hover:bg-[#201e16]'
                       }`}
-                      style={isSelected ? { 
-                        backgroundColor: accentColor,
-                        color: getContrastTextColor(accentColor),
+                      style={isSelected ? {
+                        backgroundColor: `${accentColor}25`,
+                        borderColor: accentColor,
+                        color: accentColor,
+                        boxShadow: `0 0 10px ${accentColor}30`,
                       } : undefined}
                     >
-                      {opt.label}
+                      <Bookmark className="w-2.5 h-2.5 shrink-0 text-amber-400" />
+                      <span>{preset.name}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteCustom(preset.id, e)}
+                        title={language === 'vi' ? 'Xóa cấu hình này' : 'Delete preset'}
+                        className="p-0.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-400 opacity-60 hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-2.5 h-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Default Presets */}
+                {EQ_PRESETS.map(preset => {
+                  const isSelected = eqState.presetId === preset.id;
+                  const label = preset.name[language] || preset.name['en-US'] || preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleSelectPreset(preset.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer border flex items-center gap-1 ${
+                        isSelected
+                          ? 'border-transparent font-bold shadow-md'
+                          : isLight
+                          ? 'bg-slate-100/80 border-slate-200/60 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+                          : 'bg-[#151520] border-[#242434] text-slate-400 hover:text-white hover:bg-[#1a1a28]'
+                      }`}
+                      style={isSelected ? {
+                        backgroundColor: `${accentColor}25`,
+                        borderColor: accentColor,
+                        color: accentColor,
+                        boxShadow: `0 0 10px ${accentColor}30`,
+                      } : undefined}
+                    >
+                      {isSelected && <Check className="w-2.5 h-2.5 shrink-0" />}
+                      <span>{label}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Visualizer Waveform Toggle */}
-            <div className="flex items-center justify-between sm:border-l sm:border-white/10 sm:pl-3">
-              <div className="flex flex-col">
-                <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Activity className="w-3 h-3" style={{ color: accentColor }} />
-                  {language === 'vi' ? 'Sóng nhạc động (Visualizer)' : 'Audio Visualizer'}
-                </span>
-                <span className="text-[11px] text-slate-500 font-sans mt-0.5">
-                  {language === 'vi' ? 'Hiệu ứng sóng âm thanh trên thanh phát' : 'Real-time waveform on player bar'}
-                </span>
+            {/* Quick Playback Settings (Crossfade & Visualizer) */}
+            <div className={`p-3 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-3 ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'
+            }`}>
+              {/* Crossfade Transition */}
+              <div className="flex flex-col justify-between gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Sliders className="w-3 h-3" style={{ color: accentColor }} />
+                    {language === 'vi' ? 'Chuyển bài mượt' : 'Crossfade'}
+                  </span>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
+                    {crossfadeDuration > 0 ? `${crossfadeDuration}s` : (language === 'vi' ? 'Tắt' : 'Off')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1 w-full">
+                  {[
+                    { sec: 0, label: language === 'vi' ? 'Tắt' : 'Off' },
+                    { sec: 3, label: '3s' },
+                    { sec: 5, label: '5s ★' },
+                    { sec: 8, label: '8s' },
+                    { sec: 12, label: '12s' },
+                  ].map(opt => {
+                    const isSelected = crossfadeDuration === opt.sec;
+                    return (
+                      <button
+                        key={opt.sec}
+                        type="button"
+                        onClick={() => onUpdateCrossfadeDuration?.(opt.sec)}
+                        className={`py-1 rounded text-[10px] font-mono transition-all cursor-pointer border text-center w-full ${
+                          isSelected
+                            ? 'border-transparent font-bold text-white shadow-sm'
+                            : isLight
+                            ? 'bg-slate-200/60 border-slate-300/60 text-slate-600 hover:bg-slate-200'
+                            : 'bg-[#181824] border-[#272738] text-slate-400 hover:text-white hover:bg-[#202030]'
+                        }`}
+                        style={isSelected ? { 
+                          backgroundColor: accentColor,
+                          color: getContrastTextColor(accentColor),
+                        } : undefined}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={onToggleVisualizer}
-                className={`w-10 h-5.5 rounded-full transition-colors relative cursor-pointer shrink-0 ml-2 ${
-                  showVisualizer ? '' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
-                }`}
-                style={showVisualizer ? { backgroundColor: accentColor } : undefined}
-              >
-                <div 
-                  className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform ${
-                    showVisualizer ? 'translate-x-5' : 'translate-x-0.5'
-                  }`} 
-                />
-              </button>
-            </div>
-          </div>
 
-          {/* Preset Pills (Now with Custom Presets Save, Name & Delete!) */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-mono text-slate-400 font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                {language === 'vi' ? 'Cấu hình âm thanh (Presets)' : 'Sound Presets'}
-              </span>
-              <div className="flex items-center gap-2">
+              {/* Visualizer Waveform Toggle */}
+              <div className="flex items-center justify-between sm:border-l sm:border-white/10 sm:pl-3">
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-mono font-semibold text-slate-300 flex items-center gap-1.5">
+                    <Activity className="w-3 h-3" style={{ color: accentColor }} />
+                    {language === 'vi' ? 'Sóng nhạc động' : 'Visualizer'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-sans">
+                    {language === 'vi' ? 'Hiệu ứng thanh phát' : 'Waveform on player'}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setIsSavingPreset(p => !p)}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium transition-all cursor-pointer border ${
-                    isSavingPreset 
-                      ? 'border-transparent text-white shadow-sm'
-                      : isLight 
-                      ? 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200' 
-                      : 'bg-[#181824] border-[#2c2c3c] text-slate-300 hover:text-white hover:bg-[#222234]'
+                  onClick={onToggleVisualizer}
+                  className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer shrink-0 ml-2 ${
+                    showVisualizer ? '' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
                   }`}
-                  style={isSavingPreset ? { backgroundColor: accentColor } : undefined}
-                >
-                  <BookmarkPlus className="w-3 h-3" />
-                  <span>{language === 'vi' ? 'Lưu cấu hình' : 'Save Preset'}</span>
-                </button>
-                <span className="text-[11px] font-mono text-slate-500">
-                  {eqState.presetId === 'custom' 
-                    ? (language === 'vi' ? 'Đang chỉnh riêng' : 'Custom') 
-                    : customPresets.find(p => p.id === eqState.presetId)?.name || ''}
-                </span>
-              </div>
-            </div>
-
-            {/* Inline Save Preset Form */}
-            {isSavingPreset && (
-              <form 
-                onSubmit={handleSaveCustom}
-                className={`flex items-center gap-2 p-2 rounded-xl mb-2.5 border animate-in fade-in duration-150 ${
-                  isLight ? 'bg-slate-100 border-slate-300' : 'bg-[#181826] border-[#2c2c40]'
-                }`}
-              >
-                <Bookmark className="w-4 h-4 ml-1 shrink-0" style={{ color: accentColor }} />
-                <input
-                  type="text"
-                  autoFocus
-                  value={newPresetName}
-                  onChange={e => setNewPresetName(e.target.value)}
-                  placeholder={language === 'vi' ? 'Nhập tên cấu hình (VD: Siêu Bass, Gaming, Chill...)' : 'Preset name (e.g. Bass Boost 2026, Chill...)'}
-                  className={`flex-1 text-xs px-2.5 py-1.5 rounded-lg outline-none border transition-colors ${
-                    isLight ? 'bg-white border-slate-300 text-slate-800' : 'bg-[#0f0f18] border-[#2f2f45] text-white'
-                  }`}
-                />
-                <button
-                  type="submit"
-                  disabled={!newPresetName.trim()}
-                  className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-white transition-opacity disabled:opacity-40 cursor-pointer"
-                  style={{ backgroundColor: accentColor }}
-                >
-                  {language === 'vi' ? 'Lưu' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setIsSavingPreset(false); setNewPresetName(''); }}
-                  className={`px-2 py-1.5 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
-                    isLight ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  {language === 'vi' ? 'Hủy' : 'Cancel'}
-                </button>
-              </form>
-            )}
-
-            {/* Presets in 1 clean horizontal line with smooth horizontal scrolling */}
-            <div 
-              className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1 scroll-smooth"
-              style={{
-                scrollbarWidth: 'none',
-                msOverflowStyle: 'none',
-              }}
-              onWheel={(e) => {
-                if (e.deltaY !== 0) {
-                  e.currentTarget.scrollLeft += e.deltaY;
-                }
-              }}
-            >
-              {/* User Saved Custom Presets */}
-              {customPresets.map(preset => {
-                const isSelected = eqState.presetId === preset.id;
-                return (
-                  <div
-                    key={preset.id}
-                    onClick={() => handleSelectCustomPreset(preset)}
-                    className={`group px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer border flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'border-transparent font-bold shadow-md'
-                        : isLight
-                        ? 'bg-amber-50 border-amber-200 text-amber-900 hover:bg-amber-100'
-                        : 'bg-[#181712] border-amber-500/30 text-amber-300 hover:bg-[#201e16]'
-                    }`}
-                    style={isSelected ? {
-                      backgroundColor: `${accentColor}25`,
-                      borderColor: accentColor,
-                      color: accentColor,
-                      boxShadow: `0 0 12px ${accentColor}30`,
-                    } : undefined}
-                  >
-                    <Bookmark className="w-3 h-3 shrink-0 text-amber-400" />
-                    <span>{preset.name}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => handleDeleteCustom(preset.id, e)}
-                      title={language === 'vi' ? 'Xóa cấu hình này' : 'Delete preset'}
-                      className="ml-0.5 p-0.5 rounded hover:bg-red-500/20 text-slate-400 hover:text-red-400 opacity-60 hover:opacity-100 transition-opacity"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
-
-              {/* Default Presets */}
-              {EQ_PRESETS.map(preset => {
-                const isSelected = eqState.presetId === preset.id;
-                const label = preset.name[language] || preset.name['en-US'] || preset.id;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => handleSelectPreset(preset.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer border flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'border-transparent font-bold shadow-md'
-                        : isLight
-                        ? 'bg-slate-100/80 border-slate-200/60 text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
-                        : 'bg-[#151520] border-[#242434] text-slate-400 hover:text-white hover:bg-[#1a1a28]'
-                    }`}
-                    style={isSelected ? {
-                      backgroundColor: `${accentColor}25`,
-                      borderColor: accentColor,
-                      color: accentColor,
-                      boxShadow: `0 0 12px ${accentColor}30`,
-                    } : undefined}
-                  >
-                    {isSelected && <Check className="w-3 h-3 shrink-0" />}
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Real-time Frequency Response Canvas */}
-          <div className={`relative rounded-xl border p-2 overflow-hidden ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#07070c] border-[#1c1c28]'}`}>
-            <canvas 
-              ref={canvasRef} 
-              width={560} 
-              height={70} 
-              className="w-full h-[70px] block"
-            />
-            <div className="absolute top-1.5 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
-              <span>+15 dB</span>
-            </div>
-            <div className="absolute bottom-1.5 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
-              <span>-15 dB</span>
-            </div>
-          </div>
-
-          {/* 10 Vertical Faders — Rock-solid fixed sliders, touch-none & wheel protected */}
-          <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111119] border-[#1c1c28]'}`}>
-            <div className="grid grid-cols-10 gap-1 sm:gap-2">
-              {EQ_FREQUENCIES.map((freq, index) => {
-                const gain = eqState.gains[index] ?? 0;
-                const label = EQ_LABELS[index];
-
-                return (
-                  <div key={freq} className="flex flex-col items-center gap-1.5 touch-none select-none">
-                    {/* Gain dB value indicator */}
-                    <span 
-                      className={`text-[10px] font-mono font-bold px-1 rounded transition-colors ${
-                        gain > 0 
-                          ? 'text-emerald-400' 
-                          : gain < 0 
-                          ? 'text-amber-400' 
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      {gain > 0 ? `+${gain}` : `${gain}`}
-                    </span>
-
-                    {/* Vertical Slider — Guaranteed fixed, no unwanted drag-down on scroll */}
-                    <div 
-                      className="relative h-28 flex items-center justify-center touch-none select-none"
-                      onWheel={(e) => {
-                        // Prevent wheel on slider from changing value or dragging slider down
-                        e.stopPropagation();
-                      }}
-                    >
-                      <input
-                        type="range"
-                        min="-15"
-                        max="15"
-                        step="0.5"
-                        value={gain}
-                        disabled={!eqState.enabled}
-                        onChange={e => handleBandGainChange(index, parseFloat(e.target.value))}
-                        onWheel={e => (e.target as HTMLElement).blur()}
-                        className="h-24 w-2.5 appearance-none rounded-full cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none select-none"
-                        style={{
-                          WebkitAppearance: 'slider-vertical',
-                          accentColor: accentColor,
-                          backgroundColor: isLight ? '#cbd5e1' : '#222232',
-                          touchAction: 'none',
-                        }}
-                      />
-                    </div>
-
-                    {/* Frequency label */}
-                    <span className="text-[10px] font-mono text-slate-400 font-semibold tracking-tighter">
-                      {label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Auxiliary Audio Enhancement Sliders (Preamp, Bass Boost, 3D Spatial) */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Preamp */}
-            <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Volume2 className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                  {language === 'vi' ? 'Tiền khuếch đại' : 'Preamp'}
-                </span>
-                <span className="text-xs font-mono font-bold" style={{ color: accentColor }}>
-                  {eqState.preamp > 0 ? `+${eqState.preamp} dB` : `${eqState.preamp} dB`}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="-15"
-                max="15"
-                step="0.5"
-                value={eqState.preamp}
-                disabled={!eqState.enabled}
-                onChange={e => handlePreampChange(parseFloat(e.target.value))}
-                onWheel={e => (e.target as HTMLElement).blur()}
-                className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
-                style={{
-                  accentColor: accentColor,
-                  backgroundColor: isLight ? '#cbd5e1' : '#222232',
-                  touchAction: 'none',
-                }}
-              />
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                {language === 'vi' ? 'Chống vỡ tiếng khi đẩy cao bass' : 'Gain headroom compensation'}
-              </span>
-            </div>
-
-            {/* Bass Boost */}
-            <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Flame className="w-3.5 h-3.5 text-amber-500" />
-                  Bass Boost
-                </span>
-                <span className="text-xs font-mono font-bold text-amber-500">
-                  {eqState.bassBoost}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="5"
-                value={eqState.bassBoost}
-                disabled={!eqState.enabled}
-                onChange={e => handleBassBoostChange(parseInt(e.target.value))}
-                onWheel={e => (e.target as HTMLElement).blur()}
-                className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
-                style={{
-                  accentColor: '#f59e0b',
-                  backgroundColor: isLight ? '#cbd5e1' : '#222232',
-                  touchAction: 'none',
-                }}
-              />
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                {language === 'vi' ? 'Lực đập siêu trầm 80Hz' : 'Subwoofer punch boost'}
-              </span>
-            </div>
-
-            {/* 3D Spatial Audio Toggle */}
-            <div className={`p-3 rounded-xl border flex flex-col justify-between ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-semibold text-slate-300 flex items-center gap-1.5">
-                  <Headphones className="w-3.5 h-3.5 text-cyan-400" />
-                  3D Spatial Audio
-                </span>
-                <button
-                  type="button"
-                  onClick={handleToggleSpatial}
-                  className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${
-                    eqState.spatial3D ? 'bg-cyan-500' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
-                  }`}
+                  style={showVisualizer ? { backgroundColor: accentColor } : undefined}
                 >
                   <div 
                     className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${
-                      eqState.spatial3D ? 'translate-x-4.5' : 'translate-x-1'
+                      showVisualizer ? 'translate-x-4.5' : 'translate-x-0.5'
                     }`} 
                   />
                 </button>
               </div>
-              <span className="text-[10px] text-slate-500 mt-1 block">
-                {language === 'vi' ? 'Mở rộng trường âm thanh tai nghe' : 'Wide immersive stereo stage'}
-              </span>
+            </div>
+
+            {/* Auxiliary Sliders: Preamp, Bass Boost, 3D Spatial */}
+            <div className="grid grid-cols-3 gap-2">
+              {/* Preamp */}
+              <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono font-semibold text-slate-300 truncate">
+                    Preamp
+                  </span>
+                  <span className="text-[10px] font-mono font-bold" style={{ color: accentColor }}>
+                    {eqState.preamp > 0 ? `+${eqState.preamp}` : `${eqState.preamp}`}dB
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="-15"
+                  max="15"
+                  step="0.5"
+                  value={eqState.preamp}
+                  disabled={!eqState.enabled}
+                  onChange={e => handlePreampChange(parseFloat(e.target.value))}
+                  onWheel={e => (e.target as HTMLElement).blur()}
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
+                  style={{
+                    accentColor: accentColor,
+                    backgroundColor: isLight ? '#cbd5e1' : '#222232',
+                    touchAction: 'none',
+                  }}
+                />
+              </div>
+
+              {/* Bass Boost */}
+              <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono font-semibold text-slate-300 flex items-center gap-1">
+                    <Flame className="w-2.5 h-2.5 text-amber-500" />
+                    Bass
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-amber-500">
+                    {eqState.bassBoost}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={eqState.bassBoost}
+                  disabled={!eqState.enabled}
+                  onChange={e => handleBassBoostChange(parseInt(e.target.value))}
+                  onWheel={e => (e.target as HTMLElement).blur()}
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none"
+                  style={{
+                    accentColor: '#f59e0b',
+                    backgroundColor: isLight ? '#cbd5e1' : '#222232',
+                    touchAction: 'none',
+                  }}
+                />
+              </div>
+
+              {/* 3D Spatial */}
+              <div className={`p-2.5 rounded-xl border flex flex-col justify-between ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-semibold text-slate-300 flex items-center gap-1">
+                    <Headphones className="w-2.5 h-2.5 text-cyan-400" />
+                    3D Audio
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleToggleSpatial}
+                    className={`w-7 h-4 rounded-full transition-colors relative cursor-pointer ${
+                      eqState.spatial3D ? 'bg-cyan-500' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
+                    }`}
+                  >
+                    <div 
+                      className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-transform ${
+                        eqState.spatial3D ? 'translate-x-3.5' : 'translate-x-0.5'
+                      }`} 
+                    />
+                  </button>
+                </div>
+                <span className="text-[9px] text-slate-500 truncate mt-1">
+                  {language === 'vi' ? 'Trường âm vòm' : 'Surround'}
+                </span>
+              </div>
             </div>
           </div>
+
+          {/* ─── RIGHT COLUMN (7/12): 10-Band Studio Mixer Console ─── */}
+          <div className="lg:col-span-7 flex flex-col justify-between space-y-3">
+            {/* Real-time Frequency Response Canvas */}
+            <div className={`relative rounded-xl border p-2 overflow-hidden ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#07070c] border-[#1c1c28]'}`}>
+              <canvas 
+                ref={canvasRef} 
+                width={580} 
+                height={75} 
+                className="w-full h-[75px] block"
+              />
+              <div className="absolute top-1 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
+                <span>+15 dB</span>
+              </div>
+              <div className="absolute bottom-1 left-3 flex items-center gap-2 pointer-events-none text-[10px] font-mono text-slate-500">
+                <span>-15 dB</span>
+              </div>
+            </div>
+
+            {/* 10 Vertical Faders — Rock-solid fixed sliders, touch-none & wheel protected */}
+            <div className={`p-3 rounded-xl border ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111119] border-[#1c1c28]'}`}>
+              <div className="grid grid-cols-10 gap-1 sm:gap-2">
+                {EQ_FREQUENCIES.map((freq, index) => {
+                  const gain = eqState.gains[index] ?? 0;
+                  const label = EQ_LABELS[index];
+
+                  return (
+                    <div key={freq} className="flex flex-col items-center gap-1.5 touch-none select-none">
+                      {/* Gain dB value indicator */}
+                      <span 
+                        className={`text-[10px] font-mono font-bold px-1 rounded transition-colors ${
+                          gain > 0 
+                            ? 'text-emerald-400' 
+                            : gain < 0 
+                            ? 'text-amber-400' 
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {gain > 0 ? `+${gain}` : `${gain}`}
+                      </span>
+
+                      {/* Vertical Slider — Guaranteed fixed, no unwanted drag-down on scroll */}
+                      <div 
+                        className="relative h-28 flex items-center justify-center touch-none select-none"
+                        onWheel={(e) => {
+                          e.stopPropagation();
+                        }}
+                      >
+                        <input
+                          type="range"
+                          min="-15"
+                          max="15"
+                          step="0.5"
+                          value={gain}
+                          disabled={!eqState.enabled}
+                          onChange={e => handleBandGainChange(index, parseFloat(e.target.value))}
+                          onWheel={e => (e.target as HTMLElement).blur()}
+                          className="h-24 w-2.5 appearance-none rounded-full cursor-pointer outline-none transition-opacity disabled:opacity-40 touch-none select-none"
+                          style={{
+                            WebkitAppearance: 'slider-vertical',
+                            accentColor: accentColor,
+                            backgroundColor: isLight ? '#cbd5e1' : '#222232',
+                            touchAction: 'none',
+                          }}
+                        />
+                      </div>
+
+                      {/* Frequency label */}
+                      <span className="text-[10px] font-mono text-slate-400 font-semibold tracking-tighter">
+                        {label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>

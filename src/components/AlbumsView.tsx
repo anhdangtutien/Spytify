@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Plus, Disc, Play, Trash2, Music, ArrowLeft, Clock3, FolderPlus, 
-  Sparkles, Layers, Check, X, Pencil, Image as ImageIcon
+  Sparkles, Layers, Check, X, Pencil, Image as ImageIcon, GripVertical
 } from 'lucide-react';
 import { Track, UserAlbum } from '../types';
 import { TrackTable } from './TrackTable';
@@ -56,6 +56,39 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const cleanAlbumTracks = useMemo(() => {
     return selectedAlbum ? deduplicateTracks(selectedAlbum.tracks || []) : [];
   }, [selectedAlbum]);
+
+  // Drag-and-drop reordering state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === targetIndex || !selectedAlbum) {
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const reordered = [...cleanAlbumTracks];
+    const [movedItem] = reordered.splice(draggedIndex, 1);
+    reordered.splice(targetIndex, 0, movedItem);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    onUpdateAlbum?.(selectedAlbum.id, { tracks: reordered });
+  };
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -452,17 +485,34 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   return (
                     <div
                       key={track.id}
+                      draggable={true}
+                      onDragStart={(e) => handleDragStart(e, idx)}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDrop={(e) => handleDrop(e, idx)}
+                      onDragEnd={() => { setDraggedIndex(null); setDragOverIndex(null); }}
                       style={isCurrent ? {
                         borderColor: accentColor,
                         backgroundColor: `${accentColor}14`,
                         boxShadow: `0 0 14px ${accentColor}25`
                       } : undefined}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 group transition-all ${
+                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 group transition-all select-none ${
+                        draggedIndex === idx ? 'opacity-30 scale-[0.98]' : ''
+                      } ${
+                        dragOverIndex === idx ? 'border-dashed border-indigo-400 bg-indigo-500/10' : ''
+                      } ${
                         isCurrent
                           ? 'bg-[#12121c]'
                           : 'bg-[#09090c] hover:bg-[#121218] border-[#161620]'
                       }`}
                     >
+                      {/* Drag Handle */}
+                      <div 
+                        className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-white px-0.5 transition-colors flex-shrink-0"
+                        title={language === 'vi' ? 'Kéo thả để đổi vị trí bài hát' : 'Drag to reorder'}
+                      >
+                        <GripVertical className="w-3.5 h-3.5" />
+                      </div>
+
                       <div
                         onClick={() => {
                           if (isCurrent) {
