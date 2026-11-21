@@ -122,8 +122,6 @@ export default function App() {
 
   // Initialize Close to Tray, Background Update Check & Remote Config Sync
   useEffect(() => {
-    initRemoteConfigSync();
-
     const handleBroadcastEvent = (e: any) => {
       setRemoteBroadcast(e.detail || null);
       setIsBroadcastDismissed(false);
@@ -156,7 +154,6 @@ export default function App() {
         console.warn('Startup update policy check failed:', e);
       }
     };
-    performStartupUpdateCheck();
 
     // Listen to real-time remote config updates from Spytify Dashboard
     const handleRemoteConfigUpdated = (e: any) => {
@@ -164,11 +161,18 @@ export default function App() {
       if (!config || !config.version) return;
       const semverDiff = compareSemver(config.version, CURRENT_VERSION);
       const isNewer = semverDiff > 0;
-      const isSameVersion = semverDiff === 0;
+      const isSameOrNewer = semverDiff >= 0;
 
-      // Check for hotfix on same version
+      // Check for hotfix patch pushed from Admin Dashboard
       const appliedPatchId = localStorage.getItem('spytify_applied_patch_id');
-      const isHotfix = isSameVersion && Boolean(config.patchId && config.patchId !== appliedPatchId);
+      const dismissedPatchId = localStorage.getItem('spytify_dismissed_patch_id');
+      const isHotfix =
+        Boolean(config.isHotfix || isSameOrNewer) &&
+        Boolean(
+          config.patchId &&
+            config.patchId !== appliedPatchId &&
+            (config.forceUpdate || config.patchId !== dismissedPatchId)
+        );
 
       const isBelowMin = config.minSupportedVersion
         ? compareSemver(CURRENT_VERSION, config.minSupportedVersion) < 0
@@ -195,6 +199,10 @@ export default function App() {
       }
     };
     window.addEventListener('spytify:remote-config-updated', handleRemoteConfigUpdated);
+
+    // Initialize remote config sync after listeners are attached
+    initRemoteConfigSync();
+    performStartupUpdateCheck();
 
     return () => {
       isCancelled = true;

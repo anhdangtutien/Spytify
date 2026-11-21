@@ -172,13 +172,16 @@ export async function checkStartupUpdatePolicy(force = false): Promise<UpdatePol
     const gh = ghResult.status === 'fulfilled' ? ghResult.value : null;
 
     const ghInfo = gh?.info;
-    const targetVersion = cfg?.version || ghInfo?.version;
+    let targetVersion = cfg?.version || ghInfo?.version;
+    if (cfg?.version && ghInfo?.version && compareSemver(ghInfo.version, cfg.version) > 0 && !cfg?.isHotfix) {
+      targetVersion = ghInfo.version;
+    }
 
     if (!targetVersion) return null;
 
     const semverDiff = compareSemver(targetVersion, CURRENT_VERSION);
     const isNewerThanCurrent = semverDiff > 0;
-    const isSameVersion = semverDiff === 0;
+    const isSameOrNewer = semverDiff >= 0;
 
     // Hotfix check for SAME version (e.g. current is 1.1.4 and admin publishes a hotfix for 1.1.4)
     const appliedPatchId = localStorage.getItem('spytify_applied_patch_id');
@@ -188,10 +191,10 @@ export async function checkStartupUpdatePolicy(force = false): Promise<UpdatePol
     const hasUnappliedPatchId = Boolean(cfg?.patchId && cfg.patchId !== appliedPatchId);
 
     const isHotfix = Boolean(
-      isSameVersion && (
+      (isSameOrNewer || cfg?.isHotfix) && (
         Boolean(cfg?.isHotfix && hasUnappliedPatchId) ||
-        hasUnappliedPatchId ||
-        Boolean(hasNewerTimestamp && (!appliedPatchTime || remotePatchTime > appliedPatchTime))
+        (isSameOrNewer && hasUnappliedPatchId) ||
+        Boolean(isSameOrNewer && hasNewerTimestamp && (!appliedPatchTime || remotePatchTime > appliedPatchTime))
       )
     );
 
