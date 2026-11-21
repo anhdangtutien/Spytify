@@ -1178,6 +1178,8 @@ export default function App() {
   const ytHasStartedPlayingRef = useRef(false);
   const ytMusicFallbackActiveRef = useRef(false);
   const ytMusicFallbackTriedRef = useRef(false);
+  const consecutiveAutoSkipsRef = useRef(0);
+  const lastAutoSkipTimestampRef = useRef(0);
 
   // Dual-channel HTML5 audio elements
   const onlineAudio1Ref = useRef<HTMLAudioElement | null>(null);
@@ -2184,6 +2186,28 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const handleNext = useCallback(async (isManualSkip = false, isCrossfade = false) => {
     if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
     if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
+
+    const now = Date.now();
+    if (!isManualSkip && !isCrossfade) {
+      if (now - lastAutoSkipTimestampRef.current < 4500) {
+        consecutiveAutoSkipsRef.current += 1;
+      } else {
+        consecutiveAutoSkipsRef.current = 1;
+      }
+      lastAutoSkipTimestampRef.current = now;
+
+      if (consecutiveAutoSkipsRef.current >= 3) {
+        console.warn('[Playback Guard] Detected rapid skip loop (>= 3 consecutive auto-skips in < 4.5s). Halting auto-advance.');
+        consecutiveAutoSkipsRef.current = 0;
+        isPlayingRef.current = false;
+        setIsPlaying(false);
+        showNotification('⚠️ Trình duyệt tạm dừng tự động chuyển bài. Bấm nút Phát để nghe tiếp.');
+        return;
+      }
+    } else {
+      consecutiveAutoSkipsRef.current = 0;
+    }
+
     if (isSkippingRef.current) return;
     isSkippingRef.current = true;
     if (!isCrossfade) {
@@ -2615,12 +2639,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           console.warn('[YouTube Player] Embed blocked or unavailable, code:', data.info, '-> Auto-resolving via YouTube Music API...');
           if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
           if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
+          const isWeb = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
           fallbackToYoutubeMusicStream(erroredTrack).then((recovered) => {
             if (!recovered && currentTrackRef.current?.id === erroredTrack.id) {
-              showNotification('⚠️ Bài hát này bị giới hạn khu vực trên YouTube. Tự động chuyển bài...');
-              ytUnavailableTimerRef.current = setTimeout(() => {
-                handleNext();
-              }, 2500);
+              if (isWeb) {
+                showNotification('⚠️ Bài hát này bị giới hạn bản quyền nhúng YouTube. Vui lòng chọn bài khác.');
+                isPlayingRef.current = false;
+                setIsPlaying(false);
+              } else {
+                showNotification('⚠️ Bài hát này bị giới hạn khu vực trên YouTube. Tự động chuyển bài...');
+                ytUnavailableTimerRef.current = setTimeout(() => {
+                  handleNext();
+                }, 2500);
+              }
             }
           });
         }
@@ -2650,7 +2681,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }
             } else if (data.info === 0) {
               // Bỏ qua nếu crossfade đang chuyển bài chéo hoặc vừa mới chuyển bài qua loadVideoById
-              if (!crossfadeActiveRef.current && (Date.now() - ytLastSwitchAtRef.current) > 600) {
+              if (!crossfadeActiveRef.current && (Date.now() - ytLastSwitchAtRef.current) > 1200) {
+                const cur = currentTimeRef.current;
+                const dur = durationRef.current;
+                if (dur > 5 && dur - cur > 4) {
+                  console.warn('[YouTube] info=0 fired prematurely before finish. Ignoring.');
+                  return;
+                }
                 isPlayingRef.current = false;
                 setIsPlaying(false);
                 playStartTimestampRef.current = null;
@@ -2908,6 +2945,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       const onEnded = () => {
         if (activeAudioChannelRef.current !== channel) return;
+        const cur = audio.currentTime;
+        const dur = audio.duration;
+        // Strict guard: only consider ended if audio actually played and reached near the end!
+        const isActuallyFinished = cur > 3 && dur > 5 && (Math.abs(cur - dur) < 4 || cur >= dur - 1.5);
+        if (!isActuallyFinished) {
+          console.warn(`[Audio Ch${channel}] premature onEnded ignored: currentTime=${cur}, duration=${dur}`);
+          return;
+        }
         if (!crossfadeActiveRef.current) {
           isPlayingRef.current = false;
           setIsPlaying(false);
@@ -2915,6 +2960,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           accumulatedTimeRef.current = 0;
           handleNextRef.current?.();
         }
+      };
+
+      const onError = () => {
+        if (activeAudioChannelRef.current !== channel) return;
+        console.warn(`[Audio Ch${channel}] HTML5 Audio playback error:`, audio.error);
+        isPlayingRef.current = false;
+        setIsPlaying(false);
       };
 
       const onDuration = () => {
@@ -2932,12 +2984,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       audio.addEventListener('loadedmetadata', onDuration);
       audio.addEventListener('durationchange', onDuration);
       audio.addEventListener('ended', onEnded);
+      audio.addEventListener('error', onError);
       return () => {
         audio.pause();
         audio.removeEventListener('timeupdate', onTimeUpdate);
         audio.removeEventListener('loadedmetadata', onDuration);
         audio.removeEventListener('durationchange', onDuration);
         audio.removeEventListener('ended', onEnded);
+        audio.removeEventListener('error', onError);
       };
     };
 
@@ -3704,12 +3758,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       } else if (track.source === 'youtube') {
         // Web / Mobile PWA: Proactively resolve direct audio stream so background lock-screen playback & smooth transitions work natively!
-        if (isWebShim && !showYoutubeVideo) {
+        if (isWebShim) {
           try {
             const streamPlayed = await fallbackToYoutubeMusicStream(track);
             if (streamPlayed) return;
           } catch (e) {
             console.warn('Direct stream auto-fallback notice:', e);
+          }
+          // On mobile web, if direct audio stream is not available, open YouTube MV frame
+          // so user can view and tap to play without browser autoplay restrictions
+          if (!showYoutubeVideo) {
+            setShowYoutubeVideo(true);
           }
         }
 
@@ -3760,7 +3819,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           }
         }, 2500);
 
-        const fallbackDelayMs = isWebShim ? 8000 : 5000;
+        const fallbackDelayMs = isWebShim ? 7000 : 5000;
         ytUnavailableTimerRef.current = setTimeout(() => {
           if (
             !ytHasStartedPlayingRef.current &&
@@ -3775,10 +3834,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             }
             fallbackToYoutubeMusicStream(stalledTrack).then((recovered) => {
               if (!recovered && currentTrackRef.current?.id === stalledTrack.id && !ytHasStartedPlayingRef.current) {
-                showNotification('⚠️ Bài hát này không khả dụng. Tự động chuyển bài tiếp theo...');
-                setTimeout(() => {
-                  handleNext();
-                }, 1500);
+                if (isWebShim) {
+                  // On mobile web, DO NOT auto-skip into an endless loop!
+                  // Reveal YouTube player so user can tap play directly
+                  setShowYoutubeVideo(true);
+                  showNotification('▶ Chạm vào khung video YouTube để bắt đầu nghe nhạc trên di động');
+                } else {
+                  showNotification('⚠️ Bài hát này không khả dụng. Tự động chuyển bài tiếp theo...');
+                  setTimeout(() => {
+                    handleNext();
+                  }, 1500);
+                }
               }
             });
           }
@@ -5187,8 +5253,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         <div
           className={`fixed ${
             isPlayerBarMinimized
-              ? 'bottom-[72px] sm:bottom-[36px]'
-              : 'bottom-[116px] sm:bottom-[70px]'
+              ? 'bottom-[calc(80px+env(safe-area-inset-bottom,0px))] sm:bottom-[36px]'
+              : 'bottom-[calc(135px+env(safe-area-inset-bottom,0px))] sm:bottom-[70px]'
           } left-3 right-3 sm:left-auto sm:right-6 w-auto sm:w-88 max-w-[calc(100vw-24px)] aspect-video rounded-2xl bg-black shadow-2xl border border-white/20 z-50 transition-all duration-300 overflow-hidden ${
             Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode)
               ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
@@ -5231,8 +5297,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         <div
           className={`fixed ${
             isPlayerBarMinimized
-              ? 'bottom-[72px] sm:bottom-[36px]'
-              : 'bottom-[116px] sm:bottom-[70px]'
+              ? 'bottom-[calc(80px+env(safe-area-inset-bottom,0px))] sm:bottom-[36px]'
+              : 'bottom-[calc(135px+env(safe-area-inset-bottom,0px))] sm:bottom-[70px]'
           } left-3 right-3 sm:left-auto sm:right-6 w-auto sm:w-88 max-w-[calc(100vw-24px)] aspect-video rounded-2xl bg-black shadow-2xl border border-white/20 z-50 transition-all duration-300 overflow-hidden ${
             Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode)
               ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'

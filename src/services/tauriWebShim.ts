@@ -759,10 +759,9 @@ async function resolveYouTubeAudioStreamWeb(
           return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
         });
       const bestFmt = audioFormats.find(f => typeof f?.url === 'string' && f.url.startsWith('http'));
-      const proxyUrl = bestFmt?.url || `${base}/latest_version?id=${rawVid}&itag=140&local=true`;
-      if (data?.title || bestFmt) {
+      if (bestFmt?.url) {
         return {
-          stream_url: String(proxyUrl),
+          stream_url: String(bestFmt.url),
           resolved_video_id: rawVid,
           duration_secs: Number(data?.lengthSeconds) || 200,
         };
@@ -817,11 +816,17 @@ async function resolveYouTubeAudioStreamWeb(
 
   try {
     const audiusTracks = await searchAudiusWeb(`${title || ''} ${artist || ''}`.trim());
-    if (audiusTracks.length > 0 && audiusTracks[0].url_or_id.startsWith('http')) {
+    const tWord = (title || '').trim().toLowerCase().split(' ')[0];
+    const matched = audiusTracks.find(at => {
+      const atTitle = (at.title || '').toLowerCase();
+      const atArtist = (at.artist || '').toLowerCase();
+      return (tWord && atTitle.includes(tWord)) || (artistLow && atArtist.includes(artistLow));
+    });
+    if (matched && matched.url_or_id.startsWith('http')) {
       return {
-        stream_url: audiusTracks[0].url_or_id,
+        stream_url: matched.url_or_id,
         resolved_video_id: rawVid,
-        duration_secs: audiusTracks[0].duration_secs || 200,
+        duration_secs: matched.duration_secs || 200,
       };
     }
   } catch {}
