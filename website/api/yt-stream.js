@@ -78,7 +78,11 @@ async function resolveAudioStream(videoId, visitorData) {
 
     const json = await res.json();
     if (json?.playabilityStatus?.status !== 'OK') {
-      return null;
+      return {
+        error: true,
+        status: json?.playabilityStatus?.status,
+        reason: json?.playabilityStatus?.reason,
+      };
     }
 
     const adaptiveFormats = json?.streamingData?.adaptiveFormats || [];
@@ -135,10 +139,17 @@ export default async function handler(req, res) {
   const visitor = await getVisitorData(`${title} ${artist}`.trim() || 'Sơn Tùng M-TP');
   const streamInfo = await resolveAudioStream(videoId, visitor);
 
-  if (!streamInfo || !streamInfo.url) {
+  if (!streamInfo || streamInfo.error || !streamInfo.url) {
     res.statusCode = 404;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Audio stream could not be resolved' }));
+    res.end(JSON.stringify({ 
+      error: 'Audio stream could not be resolved',
+      debug: {
+        hasVisitor: Boolean(visitor),
+        status: streamInfo?.status || 'none',
+        reason: streamInfo?.reason || 'none',
+      }
+    }));
     return;
   }
 
