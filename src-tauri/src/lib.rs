@@ -1614,13 +1614,43 @@ async fn download_and_install_update(
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("Spytify-Desktop-App/0.1.2")
+        .user_agent("Spytify-Desktop-App/1.1.4")
         .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| e.to_string())?;
 
+    // If download_url is a GitHub releases webpage instead of a direct .exe/.msi binary,
+    // automatically resolve the direct .exe asset browser_download_url via GitHub API
+    let mut resolved_url = download_url.trim().to_string();
+    let lower_url = resolved_url.to_lowercase();
+    if !lower_url.ends_with(".exe") && !lower_url.ends_with(".msi") {
+        if let Ok(api_res) = client
+            .get("https://api.github.com/repos/anhdangtutien/Spytify/releases/latest")
+            .header("Accept", "application/vnd.github.v3+json")
+            .send()
+            .await
+        {
+            if let Ok(data) = api_res.json::<serde_json::Value>().await {
+                if let Some(assets) = data["assets"].as_array() {
+                    if let Some(exe) = assets
+                        .iter()
+                        .find(|a| {
+                            a["name"]
+                                .as_str()
+                                .map(|n| n.ends_with("-setup.exe") || n.ends_with(".exe"))
+                                .unwrap_or(false)
+                        })
+                        .and_then(|a| a["browser_download_url"].as_str())
+                    {
+                        resolved_url = exe.to_string();
+                    }
+                }
+            }
+        }
+    }
+
     let mut res = client
-        .get(&download_url)
+        .get(&resolved_url)
         .header("Accept", "application/octet-stream")
         .send()
         .await
@@ -1639,8 +1669,16 @@ async fn download_and_install_update(
 
     let mut downloaded: u64 = 0;
     let mut last_percent: u32 = 0;
+    let mut magic_header: Vec<u8> = Vec::with_capacity(2);
 
     while let Some(chunk) = res.chunk().await.map_err(|e| format!("Lỗi khi đang tải file: {}", e))? {
+        if magic_header.len() < 2 {
+            for &b in chunk.iter() {
+                if magic_header.len() < 2 {
+                    magic_header.push(b);
+                }
+            }
+        }
         file.write_all(&chunk)
             .map_err(|e| format!("Lỗi ghi file vào ổ đĩa: {}", e))?;
         downloaded += chunk.len() as u64;
@@ -1665,6 +1703,12 @@ async fn download_and_install_update(
         .map_err(|e| format!("Lỗi hoàn tất file cập nhật: {}", e))?;
     drop(file);
 
+    // Verify downloaded file is a valid Windows PE executable ("MZ" header)
+    if magic_header.len() < 2 || magic_header[0] != 0x4D || magic_header[1] != 0x5A {
+        let _ = std::fs::remove_file(&dest_path);
+        return Err("Bản cập nhật đang được hệ thống đóng gói trên máy chủ. Vui lòng thử lại sau ít phút!".to_string());
+    }
+
     let _ = app.emit("update-download-progress", UpdateProgressPayload {
         percentage: 100,
         downloaded_bytes: downloaded,
@@ -1675,13 +1719,36 @@ async fn download_and_install_update(
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new(&dest_path)
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let current_exe = std::env::current_exe()
+            .unwrap_or_else(|_| std::path::PathBuf::from("Spytify.exe"));
+        let current_pid = std::process::id();
+        let dest_str = dest_path.to_string_lossy().replace('\'', "''");
+        let exe_str = current_exe.to_string_lossy().replace('\'', "''");
+
+        // Silent in-place update (/S /UPDATE): waits for current app to exit, silently updates in-place without uninstall prompts, then relaunches app
+        let ps_script = format!(
+            "for ($i = 0; $i -lt 40; $i++) {{ if (-not (Get-Process -Id {pid} -ErrorAction SilentlyContinue)) {{ break }}; Start-Sleep -Milliseconds 250 }}; \
+             Start-Sleep -Milliseconds 300; \
+             Start-Process -FilePath '{installer}' -ArgumentList '/S', '/UPDATE' -Wait; \
+             Start-Sleep -Milliseconds 300; \
+             Start-Process -FilePath '{exe}'",
+            pid = current_pid,
+            installer = dest_str,
+            exe = exe_str
+        );
+
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &ps_script])
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
-            .map_err(|e| format!("Không thể khởi chạy bộ cài đặt: {}", e))?;
+            .map_err(|e| format!("Không thể khởi chạy bộ cài đặt tự động: {}", e))?;
 
         let app_handle = app.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
             app_handle.exit(0);
         });
     }

@@ -23,6 +23,18 @@ export interface UpdatePolicyResult {
 export const CURRENT_BUILD_DATE = '2026-11-21T16:55:00Z';
 export const CURRENT_VERSION = '1.1.4';
 
+export function resolveDirectInstallerUrl(rawUrl: string | undefined, version: string): string {
+  const cleanVer = (version || CURRENT_VERSION).replace(/^v/, '').trim();
+  const fallbackExe = `https://github.com/anhdangtutien/Spytify/releases/download/v${cleanVer}/Spytify_${cleanVer}_x64-setup.exe`;
+  if (!rawUrl || !rawUrl.trim()) return fallbackExe;
+  const trimmed = rawUrl.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.endsWith('.exe') || lower.endsWith('.msi') || lower.endsWith('.dmg')) {
+    return trimmed;
+  }
+  return fallbackExe;
+}
+
 export function compareSemver(v1: string, v2: string): number {
   const parse = (v: string) =>
     v.replace(/^v/, '').split(/[-+]/)[0].split('.').map(n => parseInt(n, 10) || 0);
@@ -235,10 +247,12 @@ export async function checkStartupUpdatePolicy(force = false): Promise<UpdatePol
         (isHotfix
           ? 'Bản vá sửa chữa các lỗi phát sinh gần đây và tối ưu độ ổn định cho phiên bản hiện tại.'
           : 'Bản cập nhật tối ưu hóa hiệu năng, cải tiến giao diện người dùng và bảo mật hệ thống.'),
-      downloadUrl:
-        cfg?.downloadUrl ||
-        ghInfo?.downloadUrl ||
-        'https://github.com/anhdangtutien/Spytify/releases/latest',
+      downloadUrl: resolveDirectInstallerUrl(
+        (cfg?.downloadUrl && cfg.downloadUrl.toLowerCase().endsWith('.exe'))
+          ? cfg.downloadUrl
+          : (ghInfo?.downloadUrl || cfg?.downloadUrl),
+        targetVersion
+      ),
       releaseUrl: cfg?.releaseUrl || ghInfo?.releaseUrl || 'https://github.com/anhdangtutien/Spytify/releases',
       patchId: effectivePatchId,
       isHotfix,

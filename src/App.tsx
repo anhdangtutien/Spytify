@@ -20,7 +20,7 @@ import { EqualizerModal } from './components/EqualizerModal';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph } from './services/equalizer';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
-import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSION, compareSemver } from './services/updater';
+import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSION, compareSemver, resolveDirectInstallerUrl } from './services/updater';
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
@@ -188,7 +188,7 @@ export default function App() {
             : `Spytify ${config.version}`,
           publishedAt: config.updatedAt || new Date().toISOString(),
           notes: config.releaseNotes || (isHotfix ? 'Bản vá sửa chữa các lỗi phát sinh cho phiên bản hiện tại.' : 'Bản cập nhật mới từ hệ thống Spytify.'),
-          downloadUrl: config.downloadUrl || 'https://github.com/anhdangtutien/Spytify/releases/latest',
+          downloadUrl: resolveDirectInstallerUrl(config.downloadUrl, config.version),
           releaseUrl: config.releaseUrl || 'https://github.com/anhdangtutien/Spytify/releases',
           patchId: config.patchId,
           isHotfix,
