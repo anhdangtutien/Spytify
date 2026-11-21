@@ -852,32 +852,55 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
     case 'resolve_youtube_music_stream': {
       const rawVid = extractYouTubeVideoId(String(args.videoId || '')) || String(args.videoId || '').trim();
       if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
-        const streamRes = await raceFirstSuccess(
-          PIPED_API_BASES.map(async (base) => {
-            const data = await fetchJsonWithTimeout(`${base}/streams/${rawVid}`, 1800);
-            const streams: any[] = Array.isArray(data?.audioStreams) ? data.audioStreams : [];
-            const valid = streams
-              .filter(s => typeof s?.url === 'string' && s.url.startsWith('http'))
-              .sort((a, b) => {
-                const aMp4 = String(a?.mimeType || '').includes('audio/mp4') ? 1 : 0;
-                const bMp4 = String(b?.mimeType || '').includes('audio/mp4') ? 1 : 0;
-                if (aMp4 !== bMp4) return bMp4 - aMp4;
-                return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
-              });
-            if (valid.length > 0) {
-              return {
-                stream_url: valid[0].url as string,
-                resolved_video_id: rawVid,
-                duration_secs: Number(data?.duration) || 200,
-              };
-            }
-            return null;
-          })
-        );
+        const pipedPromises = PIPED_API_BASES.map(async (base) => {
+          const data = await fetchJsonWithTimeout(`${base}/streams/${rawVid}`, 1800);
+          const streams: any[] = Array.isArray(data?.audioStreams) ? data.audioStreams : [];
+          const valid = streams
+            .filter(s => typeof s?.url === 'string' && s.url.startsWith('http'))
+            .sort((a, b) => {
+              const aMp4 = String(a?.mimeType || '').includes('audio/mp4') ? 1 : 0;
+              const bMp4 = String(b?.mimeType || '').includes('audio/mp4') ? 1 : 0;
+              if (aMp4 !== bMp4) return bMp4 - aMp4;
+              return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
+            });
+          if (valid.length > 0) {
+            return {
+              stream_url: valid[0].url as string,
+              resolved_video_id: rawVid,
+              duration_secs: Number(data?.duration) || 200,
+            };
+          }
+          return null;
+        });
+
+        const invidiousPromises = INVIDIOUS_API_BASES.map(async (base) => {
+          const data = await fetchJsonWithTimeout(`${base}/api/v1/videos/${rawVid}`, 1800);
+          const formats: any[] = Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats : [];
+          const audioFormats = formats
+            .filter(f => typeof f?.type === 'string' && f.type.startsWith('audio/'))
+            .sort((a, b) => {
+              const aMp4 = String(a.type).includes('audio/mp4') ? 1 : 0;
+              const bMp4 = String(b.type).includes('audio/mp4') ? 1 : 0;
+              if (aMp4 !== bMp4) return bMp4 - aMp4;
+              return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
+            });
+          const bestFmt = audioFormats.find(f => typeof f?.url === 'string' && f.url.startsWith('http'));
+          const proxyUrl = bestFmt?.url || `${base}/latest_version?id=${rawVid}&itag=140&local=true`;
+          if (data?.title || bestFmt) {
+            return {
+              stream_url: String(proxyUrl),
+              resolved_video_id: rawVid,
+              duration_secs: Number(data?.lengthSeconds) || 200,
+            };
+          }
+          return null;
+        });
+
+        const streamRes = await raceFirstSuccess([...pipedPromises, ...invidiousPromises]);
         if (streamRes) return streamRes;
       }
 
-      // Search for a playable alternate videoId for the same song
+      // Search for a playable alternate videoId or Audius open stream for the same song
       const titleLow = String(args.title || '').trim().toLowerCase();
       const artistLow = String(args.artist || '').trim().toLowerCase();
       const curatedAlt = getAllCuratedTracks().find(t => {
@@ -897,15 +920,34 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
 
       try {
         const searchAlt = await searchYoutubeWeb(`${args.title || ''} ${args.artist || ''} official audio`, 1500);
-        const candidate = searchAlt.find(t => {
+        const ytCandidate = searchAlt.find(t => {
           const vid = extractYouTubeVideoId(t.url_or_id || '');
           return Boolean(vid && vid !== rawVid);
         });
-        if (candidate) {
+        if (ytCandidate) {
           return {
             stream_url: null,
-            resolved_video_id: candidate.url_or_id,
-            duration_secs: candidate.duration_secs || 200,
+            resolved_video_id: ytCandidate.url_or_id,
+            duration_secs: ytCandidate.duration_secs || 200,
+          };
+        }
+        const audiusAlt = searchAlt.find(t => t.source === 'audius' && String(t.url_or_id || '').startsWith('http'));
+        if (audiusAlt) {
+          return {
+            stream_url: audiusAlt.url_or_id,
+            resolved_video_id: rawVid,
+            duration_secs: audiusAlt.duration_secs || 200,
+          };
+        }
+      } catch {}
+
+      try {
+        const audiusTracks = await searchAudiusWeb(`${args.title || ''} ${args.artist || ''}`.trim());
+        if (audiusTracks.length > 0 && audiusTracks[0].url_or_id.startsWith('http')) {
+          return {
+            stream_url: audiusTracks[0].url_or_id,
+            resolved_video_id: rawVid,
+            duration_secs: audiusTracks[0].duration_secs || 200,
           };
         }
       } catch {}

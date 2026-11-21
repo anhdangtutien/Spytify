@@ -3,7 +3,7 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
-  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal
+  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -57,6 +57,8 @@ interface PlayerBarProps {
   onToggleMinimize?: () => void;
   onOpenEqualizer?: () => void;
   isEqualizerActive?: boolean;
+  isBackgroundPlayEnabled?: boolean;
+  onToggleBackgroundPlay?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -85,7 +87,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onToggleMinimize = onMinimize,
   onOpenEqualizer,
   isEqualizerActive = true,
+  isBackgroundPlayEnabled = true,
+  onToggleBackgroundPlay,
 }) => {
+  const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState(0);
@@ -351,7 +356,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </button>
               )}
 
-              {onDownload && (
+              {!isWebShim && onDownload && (
                 <button
                   onClick={() => onDownload(currentTrack)}
                   disabled={isDownloading || currentTrack.source === 'local' || Boolean(currentTrack.is_downloaded)}
@@ -1333,7 +1338,26 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 <span className="text-[10px]">Album</span>
               </button>
             )}
-            {onDownload && currentTrack && (
+            {onToggleBackgroundPlay && (
+              <button
+                type="button"
+                onClick={onToggleBackgroundPlay}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+                style={isBackgroundPlayEnabled ? { color: accentColor } : undefined}
+              >
+                <Headphones className="w-4 h-4" />
+                <span className="text-[10px] font-mono">
+                  {language === 'vi'
+                    ? isBackgroundPlayEnabled
+                      ? 'Nền: BẬT'
+                      : 'Nền: TẮT'
+                    : isBackgroundPlayEnabled
+                    ? 'BG: ON'
+                    : 'BG: OFF'}
+                </span>
+              </button>
+            )}
+            {!isWebShim && onDownload && currentTrack && (
               <button
                 type="button"
                 onClick={() => onDownload(currentTrack)}

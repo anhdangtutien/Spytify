@@ -25,11 +25,39 @@ import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser }
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
-import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon } from 'lucide-react';
+import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
 import { initRemoteConfigSync, RemoteBroadcastNotification } from './services/remoteConfigListener';
 import spytifyLogo from './assets/spytify-logo.png';
+
+function createSilentKeepAliveWavUri(): string {
+  const sampleRate = 8000;
+  const numSamples = 8000;
+  const buffer = new ArrayBuffer(44 + numSamples);
+  const view = new DataView(buffer);
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples, true);
+  new Uint8Array(buffer, 44).fill(128);
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return `data:audio/wav;base64,${btoa(binary)}`;
+}
 
 export default function App() {
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -130,12 +158,28 @@ export default function App() {
   const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
   const [isEqualizerActive, setIsEqualizerActive] = useState(() => loadEqualizerState().enabled);
 
+  // Mobile / Web Background Play Mode (giữ nhạc chạy khi tắt màn hình hoặc ẩn app)
+  const [isBackgroundPlayEnabled, setIsBackgroundPlayEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('spytify_bg_play_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const isBackgroundPlayEnabledRef = useRef<boolean>(isBackgroundPlayEnabled);
+  isBackgroundPlayEnabledRef.current = isBackgroundPlayEnabled;
+  const userInitiatedPauseRef = useRef<boolean>(false);
+  const lastHiddenAtRef = useRef<number>(0);
+  const bgKeepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
+
   // Realtime Remote Config & Broadcast Banner
   const [remoteBroadcast, setRemoteBroadcast] = useState<RemoteBroadcastNotification | null>(null);
   const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(false);
 
   // Initialize Close to Tray, Background Update Check & Remote Config Sync
   useEffect(() => {
+    const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
+
     const handleBroadcastEvent = (e: any) => {
       setRemoteBroadcast(e.detail || null);
       setIsBroadcastDismissed(false);
@@ -147,7 +191,7 @@ export default function App() {
       console.warn('Failed to initialize close to tray:', err);
     });
 
-    // Check for updates immediately on launch
+    // Web PWA đồng bộ tự động qua GitHub/Vercel -> không bật cảnh báo cập nhật hay vá lỗi thủ công
     let isCancelled = false;
     const performStartupUpdateCheck = async () => {
       try {
@@ -171,6 +215,7 @@ export default function App() {
 
     // Listen to real-time remote config updates from Spytify Dashboard
     const handleRemoteConfigUpdated = (e: any) => {
+      if (isWebShim) return;
       const config = e.detail;
       if (!config || !config.version) return;
       const semverDiff = compareSemver(config.version, CURRENT_VERSION);
@@ -212,11 +257,14 @@ export default function App() {
         setIsUpdateModalOpen(true);
       }
     };
-    window.addEventListener('spytify:remote-config-updated', handleRemoteConfigUpdated);
 
-    // Initialize remote config sync after listeners are attached
+    if (!isWebShim) {
+      window.addEventListener('spytify:remote-config-updated', handleRemoteConfigUpdated);
+      performStartupUpdateCheck();
+    }
+
+    // Initialize remote config sync for announcements/broadcasts
     initRemoteConfigSync();
-    performStartupUpdateCheck();
 
     return () => {
       isCancelled = true;
@@ -1138,7 +1186,13 @@ export default function App() {
   }
   const [nextTrackPopup, setNextTrackPopup] = useState<NextTrackPopupData | null>(null);
   const [isAiLoadingNext, setIsAiLoadingNext] = useState<boolean>(false);
-  const [isNextTrackPopupCollapsed, setIsNextTrackPopupCollapsed] = useState(false);
+  const [isNextTrackPopupCollapsed, setIsNextTrackPopupCollapsed] = useState<boolean>(() => {
+    try {
+      return typeof window !== 'undefined' && window.innerWidth < 640;
+    } catch {
+      return false;
+    }
+  });
   const nextTrackPopupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endOfTrackPopupShownForRef = useRef<string | null>(null);
   const preloadedAlternativesRef = useRef<Track[]>([]);
@@ -2469,6 +2523,29 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data) return;
 
+        const tryRecoverBackgroundPause = () => {
+          if (
+            isBackgroundPlayEnabledRef.current &&
+            !userInitiatedPauseRef.current &&
+            !ytMusicFallbackActiveRef.current &&
+            (document.hidden || Date.now() - lastHiddenAtRef.current < 3500)
+          ) {
+            sendYtCmd('playVideo', [], ytChannel);
+            setTimeout(() => {
+              if (isPlayingRef.current && !userInitiatedPauseRef.current && currentTrackRef.current?.source === 'youtube') {
+                sendYtCmd('playVideo', [], ytChannel);
+              }
+            }, 150);
+            setTimeout(() => {
+              if (isPlayingRef.current && !userInitiatedPauseRef.current && currentTrackRef.current?.source === 'youtube') {
+                sendYtCmd('playVideo', [], ytChannel);
+              }
+            }, 450);
+            return true;
+          }
+          return false;
+        };
+
         // YouTube events
         if (data.event === 'onReady' || (data.event === 'onStateChange' && (data.info === 1 || data.info === 3))) {
           if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
@@ -2539,6 +2616,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
               if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
             } else if (data.info === 2) {
+              if (tryRecoverBackgroundPause()) return;
               isPlayingRef.current = false;
               setIsPlaying(false);
               if (playStartTimestampRef.current) {
@@ -2616,6 +2694,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }
             }
             if (data.info.playerState === 2) {
+              if (tryRecoverBackgroundPause()) return;
               isPlayingRef.current = false;
               if (playStartTimestampRef.current) {
                 accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
@@ -2995,6 +3074,76 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     } catch {}
   };
 
+  const handleToggleBackgroundPlay = () => {
+    setIsBackgroundPlayEnabled(prev => {
+      const next = !prev;
+      isBackgroundPlayEnabledRef.current = next;
+      try {
+        localStorage.setItem('spytify_bg_play_enabled', String(next));
+      } catch {}
+      if (!next) {
+        bgKeepAliveAudioRef.current?.pause();
+        showNotification(language === 'vi' ? '🔕 Đã tắt chế độ phát nhạc nền khi tắt màn hình' : '🔕 Background playback disabled');
+      } else {
+        if (isPlayingRef.current) {
+          bgKeepAliveAudioRef.current?.play().catch(() => {});
+        }
+        showNotification(language === 'vi' ? '🎧 Đã bật chế độ phát nhạc nền khi khóa màn hình' : '🎧 Background playback enabled');
+      }
+      return next;
+    });
+  };
+
+  // ─── MOBILE/WEB BACKGROUND PLAY KEEP-ALIVE & SCREEN-LOCK RECOVERY ─────────
+  useEffect(() => {
+    const keepAlive = new Audio();
+    keepAlive.src = createSilentKeepAliveWavUri();
+    keepAlive.loop = true;
+    keepAlive.volume = 0.01;
+    (keepAlive as any).playsInline = true;
+    keepAlive.preload = 'auto';
+    bgKeepAliveAudioRef.current = keepAlive;
+
+    const wakeYoutubeInBackground = () => {
+      if (!document.hidden) return;
+      if (!isBackgroundPlayEnabledRef.current || userInitiatedPauseRef.current || !isPlayingRef.current) return;
+      lastHiddenAtRef.current = Date.now();
+      bgKeepAliveAudioRef.current?.play().catch(() => {});
+
+      const ch = activeYtChannelRef.current;
+      if (currentTrackRef.current?.source === 'youtube' && !ytMusicFallbackActiveRef.current) {
+        [50, 250, 600, 1400].forEach((ms) => {
+          setTimeout(() => {
+            if (isPlayingRef.current && isBackgroundPlayEnabledRef.current && !userInitiatedPauseRef.current && currentTrackRef.current?.source === 'youtube') {
+              sendYtCmd('playVideo', [], ch);
+            }
+          }, ms);
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', wakeYoutubeInBackground);
+    window.addEventListener('pagehide', wakeYoutubeInBackground);
+
+    return () => {
+      document.removeEventListener('visibilitychange', wakeYoutubeInBackground);
+      window.removeEventListener('pagehide', wakeYoutubeInBackground);
+      keepAlive.pause();
+      keepAlive.src = '';
+      bgKeepAliveAudioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const keepAlive = bgKeepAliveAudioRef.current;
+    if (!keepAlive) return;
+    if (isPlaying && isBackgroundPlayEnabled) {
+      keepAlive.play().catch(() => {});
+    } else {
+      keepAlive.pause();
+    }
+  }, [isPlaying, isBackgroundPlayEnabled]);
+
   const sendScCmd = (method: string, value?: unknown, channel?: 1 | 2) => {
     const ch = channel ?? activeScChannelRef.current;
     const target = ch === 1 ? scIframe1Ref.current : scIframe2Ref.current;
@@ -3074,9 +3223,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // ─── Core play function ──────────────────────────────────────────────────
   const playTrackInternal = async (rawTrack: Track, isBackOrForward = false, isCrossfade = false) => {
-    // If this track was downloaded to local disk, automatically switch to offline local track for instant, crisp Hi-Fi playback!
+    const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
+    userInitiatedPauseRef.current = false;
+    if (isBackgroundPlayEnabledRef.current) {
+      bgKeepAliveAudioRef.current?.play().catch(() => {});
+    }
+
+    // Desktop only: if this track was downloaded to local disk, switch to offline local track for instant Hi-Fi playback!
     let track = rawTrack;
-    if (track.source !== 'local') {
+    if (!isWebShim && track.source !== 'local') {
       const localMatch = tracks.find(t => 
         t.source === 'local' && t.path_or_url && (
           t.id === rawTrack.id ||
@@ -3090,6 +3245,97 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           ...localMatch,
           cover_art: rawTrack.cover_art || localMatch.cover_art,
         };
+      }
+    }
+
+    // Web PWA: không đọc được file ổ cứng local trong Album đồng bộ -> tự động chuyển sang phát trực tuyến online
+    if (isWebShim) {
+      const rawPath = (track.path_or_url || '').trim();
+      const isMachineFilePath =
+        !rawPath ||
+        (!rawPath.startsWith('http://') &&
+          !rawPath.startsWith('https://') &&
+          (/[a-zA-Z]:[\\/]/.test(rawPath) ||
+            rawPath.startsWith('/') ||
+            /\.(mp3|flac|wav|m4a|ogg|aac|opus|wma)$/i.test(rawPath)));
+
+      if (track.source === 'local' || isMachineFilePath) {
+        const idYtMatch = `${track.id} ${rawPath}`.match(/(?:youtube_|yt_)([A-Za-z0-9_-]{11})(?:$|[^A-Za-z0-9_-])/);
+        const directYtId = /^[A-Za-z0-9_-]{11}$/.test(rawPath) ? rawPath : null;
+        const extractedVid = idYtMatch?.[1] || directYtId;
+
+        if (extractedVid) {
+          track = {
+            ...track,
+            source: 'youtube',
+            path_or_url: extractedVid,
+            is_downloaded: false,
+          };
+        } else {
+          const normTitle = (track.title || '').trim().toLowerCase();
+          const normArtist = (track.artist || '').trim().toLowerCase();
+          const cachedOnline = tracksRef.current.find(
+            t =>
+              t.source !== 'local' &&
+              t.path_or_url &&
+              (
+                t.id === track.id.replace(/^local_/, '') ||
+                (normTitle &&
+                  t.title.trim().toLowerCase() === normTitle &&
+                  (!normArtist || t.artist.trim().toLowerCase() === normArtist))
+              )
+          );
+
+          if (cachedOnline) {
+            track = {
+              ...track,
+              source: cachedOnline.source,
+              path_or_url: cachedOnline.path_or_url,
+              cover_art: track.cover_art || cachedOnline.cover_art,
+              duration_secs: track.duration_secs || cachedOnline.duration_secs,
+              is_downloaded: false,
+            };
+          } else {
+            currentTrackRef.current = track;
+            setCurrentTrack(track);
+            showNotification(
+              `☁️ ${language === 'vi' ? 'Đang phát trực tuyến:' : 'Streaming online:'} ${track.title}...`
+            );
+            try {
+              const query = `${track.title || ''} ${track.artist || ''}`.trim();
+              let results = await invoke<SearchResult[]>('search_online', { query, source: 'youtube' });
+              if (!results || results.length === 0) {
+                results = await invoke<SearchResult[]>('search_online', { query, source: 'all' });
+              }
+              if (currentTrackRef.current?.id !== track.id) return;
+              if (results && results.length > 0 && results[0].url_or_id) {
+                const hit = results[0];
+                track = {
+                  ...track,
+                  source: hit.source,
+                  path_or_url: hit.url_or_id,
+                  cover_art: track.cover_art || hit.thumbnail,
+                  duration_secs: track.duration_secs || hit.duration_secs || 200,
+                  is_downloaded: false,
+                };
+              } else {
+                showNotification(
+                  language === 'vi'
+                    ? '⚠️ Bản Web chưa tìm thấy nguồn trực tuyến cho bài nhạc máy này.'
+                    : '⚠️ Could not find an online stream for this local file on Web.'
+                );
+                return;
+              }
+            } catch {
+              showNotification(
+                language === 'vi'
+                  ? '⚠️ Không thể phát trực tuyến bài hát này trên bản Web.'
+                  : '⚠️ Unable to stream this track on Web.'
+              );
+              return;
+            }
+          }
+        }
       }
     }
 
@@ -3189,7 +3435,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       invoke('db_add_history', { userId: currentUserRef.current.id, track }).catch(console.error);
     }
 
-    const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
     // On Web/Mobile, YouTube must stay on the single unlocked iframe channel so autoplay isn't blocked on track switches
     const effectiveIsCrossfade =
       isWebShim && (track.source === 'youtube' || previousTrack?.source === 'youtube')
@@ -3668,6 +3913,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     if (isPlayingRef.current) {
       // Transitioning to PAUSE
+      userInitiatedPauseRef.current = true;
+      bgKeepAliveAudioRef.current?.pause();
       if (playStartTimestampRef.current) {
         accumulatedTimeRef.current += (Date.now() - playStartTimestampRef.current) / 1000;
         playStartTimestampRef.current = null;
@@ -3692,7 +3939,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     } else {
       // Transitioning to PLAY
+      userInitiatedPauseRef.current = false;
       ensureAudioContextRunning();
+      if (isBackgroundPlayEnabledRef.current) {
+        bgKeepAliveAudioRef.current?.play().catch(() => {});
+      }
       playStartTimestampRef.current = Date.now();
       isPlayingRef.current = true;
       setIsPlaying(true);
@@ -3903,6 +4154,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   handleUserPrevRef.current = handleUserPrev;
   const handleUserNextRef = useRef(handleUserNext);
   handleUserNextRef.current = handleUserNext;
+  const handleSeekRef = useRef(handleSeek);
+  handleSeekRef.current = handleSeek;
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
@@ -3917,12 +4170,49 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         artwork: artworkUrl ? [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }] : [],
       });
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-      navigator.mediaSession.setActionHandler('play', () => handleTogglePlayRef.current());
-      navigator.mediaSession.setActionHandler('pause', () => handleTogglePlayRef.current());
+      navigator.mediaSession.setActionHandler('play', () => {
+        userInitiatedPauseRef.current = false;
+        if (isBackgroundPlayEnabledRef.current) bgKeepAliveAudioRef.current?.play().catch(() => {});
+        if (!isPlayingRef.current) handleTogglePlayRef.current();
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        userInitiatedPauseRef.current = true;
+        if (isPlayingRef.current) handleTogglePlayRef.current();
+      });
       navigator.mediaSession.setActionHandler('previoustrack', () => handleUserPrevRef.current());
       navigator.mediaSession.setActionHandler('nexttrack', () => handleUserNextRef.current());
     } catch {}
-  }, [currentTrack, isPlaying]);
+
+    try {
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (typeof details.seekTime === 'number') {
+          handleSeekRef.current(details.seekTime);
+        }
+      });
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const offset = details.seekOffset || 10;
+        handleSeekRef.current(Math.max(0, (currentTimeRef.current || 0) - offset));
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const offset = details.seekOffset || 10;
+        const maxDur = durationRef.current || currentTrack.duration_secs || 9999;
+        handleSeekRef.current(Math.min(maxDur, (currentTimeRef.current || 0) + offset));
+      });
+    } catch {}
+
+    try {
+      if ('setPositionState' in navigator.mediaSession) {
+        const effDur = duration > 0 && isFinite(duration) ? duration : (currentTrack.duration_secs || 0);
+        if (effDur > 0 && isFinite(effDur)) {
+          navigator.mediaSession.setPositionState({
+            duration: effDur,
+            playbackRate: isPlaying ? 1 : 0,
+            position: Math.max(0, Math.min(effDur, currentTimeRef.current || 0)),
+          });
+        }
+      }
+    } catch {}
+  }, [currentTrack, isPlaying, duration]);
 
   const handleToggleFavorite = async (trackToFav?: Track) => {
     const target = trackToFav || currentTrack;
@@ -4344,14 +4634,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {/* ─── NEXT TRACK POPUP (SMOOTH PLAYBACK FLOATING WIDGET) ── */}
       {!isTrayMode && (nextTrackPopup || (isAiLoadingNext && currentTrack)) && isNextTrackPopupEnabled && (
         <div 
-          className={`fixed right-6 z-50 p-3.5 rounded-2xl border shadow-2xl flex flex-col gap-2.5 transition-all duration-300 ${
+          className={`fixed left-2.5 right-2.5 sm:left-auto sm:right-6 z-50 p-2.5 sm:p-3.5 rounded-2xl border shadow-2xl flex flex-col gap-2 sm:gap-2.5 transition-all duration-300 max-h-[55vh] sm:max-h-none overflow-y-auto ${
             themeMode === 'light' ? 'bg-white/98' : 'bg-[#0c0c14]/98'
           } ${
             showYoutubeVideo 
-              ? (isPlayerBarMinimized ? 'bottom-[236px]' : 'bottom-[260px]')
-              : (isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]')
+              ? (isPlayerBarMinimized
+                  ? 'bottom-[calc(240px+env(safe-area-inset-bottom,0px))] md:bottom-[236px]'
+                  : 'bottom-[calc(310px+env(safe-area-inset-bottom,0px))] md:bottom-[260px]')
+              : (isPlayerBarMinimized
+                  ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[36px]'
+                  : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[60px]')
           } ${
-            isNextTrackPopupCollapsed ? 'w-80' : 'w-88 max-w-[calc(100vw-3rem)]'
+            isNextTrackPopupCollapsed ? 'w-auto sm:w-80' : 'w-auto sm:w-88 max-w-full sm:max-w-[calc(100vw-3rem)]'
           }`}
           style={{
             borderColor: `${activeAccentColor}60`,
@@ -4549,7 +4843,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     <span>{getTranslation(language, 'popup.sameGenre')}</span>
                     <span className="text-[9px] text-[#555]">{getTranslation(language, 'popup.clickToChoose')}</span>
                   </div>
-                  <div className="space-y-1 max-h-32 overflow-y-auto pr-0.5">
+                  <div className="space-y-1 max-h-24 sm:max-h-32 overflow-y-auto pr-0.5">
                     {nextTrackPopup.alternatives.map((alt) => (
                       <div
                         key={alt.id}
@@ -4598,7 +4892,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {/* Toast Notification — Invincible Accent (Hiển thị ngay trên thanh Play) */}
       {!isTrayMode && statusMessage && (
         <div 
-          className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full font-mono text-xs flex items-center gap-2.5 transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 border shadow-2xl backdrop-blur-xl whitespace-nowrap pointer-events-none`}
+          className={`fixed ${
+            isPlayerBarMinimized
+              ? 'bottom-[calc(96px+env(safe-area-inset-bottom,0px))] md:bottom-[36px]'
+              : 'bottom-[calc(116px+env(safe-area-inset-bottom,0px))] md:bottom-[60px]'
+          } left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-1.5rem)] px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-mono text-[11px] sm:text-xs flex items-center gap-2 sm:gap-2.5 transition-all duration-300 animate-in fade-in slide-in-from-bottom-3 border shadow-2xl backdrop-blur-xl whitespace-nowrap pointer-events-none`}
           style={{
             backgroundColor: themeMode === 'light' ? 'rgba(255, 255, 255, 0.95)' : 'rgba(14, 14, 20, 0.95)',
             color: themeMode === 'light' ? '#0f172a' : '#ffffff',
@@ -4609,7 +4907,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           }}
         >
           <CheckCircle2 className="w-4 h-4 flex-shrink-0 animate-pulse" style={{ color: activeAccentColor }} />
-          <span className="font-bold tracking-wide" style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}>
+          <span className="font-bold tracking-wide truncate" style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}>
             {statusMessage}
           </span>
         </div>
@@ -4649,8 +4947,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             language={language}
           />
 
-          {/* Software Update Modal */}
-          {updateInfo && (
+          {/* Software Update Modal (Desktop only — Web stays in sync via GitHub/Vercel) */}
+          {updateInfo && !(typeof window !== 'undefined' && (window as any).__TAURI_WEB_SHIM__) && (
             <UpdateModal
               isOpen={isUpdateModalOpen}
               updateInfo={updateInfo}
@@ -4935,7 +5233,36 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   : getTranslation(language, 'nav.trending').toUpperCase()}
               </span>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5 sm:gap-2.5">
+              {/* Background Play Toggle (Mobile / Web PWA Screen-Lock Keep-Alive) */}
+              <button
+                type="button"
+                onClick={handleToggleBackgroundPlay}
+                title={
+                  language === 'vi'
+                    ? 'Bật/tắt chế độ phát nhạc nền khi tắt màn hình điện thoại'
+                    : 'Toggle background playback when screen is off'
+                }
+                className={`px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md border transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                  isBackgroundPlayEnabled
+                    ? themeMode === 'light'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
+                    : themeMode === 'light'
+                    ? 'bg-slate-100 text-slate-500 border-slate-300'
+                    : 'bg-[#101018] text-[#777] border-[#222230]'
+                }`}
+              >
+                <Headphones className="w-3.5 h-3.5" style={isBackgroundPlayEnabled ? { color: activeAccentColor } : undefined} />
+                <span className="font-mono text-[10px] font-bold">
+                  {language === 'vi' ? 'Nền' : 'BG'}
+                </span>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${isBackgroundPlayEnabled ? 'animate-pulse' : 'opacity-40'}`}
+                  style={{ backgroundColor: isBackgroundPlayEnabled ? '#10b981' : '#666' }}
+                />
+              </button>
+
               {/* Spytify Vercel Website Button */}
               <button
                 type="button"
@@ -5216,6 +5543,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onUpdateCrossfadeDuration={setCrossfadeDuration}
                 volume={volume}
                 onVolumeChange={handleVolumeChange}
+                isBackgroundPlayEnabled={isBackgroundPlayEnabled}
+                onToggleBackgroundPlay={handleToggleBackgroundPlay}
               />
             ) : currentView === 'search' ? (
               <SearchView
@@ -5541,6 +5870,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         isCrossfading={isCrossfading}
         onOpenEqualizer={() => setIsEqualizerOpen(true)}
         isEqualizerActive={isEqualizerActive}
+        isBackgroundPlayEnabled={isBackgroundPlayEnabled}
+        onToggleBackgroundPlay={handleToggleBackgroundPlay}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}

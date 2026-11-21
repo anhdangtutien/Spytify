@@ -57,6 +57,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   const [newPresetName, setNewPresetName] = useState('');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
+  const draggingBandRef = useRef<number | null>(null);
 
   // Horizontal Presets Scroll & Drag-to-Browse
   const presetsScrollRef = useRef<HTMLDivElement | null>(null);
@@ -290,16 +291,22 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     handleSelectPreset('flat');
   };
 
+  const updateBandFromPointer = (index: number, clientY: number, rect: DOMRect) => {
+    const ratio = Math.max(0, Math.min(1, (clientY - rect.top) / Math.max(1, rect.height)));
+    const snapped = Math.round((15 - ratio * 30) * 2) / 2;
+    handleBandGainChange(index, Math.max(-15, Math.min(15, snapped)));
+  };
+
   const isDirectAudioSource = currentTrack?.source === 'local' || currentTrack?.source === 'audius';
   const isYoutubeSource = currentTrack?.source === 'youtube';
 
   return (
     <div 
-      className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-200"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-2.5 sm:p-4 bg-black/95 backdrop-blur-xl animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div 
-        className={`relative w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden transition-all duration-300 ${
+        className={`relative w-full max-w-4xl max-h-[88dvh] sm:max-h-[92vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden transition-all duration-300 ${
           isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#0b0b12] border-[#222232] text-white'
         }`}
         onClick={e => e.stopPropagation()}
@@ -308,10 +315,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
         }}
       >
         {/* Top Header — Solid opaque background to prevent any background bleed */}
-        <div className={`flex items-center justify-between px-4 sm:px-5 py-2.5 border-b shrink-0 ${isLight ? 'border-slate-200 bg-slate-100' : 'border-[#1a1a26] bg-[#101018]'}`}>
-          <div className="flex items-center gap-2.5">
+        <div className={`flex items-center justify-between gap-2 px-3 sm:px-5 py-2.5 border-b shrink-0 ${isLight ? 'border-slate-200 bg-slate-100' : 'border-[#1a1a26] bg-[#101018]'}`}>
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             <div 
-              className="w-7 h-7 rounded-lg flex items-center justify-center transition-transform shadow-inner"
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-transform shadow-inner shrink-0"
               style={{ 
                 backgroundColor: eqState.enabled ? `${accentColor}20` : (isLight ? '#f1f5f9' : '#1e1e2d'),
                 color: eqState.enabled ? accentColor : (isLight ? '#64748b' : '#71717a'),
@@ -319,34 +326,36 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             >
               <Sliders className="w-3.5 h-3.5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className={`text-xs sm:text-sm font-bold font-mono tracking-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {language === 'vi' ? 'CÀI ĐẶT ÂM THANH & EQ (STUDIO MIXER)' : 'AUDIO SETTINGS & EQ (STUDIO MIXER)'}
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h2 className={`text-xs sm:text-sm font-bold font-mono tracking-tight truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                  <span className="sm:hidden">{language === 'vi' ? 'ÂM THANH & EQ' : 'AUDIO & EQ'}</span>
+                  <span className="hidden sm:inline">{language === 'vi' ? 'CÀI ĐẶT ÂM THANH & EQ (STUDIO MIXER)' : 'AUDIO SETTINGS & EQ (STUDIO MIXER)'}</span>
                 </h2>
                 <span 
-                  className="text-[9px] font-mono px-1.5 py-0.5 rounded font-bold uppercase transition-colors"
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded font-bold uppercase transition-colors shrink-0"
                   style={{
                     backgroundColor: eqState.enabled ? `${accentColor}25` : (isLight ? '#e2e8f0' : '#27273a'),
                     color: eqState.enabled ? accentColor : (isLight ? '#64748b' : '#94a3b8'),
                   }}
                 >
-                  {eqState.enabled ? 'Hi-Fi 10-Band Active' : 'EQ Bypassed'}
+                  <span className="hidden sm:inline">{eqState.enabled ? 'Hi-Fi 10-Band Active' : 'EQ Bypassed'}</span>
+                  <span className="sm:hidden">{eqState.enabled ? '10-Band' : 'Off'}</span>
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 font-sans leading-none mt-0.5">
+              <p className="hidden sm:block text-[10px] text-slate-400 font-sans leading-none mt-0.5">
                 {language === 'vi' ? 'Bộ cân bằng tần số ngang 10-Band, Chuyển tiếp mượt & DSP' : '10-Band Studio Mixer Console, Realtime DSP & Visualizer'}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Master Bypass Toggle */}
             <button
               type="button"
               onClick={handleToggleEnable}
               title={eqState.enabled ? 'Tắt bộ lọc EQ (Bypass)' : 'Bật bộ lọc EQ'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border shadow-sm ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-mono font-bold transition-all cursor-pointer border shadow-sm ${
                 eqState.enabled 
                   ? 'border-transparent shadow-md'
                   : (isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-[#181824] border-[#2c2c3c] text-slate-400')
@@ -385,35 +394,35 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
           </div>
         </div>
 
-        {/* Horizontal Landscape Body (Strict 2-Column Console Layout, never breaks to 1-column) */}
-        <div className="p-3 sm:p-3.5 grid grid-cols-12 gap-3.5 items-stretch flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        {/* Responsive Console Body: 1-Column stacked on Mobile/Tablet, 2-Column on Desktop (lg+) */}
+        <div className="p-3 sm:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-stretch flex-1 min-h-0 overflow-y-auto overscroll-contain">
           
-          {/* ─── LEFT COLUMN (5/12): Settings, Presets & Audio Enhancements ─── */}
-          <div className="col-span-5 flex flex-col justify-between space-y-2">
+          {/* ─── LEFT COLUMN (5/12 on lg): Settings, Presets & Audio Enhancements ─── */}
+          <div className="col-span-1 lg:col-span-5 flex flex-col justify-between space-y-2.5">
             {/* Audio Source Status Notice */}
             <div>
               {isYoutubeSource ? (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 text-[10px] font-sans">
-                  <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
-                  <span className="truncate">
+                <div className="flex items-start sm:items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-300 text-[10px] font-sans">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+                  <span className="line-clamp-2 sm:truncate">
                     {language === 'vi' 
-                      ? 'YouTube Iframe: Sandbox không hỗ trợ EQ. Tải bài hát về để nghe EQ trọn vẹn!' 
-                      : 'YouTube iframe sandbox cannot route to Web Audio. Download song to use EQ!'}
+                      ? 'YouTube Iframe: Sandbox không hỗ trợ EQ. Phát Audius hoặc nhạc máy trên Desktop để nghe EQ trọn vẹn!' 
+                      : 'YouTube iframe sandbox cannot route to Web Audio. Play Audius or local songs to use live EQ!'}
                   </span>
                 </div>
               ) : isDirectAudioSource ? (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-[10px] font-sans">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                  <span className="font-medium truncate">
+                <div className="flex items-start sm:items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-[10px] font-sans">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5 sm:mt-0" />
+                  <span className="font-medium line-clamp-2 sm:truncate">
                     {language === 'vi' 
                       ? `Đang áp dụng EQ thời gian thực: "${currentTrack?.title}" (Hi-Fi Direct Audio)` 
                       : `Realtime EQ processing: "${currentTrack?.title}"`}
                   </span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-500/20 bg-slate-500/5 text-slate-400 text-[10px] font-sans">
-                  <Music className="w-3 h-3 text-slate-400 shrink-0" />
-                  <span className="truncate">
+                <div className="flex items-start sm:items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-500/20 bg-slate-500/5 text-slate-400 text-[10px] font-sans">
+                  <Music className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5 sm:mt-0" />
+                  <span className="line-clamp-2 sm:truncate">
                     {language === 'vi'
                       ? 'Phát nhạc từ Thư viện máy (Local) hoặc bài tải về để cảm nhận rõ nhất EQ!'
                       : 'Play local or downloaded songs to experience live audio filtering!'}
@@ -610,11 +619,11 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
 
             {/* Quick Playback Settings (Crossfade & Visualizer) */}
-            <div className={`p-2 rounded-xl border grid grid-cols-2 gap-2 ${
+            <div className={`p-2.5 rounded-xl border grid grid-cols-1 sm:grid-cols-2 gap-2.5 ${
               isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'
             }`}>
               {/* Crossfade Transition */}
-              <div className="flex flex-col justify-between gap-1">
+              <div className="flex flex-col justify-between gap-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-mono font-semibold text-slate-300 flex items-center gap-1">
                     <Sliders className="w-2.5 h-2.5" style={{ color: accentColor }} />
@@ -624,7 +633,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                     {crossfadeDuration > 0 ? `${crossfadeDuration}s` : (language === 'vi' ? 'Tắt' : 'Off')}
                   </span>
                 </div>
-                <div className="grid grid-cols-5 gap-0.5 w-full">
+                <div className="grid grid-cols-5 gap-1 w-full">
                   {[
                     { sec: 0, label: language === 'vi' ? 'Tắt' : 'Off' },
                     { sec: 3, label: '3s' },
@@ -638,7 +647,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                         key={opt.sec}
                         type="button"
                         onClick={() => onUpdateCrossfadeDuration?.(opt.sec)}
-                        className={`py-0.5 rounded text-[9.5px] font-mono transition-all cursor-pointer border text-center w-full ${
+                        className={`py-1 sm:py-0.5 rounded text-[9.5px] font-mono transition-all cursor-pointer border text-center w-full ${
                           isSelected
                             ? 'border-transparent font-bold text-white shadow-sm'
                             : isLight
@@ -658,7 +667,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               </div>
 
               {/* Visualizer Waveform Toggle */}
-              <div className="flex items-center justify-between border-l border-white/10 pl-2">
+              <div className="flex items-center justify-between border-t pt-2 sm:border-t-0 sm:pt-0 sm:border-l border-white/10 sm:pl-2.5">
                 <div className="flex flex-col">
                   <span className="text-[10px] font-mono font-semibold text-slate-300 flex items-center gap-1">
                     <Activity className="w-2.5 h-2.5" style={{ color: accentColor }} />
@@ -671,14 +680,14 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 <button
                   type="button"
                   onClick={onToggleVisualizer}
-                  className={`w-8 h-4.5 rounded-full transition-colors relative cursor-pointer shrink-0 ml-1.5 ${
+                  className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer shrink-0 ml-1.5 ${
                     showVisualizer ? '' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
                   }`}
                   style={showVisualizer ? { backgroundColor: accentColor } : undefined}
                 >
                   <div 
-                    className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${
-                      showVisualizer ? 'translate-x-4' : 'translate-x-0.5'
+                    className={`w-3.5 h-3.5 rounded-full bg-white absolute top-[3px] transition-transform ${
+                      showVisualizer ? 'translate-x-4.5' : 'translate-x-1'
                     }`} 
                   />
                 </button>
@@ -686,10 +695,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
             </div>
 
             {/* Auxiliary Sliders: Preamp, Bass Boost, 3D Spatial */}
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {/* Preamp */}
-              <div className={`p-2 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-                <div className="flex items-center justify-between mb-0.5">
+              <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-[9.5px] font-mono font-semibold text-slate-300 truncate">
                     Preamp
                   </span>
@@ -705,7 +714,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   value={eqState.preamp}
                   onChange={e => handlePreampChange(parseFloat(e.target.value))}
                   onWheel={e => (e.target as HTMLElement).blur()}
-                  className="w-full h-1 rounded-full appearance-none cursor-pointer outline-none transition-opacity touch-none"
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity touch-none"
                   style={{
                     accentColor: accentColor,
                     backgroundColor: isLight ? '#cbd5e1' : '#222232',
@@ -715,8 +724,8 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               </div>
 
               {/* Bass Boost */}
-              <div className={`p-2 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-                <div className="flex items-center justify-between mb-0.5">
+              <div className={`p-2.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+                <div className="flex items-center justify-between mb-1">
                   <span className="text-[9.5px] font-mono font-semibold text-slate-300 flex items-center gap-0.5">
                     <Flame className="w-2.5 h-2.5 text-amber-500" />
                     Bass
@@ -733,7 +742,7 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                   value={eqState.bassBoost}
                   onChange={e => handleBassBoostChange(parseInt(e.target.value))}
                   onWheel={e => (e.target as HTMLElement).blur()}
-                  className="w-full h-1 rounded-full appearance-none cursor-pointer outline-none transition-opacity touch-none"
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-opacity touch-none"
                   style={{
                     accentColor: '#f59e0b',
                     backgroundColor: isLight ? '#cbd5e1' : '#222232',
@@ -743,42 +752,45 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               </div>
 
               {/* 3D Spatial */}
-              <div className={`p-2 rounded-xl border flex flex-col justify-between ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[9.5px] font-mono font-semibold text-slate-300 flex items-center gap-0.5">
-                    <Headphones className="w-2.5 h-2.5 text-cyan-400" />
-                    3D Audio
+              <div className={`col-span-2 sm:col-span-1 p-2.5 rounded-xl border flex flex-row sm:flex-col items-center sm:items-stretch justify-between ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#222230]'}`}>
+                <div className="flex items-center justify-between gap-2 w-full">
+                  <span className="text-[9.5px] font-mono font-semibold text-slate-300 flex items-center gap-1">
+                    <Headphones className="w-3 h-3 text-cyan-400" />
+                    <span>3D Audio</span>
+                    <span className="sm:hidden text-[9px] text-slate-500 font-normal">
+                      ({language === 'vi' ? 'Trường âm vòm' : 'Surround'})
+                    </span>
                   </span>
                   <button
                     type="button"
                     onClick={handleToggleSpatial}
-                    className={`w-6 h-3.5 rounded-full transition-colors relative cursor-pointer ${
+                    className={`w-8 h-4.5 sm:w-6 sm:h-3.5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
                       eqState.spatial3D ? 'bg-cyan-500' : (isLight ? 'bg-slate-300' : 'bg-[#2b2b3a]')
                     }`}
                   >
                     <div 
-                      className={`w-2.5 h-2.5 rounded-full bg-white absolute top-0.5 transition-transform ${
-                        eqState.spatial3D ? 'translate-x-3' : 'translate-x-0.5'
+                      className={`w-3.5 h-3.5 sm:w-2.5 sm:h-2.5 rounded-full bg-white absolute top-0.5 transition-transform ${
+                        eqState.spatial3D ? 'translate-x-4 sm:translate-x-3' : 'translate-x-0.5'
                       }`} 
                     />
                   </button>
                 </div>
-                <span className="text-[8.5px] text-slate-500 truncate mt-0.5">
+                <span className="hidden sm:block text-[8.5px] text-slate-500 truncate mt-0.5">
                   {language === 'vi' ? 'Trường âm vòm' : 'Surround'}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* ─── RIGHT COLUMN (7/12): 10-Band Studio Mixer Console ─── */}
-          <div className="col-span-7 flex flex-col justify-between space-y-2">
+          {/* ─── RIGHT COLUMN (7/12 on lg): 10-Band Studio Mixer Console ─── */}
+          <div className="col-span-1 lg:col-span-7 flex flex-col justify-between space-y-2.5">
             {/* Real-time Frequency Response Canvas */}
             <div className={`relative rounded-xl border p-1.5 overflow-hidden ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#07070c] border-[#1c1c28]'}`}>
               <canvas 
                 ref={canvasRef} 
                 width={580} 
                 height={55} 
-                className="w-full h-[55px] block"
+                className="w-full h-[55px] sm:h-[64px] block"
               />
               <div className="absolute top-1 left-2.5 flex items-center gap-2 pointer-events-none text-[9px] font-mono text-slate-500">
                 <span>+15 dB</span>
@@ -788,18 +800,21 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
               </div>
             </div>
 
-            {/* 10 Vertical Faders — Rock-solid fixed sliders, touch-none & wheel protected */}
-            <div className={`p-2 rounded-xl border ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111119] border-[#1c1c28]'}`}>
-              <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
+            {/* 10 Touch-Friendly Vertical Faders */}
+            <div className={`p-2 sm:p-2.5 rounded-xl border ${isLight ? 'bg-slate-50/60 border-slate-200' : 'bg-[#111119] border-[#1c1c28]'}`}>
+              <div className="grid grid-cols-10 gap-0.5 sm:gap-1.5">
                 {EQ_FREQUENCIES.map((freq, index) => {
                   const gain = eqState.gains[index] ?? 0;
                   const label = EQ_LABELS[index];
+                  const topPercent = ((15 - gain) / 30) * 100;
+                  const fillTop = gain >= 0 ? topPercent : 50;
+                  const fillHeight = gain >= 0 ? 50 - topPercent : topPercent - 50;
 
                   return (
                     <div key={freq} className="flex flex-col items-center gap-1 touch-none select-none">
                       {/* Gain dB value indicator */}
                       <span 
-                        className={`text-[9.5px] font-mono font-bold px-0.5 rounded transition-colors ${
+                        className={`text-[8.5px] sm:text-[9.5px] font-mono font-bold px-0.5 rounded transition-colors ${
                           gain > 0 
                             ? 'text-emerald-400' 
                             : gain < 0 
@@ -810,38 +825,84 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                         {gain > 0 ? `+${gain}` : `${gain}`}
                       </span>
 
-                      {/* Vertical Slider — Guaranteed fixed, no unwanted drag-down on scroll */}
-                      <div 
-                        className="relative h-20 flex items-center justify-center touch-none select-none"
+                      {/* Custom Pointer-Interactive Vertical Fader (smooth on iOS Safari, Android & Desktop) */}
+                      <div
+                        role="slider"
+                        tabIndex={0}
+                        aria-label={label}
+                        aria-valuemin={-15}
+                        aria-valuemax={15}
+                        aria-valuenow={gain}
+                        onKeyDown={(e) => {
+                          if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
+                            e.preventDefault();
+                            handleBandGainChange(index, Math.min(15, gain + 0.5));
+                          } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
+                            e.preventDefault();
+                            handleBandGainChange(index, Math.max(-15, gain - 0.5));
+                          }
+                        }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          draggingBandRef.current = index;
+                          try {
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                          } catch {}
+                          updateBandFromPointer(index, e.clientY, e.currentTarget.getBoundingClientRect());
+                        }}
+                        onPointerMove={(e) => {
+                          if (draggingBandRef.current !== index) return;
+                          e.stopPropagation();
+                          updateBandFromPointer(index, e.clientY, e.currentTarget.getBoundingClientRect());
+                        }}
+                        onPointerUp={(e) => {
+                          if (draggingBandRef.current === index) {
+                            draggingBandRef.current = null;
+                            try {
+                              e.currentTarget.releasePointerCapture(e.pointerId);
+                            } catch {}
+                          }
+                        }}
+                        onPointerCancel={() => {
+                          if (draggingBandRef.current === index) draggingBandRef.current = null;
+                        }}
                         onWheel={(e) => {
                           e.stopPropagation();
                         }}
+                        className="relative w-full h-24 sm:h-28 flex items-center justify-center touch-none select-none cursor-ns-resize py-1"
+                        style={{ touchAction: 'none' }}
                       >
-                        <input
-                          type="range"
-                          // @ts-expect-error orient is supported in standard HTML5
-                          orient="vertical"
-                          min="-15"
-                          max="15"
-                          step="0.5"
-                          value={gain}
-                          onChange={e => handleBandGainChange(index, parseFloat(e.target.value))}
-                          onWheel={e => (e.target as HTMLElement).blur()}
-                          className="h-20 w-3.5 cursor-pointer outline-none transition-all touch-none select-none"
-                          style={{
-                            writingMode: 'vertical-lr',
-                            direction: 'rtl',
-                            WebkitAppearance: 'slider-vertical',
-                            accentColor: accentColor,
-                            backgroundColor: isLight ? '#cbd5e1' : '#222232',
-                            touchAction: 'none',
-                          }}
-                        />
+                        <div className={`relative w-1.5 sm:w-2 h-full rounded-full ${isLight ? 'bg-slate-200' : 'bg-[#1a1a28]'}`}>
+                          {/* 0dB center line */}
+                          <div className={`absolute left-[-3px] right-[-3px] top-1/2 -translate-y-1/2 h-[1px] ${isLight ? 'bg-slate-400/50' : 'bg-white/25'}`} />
+
+                          {/* Active Gain Fill Bar from 0dB center */}
+                          <div
+                            className="absolute left-0 right-0 rounded-full transition-colors"
+                            style={{
+                              top: `${fillTop}%`,
+                              height: `${fillHeight}%`,
+                              backgroundColor: eqState.enabled ? accentColor : '#64748b',
+                              opacity: eqState.enabled ? 0.85 : 0.4,
+                            }}
+                          />
+
+                          {/* Glowing Fader Thumb */}
+                          <div
+                            className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border-2 border-white shadow-md transition-colors"
+                            style={{
+                              top: `${topPercent}%`,
+                              backgroundColor: eqState.enabled ? accentColor : '#64748b',
+                              boxShadow: eqState.enabled ? `0 0 10px ${accentColor}90` : undefined,
+                            }}
+                          />
+                        </div>
                       </div>
 
-                      {/* Frequency label */}
-                      <span className="text-[9px] font-mono text-slate-400 font-semibold tracking-tighter">
-                        {label}
+                      {/* Compact Frequency label on phones, full label on sm+ */}
+                      <span className="text-[8px] sm:text-[9px] font-mono text-slate-400 font-semibold tracking-tighter">
+                        <span className="sm:hidden">{label.replace('Hz', '')}</span>
+                        <span className="hidden sm:inline">{label}</span>
                       </span>
                     </div>
                   );

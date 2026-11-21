@@ -71,6 +71,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
   // Delete Album Confirmation Pop-up State
   const [albumToDelete, setAlbumToDelete] = useState<UserAlbum | null>(null);
+  const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
 
   // Check if a track is downloaded locally (either flagged directly or matched in availableTracks pool)
   const downloadedLookup = useMemo(() => {
@@ -92,7 +93,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   }, [availableTracks]);
 
   const isTrackDownloaded = (track: Track): boolean => {
-    if (!track) return false;
+    if (isWebShim || !track) return false;
     if (track.source === 'local' || track.is_downloaded) return true;
     if (track.id && downloadedLookup.ids.has(track.id)) return true;
     if (track.path_or_url && downloadedLookup.paths.has(track.path_or_url)) return true;
@@ -886,7 +887,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   <FolderPlus className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   <span>{language === 'vi' ? 'Thêm bài hát' : 'Add Tracks'}</span>
                 </button>
-                {onDownloadAlbum && (
+                {!isWebShim && onDownloadAlbum && (
                   downloadingAlbumId === selectedAlbum.id ? (
                     <button
                       onClick={() => onCancelDownloadAlbum?.(selectedAlbum.id)}
@@ -1131,7 +1132,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {!isTrackDownloaded(track) && onDownloadTrack && (
+                        {!isWebShim && !isTrackDownloaded(track) && onDownloadTrack && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1305,7 +1306,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                             setSelectedAlbumId(album.id);
                           }
                         }}
-                        className="absolute right-2 bottom-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all cursor-pointer"
+                        className="absolute right-2 bottom-2 w-9 h-9 rounded-full flex items-center justify-center shadow-lg opacity-100 sm:opacity-0 sm:translate-y-2 sm:group-hover:opacity-100 sm:group-hover:translate-y-0 transition-all cursor-pointer"
                         style={{
                           backgroundColor: accentColor,
                           color: getContrastTextColor(accentColor),
@@ -1314,7 +1315,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         <Play className="w-4 h-4 fill-current ml-0.5" />
                       </div>
 
-                      {downloadingAlbumId === album.id ? (
+                      {!isWebShim && (downloadingAlbumId === album.id ? (
                         <div
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1345,7 +1346,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                             <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
                           </div>
                         )
-                      )}
+                      ))}
                     </div>
 
                     <p className="text-xs font-bold text-white truncate transition-colors">

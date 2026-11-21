@@ -48,6 +48,8 @@ interface ProfileViewProps {
   onUpdateCrossfadeDuration?: (durationSecs: number) => void;
   volume?: number;
   onVolumeChange?: (volume: number) => void;
+  isBackgroundPlayEnabled?: boolean;
+  onToggleBackgroundPlay?: () => void;
 }
 
 // 8 Curated Spy / Classified Theme Colors
@@ -120,7 +122,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateCrossfadeDuration,
   volume,
   onVolumeChange,
+  isBackgroundPlayEnabled = true,
+  onToggleBackgroundPlay,
 }) => {
+  const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
   const [currentCrossfade, setCurrentCrossfade] = useState<number>(() => {
     try {
       const v = localStorage.getItem('spytify_crossfade_duration');
@@ -2105,116 +2110,189 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
-              {/* Launch on Windows startup */}
-              <div className="flex items-center justify-between pb-4 border-b border-[#1c1c28]">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-                  >
-                    <Zap className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.launchWithWindows')}</p>
-                    <p className="text-[11px] text-[#777] mt-0.5">
-                      {launchOnStartup
-                        ? getTranslation(language, 'settings.launchEnabled')
-                        : getTranslation(language, 'settings.launchDisabled')}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={isTogglingStartup}
-                  onClick={() => handleToggleLaunchOnStartup(!launchOnStartup)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 ${
-                    launchOnStartup ? 'bg-emerald-500' : 'bg-zinc-700'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      launchOnStartup ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Close to tray */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-                  >
-                    <Power className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.trayTitle')}</p>
-                    <p className="text-[11px] text-[#777] mt-0.5">
-                      {closeToTray 
-                        ? getTranslation(language, 'settings.trayEnabled')
-                        : getTranslation(language, 'settings.trayDisabled')}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleToggleCloseToTray(!closeToTray)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                    closeToTray ? 'bg-emerald-500' : 'bg-zinc-700'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      closeToTray ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Version updater */}
-              <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
-                  >
-                    <Download className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.updateApp')}</p>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#151520] text-zinc-300 border border-[#252535]">
-                        {getTranslation(language, 'settings.version')} v{CURRENT_VERSION}
-                      </span>
+              {/* Chế độ phát nền khi tắt màn hình điện thoại (Web / Mobile PWA) */}
+              {onToggleBackgroundPlay && (
+                <div className="flex items-center justify-between pb-4 border-b border-[#1c1c28]">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                    >
+                      <Headphones className="w-4 h-4" />
                     </div>
-                    <p className="text-[11px] text-[#777] mt-0.5">
-                      {getTranslation(language, 'settings.updateDescription')}
-                    </p>
-                    {updateStatusMsg && (
-                      <p className="text-[11px] text-emerald-400 font-mono mt-1">
-                        {updateStatusMsg}
+                    <div>
+                      <p className="text-xs font-bold text-white">
+                        {language === 'vi'
+                          ? 'Phát nhạc nền khi tắt màn hình điện thoại'
+                          : 'Background Audio on Screen Lock'}
                       </p>
-                    )}
+                      <p className="text-[11px] text-[#777] mt-0.5">
+                        {isBackgroundPlayEnabled
+                          ? language === 'vi'
+                            ? 'Đang bật: Giữ nhạc phát & tự chuyển bài khi khóa màn hình hoặc ẩn trình duyệt'
+                            : 'Enabled: Keep music playing when screen locks or switching apps'
+                          : language === 'vi'
+                          ? 'Đang tắt: Trình duyệt có thể tạm dừng nhạc khi tắt màn hình'
+                          : 'Disabled: Browser may pause audio when screen is locked'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onToggleBackgroundPlay}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer shrink-0 ${
+                      isBackgroundPlayEnabled ? 'bg-emerald-500' : 'bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        isBackgroundPlayEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
+
+              {isWebShim ? (
+                /* Web PWA: Đồng bộ tự động qua GitHub / Vercel — Không có bản cài hay bản vá thủ công */
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                    >
+                      <CloudLightning className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-xs font-bold text-white">
+                          {language === 'vi' ? 'Phiên bản Web PWA' : 'Web PWA Version'}
+                        </p>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                          {language === 'vi' ? 'Tự động đồng bộ GitHub' : 'Auto-synced with GitHub'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#777] mt-0.5">
+                        {language === 'vi'
+                          ? 'Bản Web luôn cập nhật trực tiếp từ GitHub Cloud, không cần kiểm tra bản vá lỗi thủ công.'
+                          : 'Web app updates automatically from GitHub/Vercel—no manual update or patch needed.'}
+                      </p>
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={handleManualCheckUpdate}
-                  disabled={isCheckingUpdate}
-                  className="px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border hover:scale-105 disabled:opacity-50 self-start sm:self-auto"
-                  style={{
-                    backgroundColor: `${accentColor}18`,
-                    color: accentColor,
-                    borderColor: `${accentColor}40`,
-                  }}
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-                  <span>
-                    {isCheckingUpdate
-                      ? getTranslation(language, 'settings.checking')
-                      : getTranslation(language, 'settings.checkUpdate')}
-                  </span>
-                </button>
-              </div>
+              ) : (
+                <>
+                  {/* Launch on Windows startup */}
+                  <div className="flex items-center justify-between pb-4 border-b border-[#1c1c28]">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                      >
+                        <Zap className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.launchWithWindows')}</p>
+                        <p className="text-[11px] text-[#777] mt-0.5">
+                          {launchOnStartup
+                            ? getTranslation(language, 'settings.launchEnabled')
+                            : getTranslation(language, 'settings.launchDisabled')}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isTogglingStartup}
+                      onClick={() => handleToggleLaunchOnStartup(!launchOnStartup)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 ${
+                        launchOnStartup ? 'bg-emerald-500' : 'bg-zinc-700'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          launchOnStartup ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Close to tray */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                      >
+                        <Power className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.trayTitle')}</p>
+                        <p className="text-[11px] text-[#777] mt-0.5">
+                          {closeToTray 
+                            ? getTranslation(language, 'settings.trayEnabled')
+                            : getTranslation(language, 'settings.trayDisabled')}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleToggleCloseToTray(!closeToTray)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+                        closeToTray ? 'bg-emerald-500' : 'bg-zinc-700'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          closeToTray ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Version updater */}
+                  <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div 
+                        className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                      >
+                        <Download className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.updateApp')}</p>
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#151520] text-zinc-300 border border-[#252535]">
+                            {getTranslation(language, 'settings.version')} v{CURRENT_VERSION}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#777] mt-0.5">
+                          {getTranslation(language, 'settings.updateDescription')}
+                        </p>
+                        {updateStatusMsg && (
+                          <p className="text-[11px] text-emerald-400 font-mono mt-1">
+                            {updateStatusMsg}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleManualCheckUpdate}
+                      disabled={isCheckingUpdate}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer border hover:scale-105 disabled:opacity-50 self-start sm:self-auto"
+                      style={{
+                        backgroundColor: `${accentColor}18`,
+                        color: accentColor,
+                        borderColor: `${accentColor}40`,
+                      }}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+                      <span>
+                        {isCheckingUpdate
+                          ? getTranslation(language, 'settings.checking')
+                          : getTranslation(language, 'settings.checkUpdate')}
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
 
               {/* Spytify Vercel Website Card */}
               <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
