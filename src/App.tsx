@@ -1036,6 +1036,8 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [ytVideoId1, setYtVideoId1] = useState<string | null>(null);
   const [ytVideoId2, setYtVideoId2] = useState<string | null>(null);
+  const [ytIframeSrc1, setYtIframeSrc1] = useState<string | null>(null);
+  const [ytIframeSrc2, setYtIframeSrc2] = useState<string | null>(null);
   // Dual-channel SoundCloud players for seamless Crossfade overlap
   const [scTrackUrl1, setScTrackUrl1] = useState<string | null>(null);
   const [scTrackUrl2, setScTrackUrl2] = useState<string | null>(null);
@@ -1074,14 +1076,32 @@ export default function App() {
   const ytIframe2Ref = useRef<HTMLIFrameElement | null>(null);
   const activeYtChannelRef = useRef<1 | 2>(1);
   const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const ytIframeReady1Ref = useRef(false);
+  const ytIframeReady2Ref = useRef(false);
+  const ytIframeSrc1Ref = useRef<string | null>(null);
+  const ytIframeSrc2Ref = useRef<string | null>(null);
+  ytIframeSrc1Ref.current = ytIframeSrc1;
+  ytIframeSrc2Ref.current = ytIframeSrc2;
+  const latestYtVideoId1Ref = useRef<string | null>(null);
+  const latestYtVideoId2Ref = useRef<string | null>(null);
+  latestYtVideoId1Ref.current = ytVideoId1;
+  latestYtVideoId2Ref.current = ytVideoId2;
+  const ytLoadTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const ytLastSwitchAtRef = useRef<number>(0);
 
   const ytVideoId = activeYtChannelRef.current === 1 ? ytVideoId1 : ytVideoId2;
   const setYtVideoId = (vid: string | null) => {
-    if (activeYtChannelRef.current === 1) setYtVideoId1(vid);
-    else setYtVideoId2(vid);
+    if (activeYtChannelRef.current === 1) {
+      latestYtVideoId1Ref.current = vid;
+      setYtVideoId1(vid);
+    } else {
+      latestYtVideoId2Ref.current = vid;
+      setYtVideoId2(vid);
+    }
   };
 
   const ytUnavailableTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ytUnavailableRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ytHasStartedPlayingRef = useRef(false);
   const ytMusicFallbackActiveRef = useRef(false);
   const ytMusicFallbackTriedRef = useRef(false);
@@ -2084,6 +2104,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   // ─── AUTO-PLAY NEXT TRACK & AUTO-RECOMMEND ENGINE ──────────────────────────
   const handleNext = useCallback(async (isManualSkip = false, isCrossfade = false) => {
     if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+    if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
     if (isSkippingRef.current) return;
     isSkippingRef.current = true;
     if (!isCrossfade) {
@@ -2317,8 +2338,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       // ─── SPOTIFY-STYLE EQUAL-POWER CROSSFADE TRIGGER ───
       const cfSecs = crossfadeDurationRef.current;
+      const isWebYoutube = Boolean((window as any).__TAURI_WEB_SHIM__) && track.source === 'youtube';
       if (
         cfSecs > 0 &&
+        !isWebYoutube &&
         !crossfadeActiveRef.current &&
         !isSkippingRef.current &&
         trueDur > (cfSecs * 2) &&
@@ -2405,8 +2428,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       currentTimeRef.current = elapsed;
       setCurrentTime(elapsed);
       // Ping YouTube to ensure state is fresh
-      if (track.source === 'youtube' && ytIframeRef.current?.contentWindow) {
-        ytIframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1 }), '*');
+      const activeYtTarget = activeYtChannelRef.current === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+      if (track.source === 'youtube' && activeYtTarget?.contentWindow) {
+        activeYtTarget.contentWindow.postMessage(
+          JSON.stringify({ event: 'listening', id: activeYtChannelRef.current, channel: 'widget' }), '*'
+        );
       }
     } else {
       setCurrentTime(currentTimeRef.current || accumulatedTimeRef.current || 0);
@@ -2438,6 +2464,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
         const ytChannel: 1 | 2 = isFrom1 ? 1 : 2;
+        if (isFrom1) ytIframeReady1Ref.current = true;
+        if (isFrom2) ytIframeReady2Ref.current = true;
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (!data) return;
 
@@ -2458,12 +2486,23 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             }
             ytHasStartedPlayingRef.current = true;
             if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+            if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
           }
         }
 
-        // Tự động giải phóng khi video ở trạng thái CUED (info: 5)
-        if (data.event === 'onStateChange' && data.info === 5) {
-          if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube' && isPlayingRef.current) {
+        // Tự động giải phóng khi video ở trạng thái CUED (info: 5) hoặc UNSTARTED (info: -1)
+        if (data.event === 'onStateChange' && (data.info === 5 || data.info === -1)) {
+          if (
+            ytChannel === activeYtChannelRef.current &&
+            currentTrackRef.current?.source === 'youtube' &&
+            isPlayingRef.current &&
+            !ytMusicFallbackActiveRef.current
+          ) {
+            if (!crossfadeActiveRef.current) {
+              const curVol = volumeRef.current;
+              sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], ytChannel);
+              sendYtCmd('setVolume', [Math.round(curVol * 100)], ytChannel);
+            }
             sendYtCmd('playVideo', [], ytChannel);
           }
         }
@@ -2473,6 +2512,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           const erroredTrack = currentTrackRef.current;
           console.warn('[YouTube Player] Embed blocked or unavailable, code:', data.info, '-> Auto-resolving via YouTube Music API...');
           if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+          if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
           fallbackToYoutubeMusicStream(erroredTrack).then((recovered) => {
             if (!recovered && currentTrackRef.current?.id === erroredTrack.id) {
               showNotification('⚠️ Bài hát này bị giới hạn khu vực trên YouTube. Tự động chuyển bài...');
@@ -2493,9 +2533,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }
               ytHasStartedPlayingRef.current = true;
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-            } else if (data.info === 3 || data.info === -1) {
+              if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
+            } else if (data.info === 3) {
               ytHasStartedPlayingRef.current = true;
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+              if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
             } else if (data.info === 2) {
               isPlayingRef.current = false;
               setIsPlaying(false);
@@ -2504,8 +2546,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 playStartTimestampRef.current = null;
               }
             } else if (data.info === 0) {
-              // Bỏ qua nếu crossfade đang chuyển bài chéo
-              if (!crossfadeActiveRef.current) {
+              // Bỏ qua nếu crossfade đang chuyển bài chéo hoặc vừa mới chuyển bài qua loadVideoById
+              if (!crossfadeActiveRef.current && (Date.now() - ytLastSwitchAtRef.current) > 600) {
                 isPlayingRef.current = false;
                 setIsPlaying(false);
                 playStartTimestampRef.current = null;
@@ -2517,22 +2559,32 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
         if (data.event === 'infoDelivery' && data.info) {
           if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
+            const expectedVid = ytChannel === 1 ? latestYtVideoId1Ref.current : latestYtVideoId2Ref.current;
+            const infoVid = data.info?.videoData?.video_id;
+            const recentlySwitched = (Date.now() - ytLastSwitchAtRef.current) < 900;
+            if (infoVid && expectedVid && infoVid !== expectedVid) {
+              return;
+            }
             const isCurLive = checkIsLiveTrack(currentTrackRef.current);
             if (typeof data.info.currentTime === 'number') {
               const rawCur = data.info.currentTime;
-              if (rawCur > 0) {
-                ytHasStartedPlayingRef.current = true;
-                if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-              }
-              // Guard against YouTube Live streams sending DVR/epoch timestamps
-              if (isCurLive || rawCur > 86400) {
-                durationRef.current = 0;
-                if (!isTrayModeRef.current) setDuration(0);
-              } else if (rawCur >= 0) {
-                currentTimeRef.current = rawCur;
-                accumulatedTimeRef.current = rawCur;
-                if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
-                if (!isTrayModeRef.current) setCurrentTime(rawCur);
+              const isStalePrevTime = recentlySwitched && !infoVid && rawCur > 12;
+              if (!isStalePrevTime) {
+                if (rawCur > 0) {
+                  ytHasStartedPlayingRef.current = true;
+                  if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+                  if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
+                }
+                // Guard against YouTube Live streams sending DVR/epoch timestamps
+                if (isCurLive || rawCur > 86400) {
+                  durationRef.current = 0;
+                  if (!isTrayModeRef.current) setDuration(0);
+                } else if (rawCur >= 0) {
+                  currentTimeRef.current = rawCur;
+                  accumulatedTimeRef.current = rawCur;
+                  if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
+                  if (!isTrayModeRef.current) setCurrentTime(rawCur);
+                }
               }
             }
             if (typeof data.info.duration === 'number') {
@@ -2550,6 +2602,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             if (data.info.playerState === 1 || data.info.playerState === 3) {
               ytHasStartedPlayingRef.current = true;
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+              if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
               if (data.info.playerState === 1) {
                 isPlayingRef.current = true;
                 if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
@@ -2635,24 +2688,33 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     return () => window.removeEventListener('message', onMsg);
   }, [handleNext]);
 
-  // Subscribe to YouTube iframe events and proactively sync volume after video loads
+  // Subscribe to YouTube iframe events and proactively sync volume & playback after video loads
   useEffect(() => {
-    const vid = activeYtChannelRef.current === 1 ? ytVideoId1 : ytVideoId2;
+    const ch = activeYtChannelRef.current;
+    const vid = ch === 1 ? ytVideoId1 : ytVideoId2;
     if (!vid) return;
     const syncYt = () => {
       try {
-        const targetIframe = activeYtChannelRef.current === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+        const targetIframe = ch === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
         targetIframe?.contentWindow?.postMessage(
-          JSON.stringify({ event: 'listening', id: 1 }), '*'
+          JSON.stringify({ event: 'listening', id: ch, channel: 'widget' }), '*'
         );
         if (!crossfadeActiveRef.current) {
           const curVol = volumeRef.current;
           if (curVol === 0) {
-            sendYtCmd('mute');
+            sendYtCmd('mute', [], ch);
           } else {
-            sendYtCmd('unMute');
+            sendYtCmd('unMute', [], ch);
           }
-          sendYtCmd('setVolume', [curVol * 100]);
+          sendYtCmd('setVolume', [Math.round(curVol * 100)], ch);
+        }
+        if (
+          isPlayingRef.current &&
+          currentTrackRef.current?.source === 'youtube' &&
+          !ytMusicFallbackActiveRef.current &&
+          !ytHasStartedPlayingRef.current
+        ) {
+          sendYtCmd('playVideo', [], ch);
         }
       } catch {}
     };
@@ -2673,8 +2735,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   useEffect(() => {
     const audio1 = new Audio();
     const audio2 = new Audio();
-    audio1.crossOrigin = 'anonymous';
-    audio2.crossOrigin = 'anonymous';
+    if (!(window as any).__TAURI_WEB_SHIM__) {
+      audio1.crossOrigin = 'anonymous';
+      audio2.crossOrigin = 'anonymous';
+    }
     onlineAudio1Ref.current = audio1;
     onlineAudio2Ref.current = audio2;
     onlineAudioRef.current = audio1;
@@ -2794,6 +2858,28 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
+  const clearYtLoadTimers = () => {
+    if (ytLoadTimersRef.current.length > 0) {
+      ytLoadTimersRef.current.forEach(t => clearTimeout(t));
+      ytLoadTimersRef.current = [];
+    }
+    if (ytUnavailableRetryTimerRef.current) {
+      clearTimeout(ytUnavailableRetryTimerRef.current);
+      ytUnavailableRetryTimerRef.current = null;
+    }
+  };
+
+  const extractCleanYtId = (raw: string): string => {
+    let vid = (raw || '').trim();
+    if (vid.startsWith('youtube_')) vid = vid.slice('youtube_'.length);
+    if (vid.startsWith('yt_')) vid = vid.slice('yt_'.length);
+    if (vid.includes('v=')) vid = vid.split('v=')[1].split('&')[0];
+    if (vid.includes('youtu.be/')) vid = vid.split('youtu.be/')[1].split('?')[0];
+    if (vid.includes('/embed/')) vid = vid.split('/embed/')[1].split('?')[0];
+    if (vid.includes('/shorts/')) vid = vid.split('/shorts/')[1].split('?')[0];
+    return vid.trim();
+  };
+
   const sendYtCmd = (func: string, args: unknown[] = [], channel?: 1 | 2) => {
     const ch = channel ?? activeYtChannelRef.current;
     const target = ch === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
@@ -2802,6 +2888,111 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         JSON.stringify({ event: 'command', func, args }), '*'
       );
     }
+  };
+
+  const loadOrMountYtChannel = (videoId: string, channel: 1 | 2, volPct: number) => {
+    clearYtLoadTimers();
+    ytLastSwitchAtRef.current = Date.now();
+
+    if (channel === 1) {
+      latestYtVideoId1Ref.current = videoId;
+      setYtVideoId1(videoId);
+    } else {
+      latestYtVideoId2Ref.current = videoId;
+      setYtVideoId2(videoId);
+    }
+
+    const currentSrcId = channel === 1 ? ytIframeSrc1Ref.current : ytIframeSrc2Ref.current;
+    if (!currentSrcId) {
+      if (channel === 1) {
+        ytIframeSrc1Ref.current = videoId;
+        setYtIframeSrc1(videoId);
+      } else {
+        ytIframeSrc2Ref.current = videoId;
+        setYtIframeSrc2(videoId);
+      }
+    } else {
+      // Keep the existing YouTube iframe mounted so browser autoplay permission stays intact
+      const target = channel === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+      if (target?.contentWindow) {
+        target.contentWindow.postMessage(
+          JSON.stringify({ event: 'listening', id: channel, channel: 'widget' }), '*'
+        );
+      }
+      sendYtCmd('loadVideoById', [videoId, 0], channel);
+      if (volPct <= 0) {
+        sendYtCmd('mute', [], channel);
+      } else {
+        sendYtCmd('unMute', [], channel);
+      }
+      sendYtCmd('setVolume', [Math.round(volPct)], channel);
+      sendYtCmd('playVideo', [], channel);
+    }
+
+    [150, 450, 950].forEach((delay) => {
+      const tid = setTimeout(() => {
+        if (
+          activeYtChannelRef.current !== channel ||
+          currentTrackRef.current?.source !== 'youtube' ||
+          !isPlayingRef.current ||
+          ytMusicFallbackActiveRef.current
+        ) {
+          return;
+        }
+        const target = channel === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+        if (target?.contentWindow) {
+          target.contentWindow.postMessage(
+            JSON.stringify({ event: 'listening', id: channel, channel: 'widget' }), '*'
+          );
+        }
+        if (!crossfadeActiveRef.current) {
+          const curVol = volumeRef.current;
+          sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], channel);
+          sendYtCmd('setVolume', [Math.round(curVol * 100)], channel);
+        }
+        if (!ytHasStartedPlayingRef.current) {
+          sendYtCmd('playVideo', [], channel);
+        }
+      }, delay);
+      ytLoadTimersRef.current.push(tid);
+    });
+  };
+
+  const handleYtIframeLoad = (channel: 1 | 2) => {
+    try {
+      const targetIframe = channel === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+      targetIframe?.contentWindow?.postMessage(
+        JSON.stringify({ event: 'listening', id: channel, channel: 'widget' }), '*'
+      );
+      if (channel === 1) ytIframeReady1Ref.current = true;
+      else ytIframeReady2Ref.current = true;
+
+      const desiredVid = channel === 1 ? latestYtVideoId1Ref.current : latestYtVideoId2Ref.current;
+      const mountedSrcVid = channel === 1 ? ytIframeSrc1Ref.current : ytIframeSrc2Ref.current;
+      if (!desiredVid || currentTrackRef.current?.source !== 'youtube' || ytMusicFallbackActiveRef.current) {
+        sendYtCmd('pauseVideo', [], channel);
+        sendYtCmd('stopVideo', [], channel);
+        return;
+      }
+      if (desiredVid !== mountedSrcVid) {
+        sendYtCmd('loadVideoById', [desiredVid, 0], channel);
+      }
+      if (isPlayingRef.current) {
+        sendYtCmd('playVideo', [], channel);
+        if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
+      }
+      if (crossfadeActiveRef.current && activeYtChannelRef.current === channel) {
+        sendYtCmd('setVolume', [0], channel);
+      } else {
+        const curVol = volumeRef.current;
+        if (curVol === 0) {
+          sendYtCmd('mute', [], channel);
+        } else {
+          sendYtCmd('unMute', [], channel);
+        }
+        sendYtCmd('setVolume', [Math.round(curVol * 100)], channel);
+      }
+    } catch {}
   };
 
   const sendScCmd = (method: string, value?: unknown, channel?: 1 | 2) => {
@@ -2819,9 +3010,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     if (ytMusicFallbackTriedRef.current) return false;
     ytMusicFallbackTriedRef.current = true;
 
-    let rawVid = track.path_or_url || track.id;
-    if (rawVid.startsWith('yt_')) rawVid = rawVid.replace('yt_', '');
-    if (rawVid.includes('v=')) rawVid = rawVid.split('v=')[1].split('&')[0];
+    const rawVid = extractCleanYtId(track.path_or_url || track.id);
+    const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
 
     try {
       const res = await invoke<{
@@ -2839,12 +3029,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       if (res.stream_url && onlineAudioRef.current) {
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+        clearYtLoadTimers();
+        sendYtCmd('pauseVideo');
         sendYtCmd('stopVideo');
         setYtVideoId(null);
         setShowYoutubeVideo(false);
 
         ytMusicFallbackActiveRef.current = true;
         onlineAudioRef.current.pause();
+        if (isWebShim) {
+          onlineAudioRef.current.removeAttribute('crossorigin');
+        } else {
+          onlineAudioRef.current.crossOrigin = 'anonymous';
+        }
         onlineAudioRef.current.src = res.stream_url;
         onlineAudioRef.current.volume = volumeRef.current;
 
@@ -2863,7 +3060,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
 
       if (res.resolved_video_id && res.resolved_video_id !== rawVid) {
-        setYtVideoId(res.resolved_video_id);
+        ytHasStartedPlayingRef.current = false;
+        isPlayingRef.current = true;
+        setIsPlaying(true);
+        loadOrMountYtChannel(res.resolved_video_id, activeYtChannelRef.current, volumeRef.current * 100);
         return true;
       }
     } catch (err) {
@@ -2989,10 +3189,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       invoke('db_add_history', { userId: currentUserRef.current.id, track }).catch(console.error);
     }
 
+    const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
+    // On Web/Mobile, YouTube must stay on the single unlocked iframe channel so autoplay isn't blocked on track switches
+    const effectiveIsCrossfade =
+      isWebShim && (track.source === 'youtube' || previousTrack?.source === 'youtube')
+        ? false
+        : isCrossfade;
+
     // ──────────────────────────────────────────────────────────────────────────
     // CASE A: NORMAL PLAYBACK (No Crossfade — Direct Switch)
     // ──────────────────────────────────────────────────────────────────────────
-    if (!isCrossfade) {
+    if (!effectiveIsCrossfade) {
       if (crossfadeTimerRef.current) {
         clearInterval(crossfadeTimerRef.current);
         crossfadeTimerRef.current = null;
@@ -3004,8 +3211,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       if (track.source === 'local') {
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+        clearYtLoadTimers();
+        sendYtCmd('pauseVideo', [], 1);
         sendYtCmd('stopVideo', [], 1);
+        sendYtCmd('pauseVideo', [], 2);
         sendYtCmd('stopVideo', [], 2);
+        latestYtVideoId1Ref.current = null;
+        latestYtVideoId2Ref.current = null;
         setYtVideoId1(null);
         setYtVideoId2(null);
         setShowYoutubeVideo(false);
@@ -3025,7 +3237,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             try { await invoke('stop_track'); } catch {}
             ensureAudioContextRunning();
             const fileUrl = convertFileSrc(track.path_or_url);
-            onlineAudio1Ref.current.crossOrigin = 'anonymous';
+            if (isWebShim) {
+              onlineAudio1Ref.current.removeAttribute('crossorigin');
+            } else {
+              onlineAudio1Ref.current.crossOrigin = 'anonymous';
+            }
             onlineAudio1Ref.current.src = fileUrl;
             onlineAudio1Ref.current.volume = volumeRef.current;
             await onlineAudio1Ref.current.play();
@@ -3065,7 +3281,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
       } else if (track.source === 'youtube') {
-        try { await invoke('stop_track'); } catch {}
+        try { invoke('stop_track').catch(() => {}); } catch {}
         sendScCmd('pause', undefined, 1);
         sendScCmd('pause', undefined, 2);
         setScTrackUrl1(null);
@@ -3075,37 +3291,50 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onlineAudio2Ref.current?.pause();
         if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
 
-        let videoId = track.path_or_url || track.id;
-        if (videoId.startsWith('yt_')) videoId = videoId.replace('yt_', '');
-        if (videoId.includes('v=')) videoId = videoId.split('v=')[1].split('&')[0];
-        if (videoId.includes('youtu.be/')) videoId = videoId.split('youtu.be/')[1].split('?')[0];
+        const videoId = extractCleanYtId(track.path_or_url || track.id);
 
         activeYtChannelRef.current = 1;
+        sendYtCmd('pauseVideo', [], 2);
         sendYtCmd('stopVideo', [], 2);
+        latestYtVideoId2Ref.current = null;
         setYtVideoId2(null);
 
-        // Kích hoạt phát video ngay lập tức (kể cả khi videoId1 không đổi)
-        if (ytVideoId1 === videoId) {
-          sendYtCmd('loadVideoById', [videoId, 0], 1);
-          sendYtCmd('playVideo', [], 1);
-        } else {
-          setYtVideoId1(videoId);
-          setTimeout(() => sendYtCmd('playVideo', [], 1), 150);
-          setTimeout(() => sendYtCmd('playVideo', [], 1), 400);
-        }
-
         const curVol = volumeRef.current;
-        sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], 1);
-        sendYtCmd('setVolume', [curVol * 100], 1);
+        ytHasStartedPlayingRef.current = false;
         isPlayingRef.current = true;
         setIsPlaying(true);
+        loadOrMountYtChannel(videoId, 1, curVol * 100);
         showNotification(`▶ YouTube Hi-Fi: ${track.title}`);
 
-        ytHasStartedPlayingRef.current = false;
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-        // Timeout 3.5s: Tự động cứu bài bị nghẽn bằng stream trực tiếp YouTube Music API
+        ytUnavailableRetryTimerRef.current = setTimeout(() => {
+          if (
+            !ytHasStartedPlayingRef.current &&
+            currentTrackRef.current?.source === 'youtube' &&
+            currentTrackRef.current?.id === track.id &&
+            isPlayingRef.current &&
+            !ytMusicFallbackActiveRef.current
+          ) {
+            const target = ytIframe1Ref.current;
+            if (target?.contentWindow) {
+              target.contentWindow.postMessage(
+                JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'
+              );
+            }
+            const vol = volumeRef.current;
+            sendYtCmd(vol === 0 ? 'mute' : 'unMute', [], 1);
+            sendYtCmd('setVolume', [Math.round(vol * 100)], 1);
+            sendYtCmd('playVideo', [], 1);
+          }
+        }, 2500);
+
+        const fallbackDelayMs = isWebShim ? 8000 : 5000;
         ytUnavailableTimerRef.current = setTimeout(() => {
-          if (!ytHasStartedPlayingRef.current && currentTrackRef.current?.source === 'youtube') {
+          if (
+            !ytHasStartedPlayingRef.current &&
+            currentTrackRef.current?.source === 'youtube' &&
+            currentTrackRef.current?.id === track.id
+          ) {
             const stalledTrack = currentTrackRef.current;
             const isLive = checkIsLiveTrack(stalledTrack);
             if (isLive) {
@@ -3121,13 +3350,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }
             });
           }
-        }, 3500);
+        }, fallbackDelayMs);
 
       } else if (track.source === 'soundcloud') {
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-        try { await invoke('stop_track'); } catch {}
+        clearYtLoadTimers();
+        try { invoke('stop_track').catch(() => {}); } catch {}
+        sendYtCmd('pauseVideo', [], 1);
         sendYtCmd('stopVideo', [], 1);
+        sendYtCmd('pauseVideo', [], 2);
         sendYtCmd('stopVideo', [], 2);
+        latestYtVideoId1Ref.current = null;
+        latestYtVideoId2Ref.current = null;
         setYtVideoId1(null);
         setYtVideoId2(null);
         setShowYoutubeVideo(false);
@@ -3160,9 +3394,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
       } else if (track.source === 'audius') {
-        try { await invoke('stop_track'); } catch {}
+        if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
+        clearYtLoadTimers();
+        try { invoke('stop_track').catch(() => {}); } catch {}
+        sendYtCmd('pauseVideo', [], 1);
         sendYtCmd('stopVideo', [], 1);
+        sendYtCmd('pauseVideo', [], 2);
         sendYtCmd('stopVideo', [], 2);
+        latestYtVideoId1Ref.current = null;
+        latestYtVideoId2Ref.current = null;
         setYtVideoId1(null);
         setYtVideoId2(null);
         setShowYoutubeVideo(false);
@@ -3177,19 +3417,25 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
 
         let streamUrl = track.path_or_url;
-        try {
-          if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
-            const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
-            if (resolved) streamUrl = resolved;
+        if (!isWebShim) {
+          try {
+            if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
+              const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
+              if (resolved) streamUrl = resolved;
+            }
+          } catch (e) {
+            console.warn('Backend Audius stream resolve error:', e);
           }
-        } catch (e) {
-          console.warn('Backend Audius stream resolve error:', e);
         }
 
         if (onlineAudio1Ref.current) {
           onlineAudio1Ref.current.pause();
           ensureAudioContextRunning();
-          onlineAudio1Ref.current.crossOrigin = 'anonymous';
+          if (isWebShim) {
+            onlineAudio1Ref.current.removeAttribute('crossorigin');
+          } else {
+            onlineAudio1Ref.current.crossOrigin = 'anonymous';
+          }
           onlineAudio1Ref.current.src = streamUrl;
           onlineAudio1Ref.current.volume = volumeRef.current;
           onlineAudio1Ref.current.load();
@@ -3202,7 +3448,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             .catch(async () => {
               try {
                 const fallback = await invoke<string>('resolve_audius_stream', { urlOrId: track.path_or_url });
-                if (fallback && fallback !== streamUrl && onlineAudio1Ref.current) {
+                if (fallback && onlineAudio1Ref.current && (fallback !== streamUrl || isWebShim)) {
+                  if (isWebShim) {
+                    onlineAudio1Ref.current.removeAttribute('crossorigin');
+                  }
                   onlineAudio1Ref.current.src = fallback;
                   onlineAudio1Ref.current.load();
                   await onlineAudio1Ref.current.play();
@@ -3245,6 +3494,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       if (inAudio) {
         try {
           const fileUrl = convertFileSrc(track.path_or_url);
+          if (isWebShim) inAudio.removeAttribute('crossorigin');
+          else inAudio.crossOrigin = 'anonymous';
           inAudio.src = fileUrl;
           inAudio.volume = 0;
           await inAudio.play();
@@ -3257,46 +3508,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     } else if (track.source === 'youtube') {
       activeYtChannelRef.current = inYtChannel;
-      let videoId = track.path_or_url || track.id;
-      if (videoId.startsWith('yt_')) videoId = videoId.replace('yt_', '');
-      if (videoId.includes('v=')) videoId = videoId.split('v=')[1].split('&')[0];
-      if (videoId.includes('youtu.be/')) videoId = videoId.split('youtu.be/')[1].split('?')[0];
-
-      if (inYtChannel === 1) {
-        if (ytVideoId1 === videoId) {
-          sendYtCmd('loadVideoById', [videoId, 0], 1);
-        } else {
-          setYtVideoId1(videoId);
-        }
-      } else {
-        if (ytVideoId2 === videoId) {
-          sendYtCmd('loadVideoById', [videoId, 0], 2);
-        } else {
-          setYtVideoId2(videoId);
-        }
-      }
-
-      sendYtCmd('setVolume', [0], inYtChannel);
-      sendYtCmd('playVideo', [], inYtChannel);
-      setTimeout(() => sendYtCmd('playVideo', [], inYtChannel), 200);
-      setTimeout(() => sendYtCmd('playVideo', [], inYtChannel), 500);
+      const videoId = extractCleanYtId(track.path_or_url || track.id);
+      ytHasStartedPlayingRef.current = false;
       isPlayingRef.current = true;
       setIsPlaying(true);
       playStartTimestampRef.current = Date.now();
+      loadOrMountYtChannel(videoId, inYtChannel, 0);
 
     } else if (track.source === 'audius') {
       activeAudioChannelRef.current = inAudioChannel;
       onlineAudioRef.current = inAudio;
       let streamUrl = track.path_or_url;
-      try {
-        if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
-          const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
-          if (resolved) streamUrl = resolved;
+      if (!isWebShim) {
+        try {
+          if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
+            const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
+            if (resolved) streamUrl = resolved;
+          }
+        } catch (e) {
+          console.warn('Audius stream resolve error:', e);
         }
-      } catch (e) {
-        console.warn('Audius stream resolve error:', e);
       }
       if (inAudio) {
+        if (isWebShim) inAudio.removeAttribute('crossorigin');
+        else inAudio.crossOrigin = 'anonymous';
         inAudio.src = streamUrl;
         inAudio.volume = 0;
         inAudio.load();
@@ -3369,9 +3604,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             outAudio.src = '';
           }
         } else if (outSource === 'youtube') {
+          sendYtCmd('pauseVideo', [], outYtChannel);
           sendYtCmd('stopVideo', [], outYtChannel);
-          if (outYtChannel === 1) setYtVideoId1(null);
-          else setYtVideoId2(null);
+          if (outYtChannel === 1) {
+            latestYtVideoId1Ref.current = null;
+            setYtVideoId1(null);
+          } else {
+            latestYtVideoId2Ref.current = null;
+            setYtVideoId2(null);
+          }
         } else if (outSc) {
           sendScCmd('pause', undefined, outScChannel);
           if (outScChannel === 1) setScTrackUrl1(null);
@@ -4442,16 +4683,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </>
       )}
 
-      {/* YouTube iframe Channel 1 — stable bottom-right positioning without jumping */}
-      {ytVideoId1 && (
+      {/* YouTube iframe Channel 1 — persistent mount so loadVideoById preserves autoplay permission */}
+      {ytIframeSrc1 && (
         <div
           className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} right-6 w-80 h-48 rounded-xl bg-black shadow-2xl border border-[#222] z-40 transition-all duration-300 overflow-hidden ${
-            showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode
+            Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode)
               ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
               : 'opacity-0 scale-95 pointer-events-none'
           }`}
         >
-          {showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode && (
+          {Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode) && (
             <button
               onClick={() => setShowYoutubeVideo(false)}
               className="absolute top-2 right-2 z-50 p-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-[#333] cursor-pointer shadow-md transition-colors"
@@ -4462,29 +4703,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
           <iframe
             ref={ytIframe1Ref}
-            src={`https://www.youtube.com/embed/${ytVideoId1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
-            onLoad={() => {
-              try {
-                ytIframe1Ref.current?.contentWindow?.postMessage(
-                  JSON.stringify({ event: 'listening', id: 1 }), '*'
-                );
-                if (isPlayingRef.current) {
-                  sendYtCmd('playVideo', [], 1);
-                  if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
-                }
-                if (crossfadeActiveRef.current && activeYtChannelRef.current === 1) {
-                  sendYtCmd('setVolume', [0], 1);
-                } else {
-                  const curVol = volumeRef.current;
-                  if (curVol === 0) {
-                    sendYtCmd('mute', [], 1);
-                  } else {
-                    sendYtCmd('unMute', [], 1);
-                  }
-                  sendYtCmd('setVolume', [curVol * 100], 1);
-                }
-              } catch {}
-            }}
+            src={`https://www.youtube.com/embed/${ytIframeSrc1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0${
+              typeof window !== 'undefined' && /^https?:$/i.test(window.location.protocol)
+                ? `&origin=${encodeURIComponent(window.location.origin)}`
+                : ''
+            }`}
+            onLoad={() => handleYtIframeLoad(1)}
             title="YouTube Player 1"
             className="w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -4493,16 +4717,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </div>
       )}
 
-      {/* YouTube iframe Channel 2 — for seamless crossfading */}
-      {ytVideoId2 && (
+      {/* YouTube iframe Channel 2 — persistent mount for Desktop seamless crossfading */}
+      {ytIframeSrc2 && (
         <div
           className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} right-6 w-80 h-48 rounded-xl bg-black shadow-2xl border border-[#222] z-40 transition-all duration-300 overflow-hidden ${
-            showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode
+            Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode)
               ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
               : 'opacity-0 scale-95 pointer-events-none'
           }`}
         >
-          {showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode && (
+          {Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode) && (
             <button
               onClick={() => setShowYoutubeVideo(false)}
               className="absolute top-2 right-2 z-50 p-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-[#333] cursor-pointer shadow-md transition-colors"
@@ -4513,29 +4737,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
           <iframe
             ref={ytIframe2Ref}
-            src={`https://www.youtube.com/embed/${ytVideoId2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
-            onLoad={() => {
-              try {
-                ytIframe2Ref.current?.contentWindow?.postMessage(
-                  JSON.stringify({ event: 'listening', id: 1 }), '*'
-                );
-                if (isPlayingRef.current) {
-                  sendYtCmd('playVideo', [], 2);
-                  if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
-                }
-                if (crossfadeActiveRef.current && activeYtChannelRef.current === 2) {
-                  sendYtCmd('setVolume', [0], 2);
-                } else {
-                  const curVol = volumeRef.current;
-                  if (curVol === 0) {
-                    sendYtCmd('mute', [], 2);
-                  } else {
-                    sendYtCmd('unMute', [], 2);
-                  }
-                  sendYtCmd('setVolume', [curVol * 100], 2);
-                }
-              } catch {}
-            }}
+            src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0${
+              typeof window !== 'undefined' && /^https?:$/i.test(window.location.protocol)
+                ? `&origin=${encodeURIComponent(window.location.origin)}`
+                : ''
+            }`}
+            onLoad={() => handleYtIframeLoad(2)}
             title="YouTube Player 2"
             className="w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

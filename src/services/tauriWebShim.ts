@@ -108,6 +108,8 @@ const WEB_CURATED_CATALOG: Record<string, SearchResult[]> = {
     { title: 'Cruel Summer', artist: 'Taylor Swift', album: 'Lover', duration_secs: 178, source: 'youtube', url_or_id: 'ic8j13piAhQ', thumbnail: 'https://i.ytimg.com/vi/ic8j13piAhQ/hqdefault.jpg' },
     { title: 'Beautiful Things', artist: 'Benson Boone', album: 'Fireworks & Rollerblades', duration_secs: 180, source: 'youtube', url_or_id: 'Oa_RSwwpPaA', thumbnail: 'https://i.ytimg.com/vi/Oa_RSwwpPaA/hqdefault.jpg' },
     { title: 'Lose Control', artist: 'Teddy Swims', album: "I've Tried Everything", duration_secs: 210, source: 'youtube', url_or_id: 'GZ3zL7kT6_c', thumbnail: 'https://i.ytimg.com/vi/GZ3zL7kT6_c/hqdefault.jpg' },
+    { title: 'Blinding Lights', artist: 'The Weeknd', album: 'After Hours', duration_secs: 200, source: 'youtube', url_or_id: '4NRXx6U8ABQ', thumbnail: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg' },
+    { title: 'Houdini', artist: 'Dua Lipa', album: 'Radical Optimism', duration_secs: 185, source: 'youtube', url_or_id: 'suAR1PYFNYA', thumbnail: 'https://i.ytimg.com/vi/suAR1PYFNYA/hqdefault.jpg' },
   ],
   vpop: [
     { title: 'Đừng Làm Trái Tim Anh Đau', artist: 'Sơn Tùng M-TP', album: 'V-Pop Top Hits', duration_secs: 326, source: 'youtube', url_or_id: 'abPmZCZZrFA', thumbnail: 'https://i.ytimg.com/vi/abPmZCZZrFA/hqdefault.jpg' },
@@ -117,6 +119,9 @@ const WEB_CURATED_CATALOG: Record<string, SearchResult[]> = {
     { title: 'Không Thể Say', artist: 'HIEUTHUHAI', album: 'Ai Cũng Phải Bắt Đầu Từ Đâu Đó', duration_secs: 215, source: 'youtube', url_or_id: 'i0nd3NPJ4MI', thumbnail: 'https://i.ytimg.com/vi/i0nd3NPJ4MI/hqdefault.jpg' },
     { title: 'Cắt Đôi Nỗi Sầu', artist: 'Tăng Duy Tân', album: 'V-Pop Viral', duration_secs: 195, source: 'youtube', url_or_id: 'GpmOn4RyzZI', thumbnail: 'https://i.ytimg.com/vi/GpmOn4RyzZI/hqdefault.jpg' },
     { title: 'Nấu Ăn Cho Em', artist: 'Đen Vâu (feat. PiaLinh)', album: 'Đen Vâu Hit Collection', duration_secs: 260, source: 'youtube', url_or_id: 'ukHK1GVyr0I', thumbnail: 'https://i.ytimg.com/vi/ukHK1GVyr0I/hqdefault.jpg' },
+    { title: 'Bước Qua Mùa Cô Đơn', artist: 'Vũ.', album: 'Indie Ballad', duration_secs: 279, source: 'youtube', url_or_id: 'bX8d8XbS0hU', thumbnail: 'https://i.ytimg.com/vi/bX8d8XbS0hU/hqdefault.jpg' },
+    { title: 'Giá Như', artist: 'SOOBIN', album: 'R&B V-Pop', duration_secs: 216, source: 'youtube', url_or_id: 'kFq-qT8g16Q', thumbnail: 'https://i.ytimg.com/vi/kFq-qT8g16Q/hqdefault.jpg' },
+    { title: 'Thanh Xuân', artist: 'Da LAB', album: 'V-Pop Nostalgia', duration_secs: 228, source: 'youtube', url_or_id: 'GgQFO8dL5XQ', thumbnail: 'https://i.ytimg.com/vi/GgQFO8dL5XQ/hqdefault.jpg' },
   ],
   kpop_jpop: [
     { title: 'Bling-Bang-Bang-Born', artist: 'Creepy Nuts', album: 'J-Pop Global Phenomenon', duration_secs: 172, source: 'youtube', url_or_id: 'lRDaREIDxEg', thumbnail: 'https://i.ytimg.com/vi/lRDaREIDxEg/hqdefault.jpg' },
@@ -125,6 +130,14 @@ const WEB_CURATED_CATALOG: Record<string, SearchResult[]> = {
     { title: 'Magnetic', artist: 'ILLIT', album: 'SUPER REAL ME', duration_secs: 160, source: 'youtube', url_or_id: 'Vk5-c_v4gMU', thumbnail: 'https://i.ytimg.com/vi/Vk5-c_v4gMU/hqdefault.jpg' },
     { title: 'Night Dancer', artist: 'imase', album: 'J-Pop Viral', duration_secs: 210, source: 'youtube', url_or_id: 'QbHBfxAOucI', thumbnail: 'https://i.ytimg.com/vi/QbHBfxAOucI/hqdefault.jpg' },
     { title: 'Whiplash', artist: 'aespa', album: 'The 5th Mini Album', duration_secs: 184, source: 'youtube', url_or_id: 'jWQx2f-CErU', thumbnail: 'https://i.ytimg.com/vi/jWQx2f-CErU/hqdefault.jpg' },
+    { title: 'How Sweet', artist: 'NewJeans', album: 'How Sweet EP', duration_secs: 219, source: 'youtube', url_or_id: 'Q3K0TOvTOno', thumbnail: 'https://i.ytimg.com/vi/Q3K0TOvTOno/hqdefault.jpg' },
+    { title: 'Love wins all', artist: 'IU', album: 'The Winning', duration_secs: 272, source: 'youtube', url_or_id: 'JleoAppaxi0', thumbnail: 'https://i.ytimg.com/vi/JleoAppaxi0/hqdefault.jpg' },
+    { title: 'KICK BACK', artist: 'Kenshi Yonezu', album: 'Chainsaw Man OP', duration_secs: 193, source: 'youtube', url_or_id: 'M2cckDmNLMI', thumbnail: 'https://i.ytimg.com/vi/M2cckDmNLMI/hqdefault.jpg' },
+  ],
+  cpop: [
+    { title: '晴天 (Sunny Day)', artist: '周杰伦 (Jay Chou)', album: '叶惠美', duration_secs: 269, source: 'youtube', url_or_id: 'DYptgVvkVLQ', thumbnail: 'https://i.ytimg.com/vi/DYptgVvkVLQ/hqdefault.jpg' },
+    { title: '光年之外 (LIGHT YEARS AWAY)', artist: 'G.E.M. 邓紫棋', album: 'Passengers OST', duration_secs: 235, source: 'youtube', url_or_id: 'T4SimnaiktU', thumbnail: 'https://i.ytimg.com/vi/T4SimnaiktU/hqdefault.jpg' },
+    { title: '带我去找夜生活', artist: '告五人 (Accusefive)', album: '运气来得若有似无', duration_secs: 243, source: 'youtube', url_or_id: '55nPtJyp4eQ', thumbnail: 'https://i.ytimg.com/vi/55nPtJyp4eQ/hqdefault.jpg' },
   ],
   lofi: [
     { title: 'lofi hip hop radio 📚 beats to relax/study to [LIVE 24/7]', artist: 'Lofi Girl', album: 'Lofi Girl 24/7 Live Radio', duration_secs: 0, source: 'youtube', url_or_id: 'jfKfPfyJRdk', thumbnail: 'https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg' },
@@ -136,14 +149,17 @@ const WEB_CURATED_CATALOG: Record<string, SearchResult[]> = {
     { title: 'Faded', artist: 'Alan Walker', album: 'Different World', duration_secs: 212, source: 'youtube', url_or_id: '60ItHLz5WEA', thumbnail: 'https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg' },
     { title: 'Animals', artist: 'Martin Garrix', album: 'Gold Skies EP', duration_secs: 184, source: 'youtube', url_or_id: 'gCYcTmT9wx4', thumbnail: 'https://i.ytimg.com/vi/gCYcTmT9wx4/hqdefault.jpg' },
     { title: 'Wake Me Up', artist: 'Avicii', album: 'True', duration_secs: 247, source: 'youtube', url_or_id: 'IcrbM1l_BoI', thumbnail: 'https://i.ytimg.com/vi/IcrbM1l_BoI/hqdefault.jpg' },
+    { title: 'Alone', artist: 'Marshmello', album: 'Monstercat Hits', duration_secs: 200, source: 'youtube', url_or_id: 'ALZHF5UqnU4', thumbnail: 'https://i.ytimg.com/vi/ALZHF5UqnU4/hqdefault.jpg' },
   ],
   hiphop: [
     { title: 'Not Like Us', artist: 'Kendrick Lamar', album: 'Billboard Hot 100 #1', duration_secs: 274, source: 'youtube', url_or_id: 'H58vbez_m4E', thumbnail: 'https://i.ytimg.com/vi/H58vbez_m4E/hqdefault.jpg' },
     { title: 'FE!N', artist: 'Travis Scott ft. Playboi Carti', album: 'UTOPIA', duration_secs: 191, source: 'youtube', url_or_id: 'B9synWjqBn8', thumbnail: 'https://i.ytimg.com/vi/B9synWjqBn8/hqdefault.jpg' },
+    { title: 'Sunflower', artist: 'Post Malone & Swae Lee', album: 'Spider-Verse', duration_secs: 158, source: 'youtube', url_or_id: 'ApXoWvfEYVU', thumbnail: 'https://i.ytimg.com/vi/ApXoWvfEYVU/hqdefault.jpg' },
   ],
   rock: [
     { title: 'The Emptiness Machine', artist: 'Linkin Park', album: 'From Zero', duration_secs: 190, source: 'youtube', url_or_id: 'SRXH9AbT280', thumbnail: 'https://i.ytimg.com/vi/SRXH9AbT280/hqdefault.jpg' },
     { title: 'Believer', artist: 'Imagine Dragons', album: 'Evolve', duration_secs: 204, source: 'youtube', url_or_id: '7wtfhZwyrcc', thumbnail: 'https://i.ytimg.com/vi/7wtfhZwyrcc/hqdefault.jpg' },
+    { title: 'Numb', artist: 'Linkin Park', album: 'Meteora', duration_secs: 185, source: 'youtube', url_or_id: 'kXYiU_JCYtU', thumbnail: 'https://i.ytimg.com/vi/kXYiU_JCYtU/hqdefault.jpg' },
   ],
 };
 
@@ -152,6 +168,7 @@ function getAllCuratedTracks(): SearchResult[] {
     ...WEB_CURATED_CATALOG.usuk,
     ...WEB_CURATED_CATALOG.vpop,
     ...WEB_CURATED_CATALOG.kpop_jpop,
+    ...WEB_CURATED_CATALOG.cpop,
     ...WEB_CURATED_CATALOG.lofi,
     ...WEB_CURATED_CATALOG.edm,
     ...WEB_CURATED_CATALOG.hiphop,
@@ -179,19 +196,72 @@ async function fetchJsonWithTimeout(url: string, timeoutMs = 2800): Promise<any>
   }
 }
 
+function raceFirstSuccess<T>(promises: Array<Promise<T | null>>): Promise<T | null> {
+  if (!promises.length) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let remaining = promises.length;
+    let settled = false;
+    for (const p of promises) {
+      p.then((val) => {
+        if (!settled && val !== null && (!Array.isArray(val) || val.length > 0)) {
+          settled = true;
+          resolve(val);
+          return;
+        }
+        remaining -= 1;
+        if (remaining === 0 && !settled) resolve(null);
+      }).catch(() => {
+        remaining -= 1;
+        if (remaining === 0 && !settled) resolve(null);
+      });
+    }
+  });
+}
+
+let cachedAudiusHosts: string[] = [];
+let cachedAudiusHostsAt = 0;
+
+async function resolveAudiusHost(preferAlternate = false): Promise<string> {
+  const now = Date.now();
+  if (cachedAudiusHosts.length === 0 || now - cachedAudiusHostsAt > 5 * 60 * 1000) {
+    try {
+      const json = await fetchJsonWithTimeout('https://api.audius.co', 2000);
+      const list = Array.isArray(json?.data)
+        ? json.data
+            .filter((u: unknown): u is string => typeof u === 'string' && u.startsWith('https://'))
+            .map((u: string) => u.replace(/\/+$/, ''))
+        : [];
+      if (list.length > 0) {
+        cachedAudiusHosts = list;
+        cachedAudiusHostsAt = now;
+      }
+    } catch {
+      // Keep fallback below
+    }
+  }
+  const hosts = cachedAudiusHosts.length > 0
+    ? cachedAudiusHosts
+    : ['https://discoveryprovider.audius.co', 'https://discoveryprovider2.audius.co'];
+  if (preferAlternate && hosts.length > 1) {
+    return hosts[1];
+  }
+  return hosts[0];
+}
+
 async function searchAudiusWeb(query: string): Promise<SearchResult[]> {
   try {
+    const host = await resolveAudiusHost();
     const endpoint = query
-      ? `https://discoveryprovider.audius.co/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=Spytify`
-      : `https://discoveryprovider.audius.co/v1/tracks/trending?app_name=Spytify&limit=20`;
-    const json = await fetchJsonWithTimeout(endpoint, 3500);
+      ? `${host}/v1/tracks/search?query=${encodeURIComponent(query)}&app_name=Spytify`
+      : `${host}/v1/tracks/trending?app_name=Spytify&limit=20`;
+    const json = await fetchJsonWithTimeout(endpoint, 2800);
     const items: any[] = Array.isArray(json?.data) ? json.data : [];
     return items
       .map((item): SearchResult | null => {
         const tid = item?.id;
         const streamUrl =
           item?.stream?.url ||
-          (tid ? `https://discoveryprovider.audius.co/v1/tracks/${tid}/stream?app_name=Spytify` : '');
+          (tid ? `${host}/v1/tracks/${tid}/stream?app_name=Spytify` : '');
         if (!streamUrl) return null;
         return {
           title: item.title || 'Audius Track',
@@ -210,13 +280,23 @@ async function searchAudiusWeb(query: string): Promise<SearchResult[]> {
   }
 }
 
-async function searchYoutubeWeb(query: string): Promise<SearchResult[]> {
+const PIPED_API_BASES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.adminforge.de',
+];
+
+const INVIDIOUS_API_BASES = [
+  'https://invidious.jing.rocks',
+  'https://yt.artemislena.eu',
+];
+
+async function searchYoutubeWeb(query: string, apiTimeoutMs = 1800): Promise<SearchResult[]> {
   const directVid = extractYouTubeVideoId(query);
   if (directVid) {
     try {
       const meta = await fetchJsonWithTimeout(
         `https://noembed.com/embed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${directVid}`)}`,
-        2500
+        2200
       );
       return [{
         title: meta?.title || `YouTube (${directVid})`,
@@ -240,75 +320,80 @@ async function searchYoutubeWeb(query: string): Promise<SearchResult[]> {
     }
   }
 
-  const pipedApis = [
-    `https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(query)}&filter=music_songs`,
-    `https://pipedapi.adminforge.de/search?q=${encodeURIComponent(query)}&filter=music_songs`,
-  ];
-  for (const apiUrl of pipedApis) {
-    try {
-      const data = await fetchJsonWithTimeout(apiUrl, 2600);
-      const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-      const mapped = items
-        .map((item): SearchResult | null => {
-          const vid = extractYouTubeVideoId(item?.url || item?.videoId || '');
-          if (!vid || item?.isShort) return null;
-          return {
-            title: item.title || 'YouTube Track',
-            artist: item.uploaderName || item.uploader || 'YouTube Artist',
-            album: 'YT Music',
-            duration_secs: Number(item.duration) || 195,
-            source: 'youtube',
-            url_or_id: vid,
-            thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
-          };
-        })
-        .filter((x): x is SearchResult => x !== null)
-        .slice(0, 18);
-      if (mapped.length > 0) return mapped;
-    } catch {
-      // Try next public CORS API instance
-    }
-  }
+  // Race all Piped and Invidious search endpoints concurrently so we never stall sequentially
+  const pipedPromises = PIPED_API_BASES.map(async (base): Promise<SearchResult[] | null> => {
+    const data = await fetchJsonWithTimeout(
+      `${base}/search?q=${encodeURIComponent(query)}&filter=music_songs`,
+      apiTimeoutMs
+    );
+    const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+    const mapped = items
+      .map((item): SearchResult | null => {
+        const vid = extractYouTubeVideoId(item?.url || item?.videoId || '');
+        if (!vid || item?.isShort) return null;
+        return {
+          title: item.title || 'YouTube Track',
+          artist: item.uploaderName || item.uploader || 'YouTube Artist',
+          album: 'YT Music',
+          duration_secs: Number(item.duration) || 195,
+          source: 'youtube',
+          url_or_id: vid,
+          thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+        };
+      })
+      .filter((x): x is SearchResult => x !== null)
+      .slice(0, 18);
+    return mapped.length > 0 ? mapped : null;
+  });
 
-  const invidiousApis = [
-    `https://invidious.jing.rocks/api/v1/search?q=${encodeURIComponent(query)}&type=video`,
-    `https://yt.artemislena.eu/api/v1/search?q=${encodeURIComponent(query)}&type=video`,
-  ];
-  for (const apiUrl of invidiousApis) {
-    try {
-      const items: any[] = await fetchJsonWithTimeout(apiUrl, 2600);
-      if (Array.isArray(items)) {
-        const mapped = items
-          .map((item): SearchResult | null => {
-            if (!item?.videoId) return null;
-            return {
-              title: item.title || 'YouTube Track',
-              artist: item.author || 'YouTube Artist',
-              album: 'YouTube',
-              duration_secs: Number(item.lengthSeconds) || 195,
-              source: 'youtube',
-              url_or_id: item.videoId,
-              thumbnail: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
-            };
-          })
-          .filter((x): x is SearchResult => x !== null)
-          .slice(0, 18);
-        if (mapped.length > 0) return mapped;
-      }
-    } catch {
-      // Try next fallback
-    }
-  }
+  const invidiousPromises = INVIDIOUS_API_BASES.map(async (base): Promise<SearchResult[] | null> => {
+    const items: any[] = await fetchJsonWithTimeout(
+      `${base}/api/v1/search?q=${encodeURIComponent(query)}&type=video`,
+      apiTimeoutMs
+    );
+    if (!Array.isArray(items)) return null;
+    const mapped = items
+      .map((item): SearchResult | null => {
+        const vid = item?.videoId ? extractYouTubeVideoId(String(item.videoId)) : null;
+        if (!vid) return null;
+        return {
+          title: item.title || 'YouTube Track',
+          artist: item.author || 'YouTube Artist',
+          album: 'YouTube',
+          duration_secs: Number(item.lengthSeconds) || 195,
+          source: 'youtube',
+          url_or_id: vid,
+          thumbnail: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+        };
+      })
+      .filter((x): x is SearchResult => x !== null)
+      .slice(0, 18);
+    return mapped.length > 0 ? mapped : null;
+  });
 
-  // Filter curated catalog matching query, or merge Audius tracks
+  const raced = await raceFirstSuccess([...pipedPromises, ...invidiousPromises]);
+  if (raced && raced.length > 0) return raced;
+
+  // Token-based curated fallback so partial queries like "Sơn Tùng Đừng Làm Trái Tim" match accurately
   const qLower = query.trim().toLowerCase();
-  const curatedMatches = getAllCuratedTracks().filter(
-    t => t.title.toLowerCase().includes(qLower) || t.artist.toLowerCase().includes(qLower) || t.album.toLowerCase().includes(qLower)
-  );
-  if (curatedMatches.length > 0) return curatedMatches;
+  const tokens = qLower.split(/[\s\-_.,&()]+/).filter(t => t.length >= 2);
+  const allCurated = getAllCuratedTracks();
+  const scoredCurated = allCurated
+    .map(track => {
+      const haystack = `${track.title} ${track.artist} ${track.album}`.toLowerCase();
+      let score = haystack.includes(qLower) ? 10 : 0;
+      for (const tok of tokens) {
+        if (haystack.includes(tok)) score += 1;
+      }
+      return { track, score };
+    })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.track);
+  if (scoredCurated.length > 0) return scoredCurated;
 
   const audius = await searchAudiusWeb(query);
-  return audius.length > 0 ? audius : getAllCuratedTracks().slice(0, 8);
+  return audius.length > 0 ? audius : allCurated.slice(0, 10);
 }
 
 async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Promise<any> {
@@ -658,6 +743,7 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
       if (cat === 'cortisol' || cat === 'working' || cat === 'nightdrive') return WEB_CURATED_CATALOG.lofi;
       if (cat === 'lockin' || cat === 'gym') return [...WEB_CURATED_CATALOG.edm, ...WEB_CURATED_CATALOG.hiphop];
       if (cat === 'kpop' || cat === 'jpop' || cat === 'anime') return WEB_CURATED_CATALOG.kpop_jpop;
+      if (cat === 'chinese' || cat === 'cpop') return WEB_CURATED_CATALOG.cpop;
       return getAllCuratedTracks();
     }
 
@@ -696,17 +782,136 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
     }
 
     case 'get_related_tracks': {
-      const query = `${args.artist || ''} ${args.title || ''}`.trim();
-      const pool = await searchYoutubeWeb(query || 'top hits');
-      const tLow = String(args.title || '').toLowerCase();
-      return pool.filter(item => item.title.toLowerCase() !== tLow);
+      const tLow = String(args.title || '').trim().toLowerCase();
+      const aLow = String(args.artist || '').trim().toLowerCase();
+      const allCurated = getAllCuratedTracks();
+
+      // Match category of current track so recommendations fit the listener's vibe immediately
+      let matchedCategoryTracks: SearchResult[] = [];
+      for (const catList of Object.values(WEB_CURATED_CATALOG)) {
+        const hit = catList.some(
+          t =>
+            (tLow && t.title.toLowerCase().includes(tLow)) ||
+            (aLow && t.artist.toLowerCase().includes(aLow))
+        );
+        if (hit) {
+          matchedCategoryTracks = [...matchedCategoryTracks, ...catList];
+        }
+      }
+
+      const artistQuery = aLow || tLow || 'top hits';
+      const fastOnlineLookup = new Promise<SearchResult[]>(resolve => {
+        const timeout = setTimeout(() => resolve([]), 1400);
+        searchYoutubeWeb(artistQuery, 1200)
+          .then(res => {
+            clearTimeout(timeout);
+            resolve(res);
+          })
+          .catch(() => {
+            clearTimeout(timeout);
+            resolve([]);
+          });
+      });
+
+      const onlinePool = await fastOnlineLookup;
+      const merged = [...onlinePool, ...matchedCategoryTracks, ...allCurated];
+      const seenIds = new Set<string>();
+      return merged
+        .filter(item => {
+          const itemTitle = item.title.trim().toLowerCase();
+          if (tLow && (itemTitle === tLow || itemTitle.includes(tLow) || tLow.includes(itemTitle))) {
+            return false;
+          }
+          if (item.source === 'youtube' && !extractYouTubeVideoId(item.url_or_id || '')) {
+            return false;
+          }
+          if (item.source === 'audius' && !String(item.url_or_id || '').startsWith('http')) {
+            return false;
+          }
+          const key = item.url_or_id;
+          if (seenIds.has(key)) return false;
+          seenIds.add(key);
+          return true;
+        })
+        .slice(0, 18);
     }
 
-    case 'resolve_audius_stream':
-      return String(args.urlOrId || '');
+    case 'resolve_audius_stream': {
+      const raw = String(args.urlOrId || '').trim();
+      const host = await resolveAudiusHost(raw.includes('discoveryprovider.audius.co'));
+      const trackIdMatch = raw.match(/\/tracks\/([A-Za-z0-9_-]+)/);
+      if (trackIdMatch?.[1]) {
+        return `${host}/v1/tracks/${trackIdMatch[1]}/stream?app_name=Spytify`;
+      }
+      if (/^[A-Za-z0-9_-]{4,24}$/.test(raw)) {
+        return `${host}/v1/tracks/${raw}/stream?app_name=Spytify`;
+      }
+      return raw;
+    }
 
-    case 'resolve_youtube_music_stream':
-      return { stream_url: null, resolved_video_id: args.videoId || '', duration_secs: 200 };
+    case 'resolve_youtube_music_stream': {
+      const rawVid = extractYouTubeVideoId(String(args.videoId || '')) || String(args.videoId || '').trim();
+      if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
+        const streamRes = await raceFirstSuccess(
+          PIPED_API_BASES.map(async (base) => {
+            const data = await fetchJsonWithTimeout(`${base}/streams/${rawVid}`, 1800);
+            const streams: any[] = Array.isArray(data?.audioStreams) ? data.audioStreams : [];
+            const valid = streams
+              .filter(s => typeof s?.url === 'string' && s.url.startsWith('http'))
+              .sort((a, b) => {
+                const aMp4 = String(a?.mimeType || '').includes('audio/mp4') ? 1 : 0;
+                const bMp4 = String(b?.mimeType || '').includes('audio/mp4') ? 1 : 0;
+                if (aMp4 !== bMp4) return bMp4 - aMp4;
+                return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
+              });
+            if (valid.length > 0) {
+              return {
+                stream_url: valid[0].url as string,
+                resolved_video_id: rawVid,
+                duration_secs: Number(data?.duration) || 200,
+              };
+            }
+            return null;
+          })
+        );
+        if (streamRes) return streamRes;
+      }
+
+      // Search for a playable alternate videoId for the same song
+      const titleLow = String(args.title || '').trim().toLowerCase();
+      const artistLow = String(args.artist || '').trim().toLowerCase();
+      const curatedAlt = getAllCuratedTracks().find(t => {
+        const vid = extractYouTubeVideoId(t.url_or_id || '');
+        if (!vid || vid === rawVid) return false;
+        const tMatch = titleLow && t.title.toLowerCase().includes(titleLow);
+        const aMatch = artistLow && t.artist.toLowerCase().includes(artistLow);
+        return Boolean(tMatch || (titleLow && aMatch && t.title.toLowerCase().split(' ')[0] === titleLow.split(' ')[0]));
+      });
+      if (curatedAlt) {
+        return {
+          stream_url: null,
+          resolved_video_id: curatedAlt.url_or_id,
+          duration_secs: curatedAlt.duration_secs || 200,
+        };
+      }
+
+      try {
+        const searchAlt = await searchYoutubeWeb(`${args.title || ''} ${args.artist || ''} official audio`, 1500);
+        const candidate = searchAlt.find(t => {
+          const vid = extractYouTubeVideoId(t.url_or_id || '');
+          return Boolean(vid && vid !== rawVid);
+        });
+        if (candidate) {
+          return {
+            stream_url: null,
+            resolved_video_id: candidate.url_or_id,
+            duration_secs: candidate.duration_secs || 200,
+          };
+        }
+      } catch {}
+
+      return { stream_url: null, resolved_video_id: rawVid, duration_secs: 200 };
+    }
 
     // ── Sorting, Filtering & AI Engine ──
     case 'rust_filter_tracks': {

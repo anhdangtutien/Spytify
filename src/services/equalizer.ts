@@ -471,6 +471,7 @@ export function saveEqualizerState(state: EqualizerState): void {
 
 export function attachAudioElementToEqualizer(element: HTMLAudioElement | null | undefined): void {
   if (!element) return;
+  if (typeof window !== 'undefined' && (window as any).__TAURI_WEB_SHIM__) return;
   const ctx = getOrCreateAudioContext();
   if (!ctx) return;
 
