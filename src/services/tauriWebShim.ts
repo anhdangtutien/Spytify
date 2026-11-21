@@ -573,16 +573,32 @@ async function resolveYouTubeAudioStreamWeb(
   videoIdInput: string,
   title?: string,
   artist?: string
-): Promise<{ stream_url: string | null; resolved_video_id: string; duration_secs: number }> {
+): Promise<{ stream_url: string | null; proxy_url?: string | null; resolved_video_id: string; duration_secs: number }> {
   const rawVid = extractYouTubeVideoId(videoIdInput) || videoIdInput.trim();
   if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
     // 1. Try our direct high-performance Vercel / Vite Serverless API endpoint
     try {
       const q = `/api/yt-stream?videoId=${encodeURIComponent(rawVid)}&title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`;
-      const data = await fetchJsonWithTimeout(q, 3500);
+      let data = await fetchJsonWithTimeout(q, 3500);
+      let apiBase = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+      if (!data || (!data.proxy_url && !data.stream_url)) {
+        // Fallback to production Vercel deployment if running on standalone dev/preview
+        const prodQ = `https://spytify-website-rho.vercel.app/api/yt-stream?videoId=${encodeURIComponent(rawVid)}&title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`;
+        data = await fetchJsonWithTimeout(prodQ, 4500);
+        apiBase = 'https://spytify-website-rho.vercel.app';
+      }
       if (data && (data.proxy_url || data.stream_url)) {
+        let stream = (data.stream_url || data.proxy_url) as string;
+        let proxy = data.proxy_url ? String(data.proxy_url) : null;
+        if (stream && !stream.startsWith('http')) {
+          stream = new URL(stream, apiBase || 'https://spytify-website-rho.vercel.app').href;
+        }
+        if (proxy && !proxy.startsWith('http')) {
+          proxy = new URL(proxy, apiBase || 'https://spytify-website-rho.vercel.app').href;
+        }
         return {
-          stream_url: (data.proxy_url || data.stream_url) as string,
+          stream_url: stream,
+          proxy_url: proxy,
           resolved_video_id: rawVid,
           duration_secs: Number(data.duration_secs) || 200,
         };

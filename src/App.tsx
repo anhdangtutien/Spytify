@@ -2815,6 +2815,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   useEffect(() => {
     const audio1 = new Audio();
     const audio2 = new Audio();
+    (audio1 as any).playsInline = true;
+    (audio2 as any).playsInline = true;
+    audio1.setAttribute('playsinline', 'true');
+    audio2.setAttribute('playsinline', 'true');
+    audio1.setAttribute('webkit-playsinline', 'true');
+    audio2.setAttribute('webkit-playsinline', 'true');
+    audio1.preload = 'auto';
+    audio2.preload = 'auto';
+
     if (!(window as any).__TAURI_WEB_SHIM__) {
       audio1.crossOrigin = 'anonymous';
       audio2.crossOrigin = 'anonymous';
@@ -2822,6 +2831,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     onlineAudio1Ref.current = audio1;
     onlineAudio2Ref.current = audio2;
     onlineAudioRef.current = audio1;
+
+    // Mobile / Web WebKit Audio Session unlocker on first gesture
+    const unlockAudioOnTouch = () => {
+      ensureAudioContextRunning();
+      if (bgKeepAliveAudioRef.current && isBackgroundPlayEnabledRef.current) {
+        bgKeepAliveAudioRef.current.play().catch(() => {});
+      }
+      if (audio1 && audio1.paused && !audio1.src) {
+        audio1.src = createSilentKeepAliveWavUri();
+        audio1.play().catch(() => {});
+      }
+      window.removeEventListener('touchstart', unlockAudioOnTouch);
+      window.removeEventListener('touchend', unlockAudioOnTouch);
+      window.removeEventListener('click', unlockAudioOnTouch);
+    };
+    window.addEventListener('touchstart', unlockAudioOnTouch, { passive: true });
+    window.addEventListener('touchend', unlockAudioOnTouch, { passive: true });
+    window.addEventListener('click', unlockAudioOnTouch, { passive: true });
 
     try {
       attachAudioElementToEqualizer(audio1);
@@ -3105,30 +3132,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     keepAlive.preload = 'auto';
     bgKeepAliveAudioRef.current = keepAlive;
 
-    const wakeYoutubeInBackground = () => {
-      if (!document.hidden) return;
-      if (!isBackgroundPlayEnabledRef.current || userInitiatedPauseRef.current || !isPlayingRef.current) return;
-      lastHiddenAtRef.current = Date.now();
-      bgKeepAliveAudioRef.current?.play().catch(() => {});
-
-      const ch = activeYtChannelRef.current;
-      if (currentTrackRef.current?.source === 'youtube' && !ytMusicFallbackActiveRef.current) {
-        [50, 250, 600, 1400].forEach((ms) => {
-          setTimeout(() => {
-            if (isPlayingRef.current && isBackgroundPlayEnabledRef.current && !userInitiatedPauseRef.current && currentTrackRef.current?.source === 'youtube') {
-              sendYtCmd('playVideo', [], ch);
-            }
-          }, ms);
-        });
+    const handleVisibilityState = () => {
+      if (document.hidden) {
+        if (!isBackgroundPlayEnabledRef.current || userInitiatedPauseRef.current || !isPlayingRef.current) return;
+        lastHiddenAtRef.current = Date.now();
+        bgKeepAliveAudioRef.current?.play().catch(() => {});
+        if (onlineAudioRef.current && !onlineAudioRef.current.paused) {
+          onlineAudioRef.current.play().catch(() => {});
+        }
+      } else {
+        if (onlineAudioRef.current && !onlineAudioRef.current.paused) {
+          setCurrentTime(onlineAudioRef.current.currentTime);
+          currentTimeRef.current = onlineAudioRef.current.currentTime;
+          setIsPlaying(true);
+          isPlayingRef.current = true;
+        }
       }
     };
 
-    document.addEventListener('visibilitychange', wakeYoutubeInBackground);
-    window.addEventListener('pagehide', wakeYoutubeInBackground);
+    document.addEventListener('visibilitychange', handleVisibilityState);
+    window.addEventListener('pagehide', handleVisibilityState);
 
     return () => {
-      document.removeEventListener('visibilitychange', wakeYoutubeInBackground);
-      window.removeEventListener('pagehide', wakeYoutubeInBackground);
+      document.removeEventListener('visibilitychange', handleVisibilityState);
+      window.removeEventListener('pagehide', handleVisibilityState);
       keepAlive.pause();
       keepAlive.src = '';
       bgKeepAliveAudioRef.current = null;
@@ -3166,6 +3193,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     try {
       const res = await invoke<{
         stream_url: string | null;
+        proxy_url?: string | null;
         resolved_video_id: string;
         duration_secs: number;
       }>('resolve_youtube_music_stream', {
@@ -3177,7 +3205,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       // Ensure user hasn't switched to another track while resolving
       if (currentTrackRef.current?.id !== track.id) return true;
 
-      if (res.stream_url && onlineAudioRef.current) {
+      const streamUrl = res.stream_url || res.proxy_url;
+      if (streamUrl && onlineAudioRef.current) {
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
         clearYtLoadTimers();
         sendYtCmd('pauseVideo', [], 1);
@@ -3197,7 +3226,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         } else {
           onlineAudioRef.current.crossOrigin = 'anonymous';
         }
-        onlineAudioRef.current.src = res.stream_url;
+        (onlineAudioRef.current as any).playsInline = true;
+        onlineAudioRef.current.setAttribute('playsinline', 'true');
+        onlineAudioRef.current.setAttribute('webkit-playsinline', 'true');
+        onlineAudioRef.current.src = streamUrl;
         onlineAudioRef.current.volume = volumeRef.current;
 
         if (res.duration_secs > 0) {
@@ -3205,11 +3237,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           if (!isTrayModeRef.current) setDuration(res.duration_secs);
         }
 
-        await onlineAudioRef.current.play();
+        try {
+          await onlineAudioRef.current.play();
+        } catch (playErr) {
+          if (res.proxy_url && res.proxy_url !== streamUrl) {
+            onlineAudioRef.current.src = res.proxy_url;
+            await onlineAudioRef.current.play();
+          } else {
+            throw playErr;
+          }
+        }
+
         ytHasStartedPlayingRef.current = true;
         isPlayingRef.current = true;
         setIsPlaying(true);
         playStartTimestampRef.current = Date.now();
+        if (typeof navigator !== 'undefined' && 'mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
         showNotification(`🎵 YouTube Music Hi-Fi: ${track.title}`);
         return true;
       }
@@ -3250,7 +3295,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const playTrackInternal = async (rawTrack: Track, isBackOrForward = false, isCrossfade = false) => {
     const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
     userInitiatedPauseRef.current = false;
-    if (isBackgroundPlayEnabledRef.current) {
+
+    // Mobile / iOS WebKit: Prime audio elements synchronously during user gesture BEFORE any await
+    if (isWebShim) {
+      try {
+        ensureAudioContextRunning();
+        if (onlineAudio1Ref.current) {
+          (onlineAudio1Ref.current as any).playsInline = true;
+          if (!onlineAudio1Ref.current.src) {
+            onlineAudio1Ref.current.src = createSilentKeepAliveWavUri();
+          }
+          onlineAudio1Ref.current.play().catch(() => {});
+        }
+        if (onlineAudio2Ref.current) {
+          (onlineAudio2Ref.current as any).playsInline = true;
+          if (!onlineAudio2Ref.current.src) {
+            onlineAudio2Ref.current.src = createSilentKeepAliveWavUri();
+          }
+        }
+        if (bgKeepAliveAudioRef.current) {
+          (bgKeepAliveAudioRef.current as any).playsInline = true;
+          bgKeepAliveAudioRef.current.play().catch(() => {});
+        }
+      } catch {}
+    } else if (isBackgroundPlayEnabledRef.current) {
       bgKeepAliveAudioRef.current?.play().catch(() => {});
     }
 
