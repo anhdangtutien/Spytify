@@ -20,7 +20,7 @@ export interface UpdatePolicyResult {
 }
 
 // Baseline build timestamp for the current installed client
-export const CURRENT_BUILD_DATE = '2026-11-21T16:55:00Z';
+export const CURRENT_BUILD_DATE = '2026-11-22T01:05:00Z';
 export const CURRENT_VERSION = '1.1.4';
 
 export function resolveDirectInstallerUrl(rawUrl: string | undefined, version: string): string {
@@ -151,18 +151,21 @@ export async function checkGitHubUpdate(force = false): Promise<{ hasUpdate: boo
 }
 
 export function dismissUpdate(infoOrTime: string | UpdateInfo) {
+  const now = new Date().toISOString();
   if (typeof infoOrTime === 'string') {
     localStorage.setItem('spytify_dismissed_update_time', infoOrTime);
+    localStorage.setItem('spytify_applied_patch_time', infoOrTime);
   } else {
     if (infoOrTime.version) {
       localStorage.setItem('spytify_dismissed_update_version', infoOrTime.version);
     }
     if (infoOrTime.patchId) {
       localStorage.setItem('spytify_dismissed_patch_id', infoOrTime.patchId);
+      localStorage.setItem('spytify_applied_patch_id', infoOrTime.patchId);
     }
-    if (infoOrTime.publishedAt) {
-      localStorage.setItem('spytify_dismissed_update_time', infoOrTime.publishedAt);
-    }
+    const pTime = infoOrTime.publishedAt || now;
+    localStorage.setItem('spytify_dismissed_update_time', pTime);
+    localStorage.setItem('spytify_applied_patch_time', pTime);
   }
 }
 
@@ -193,21 +196,19 @@ export async function checkStartupUpdatePolicy(force = false): Promise<UpdatePol
 
     const semverDiff = compareSemver(targetVersion, CURRENT_VERSION);
     const isNewerThanCurrent = semverDiff > 0;
-    const isSameOrNewer = semverDiff >= 0;
 
     // Hotfix check for SAME version (e.g. current is 1.1.4 and admin publishes a hotfix for 1.1.4)
     const appliedPatchId = localStorage.getItem('spytify_applied_patch_id');
-    const appliedPatchTime = localStorage.getItem('spytify_applied_patch_time');
-    const remotePatchTime = cfg?.updatedAt || ghInfo?.publishedAt || '';
-    const hasNewerTimestamp = remotePatchTime && remotePatchTime > CURRENT_BUILD_DATE;
-    const hasUnappliedPatchId = Boolean(cfg?.patchId && cfg.patchId !== appliedPatchId);
+    const dismissedPatchId = localStorage.getItem('spytify_dismissed_patch_id');
+    const dismissedVer = localStorage.getItem('spytify_dismissed_update_version');
 
+    // If version is not strictly newer, ONLY treat as update if an explicit hotfix patchId exists and hasn't been applied or dismissed
     const isHotfix = Boolean(
-      (isSameOrNewer || cfg?.isHotfix) && (
-        Boolean(cfg?.isHotfix && hasUnappliedPatchId) ||
-        (isSameOrNewer && hasUnappliedPatchId) ||
-        Boolean(isSameOrNewer && hasNewerTimestamp && (!appliedPatchTime || remotePatchTime > appliedPatchTime))
-      )
+      !isNewerThanCurrent &&
+      cfg?.isHotfix &&
+      cfg?.patchId &&
+      cfg.patchId !== appliedPatchId &&
+      cfg.patchId !== dismissedPatchId
     );
 
     const isBelowMin = cfg?.minSupportedVersion
@@ -216,23 +217,21 @@ export async function checkStartupUpdatePolicy(force = false): Promise<UpdatePol
     const isForceLocked = Boolean(cfg?.forceUpdate && (isNewerThanCurrent || isHotfix));
     const isMandatory = Boolean(isBelowMin || isForceLocked);
 
-    // If not a newer version, not a hotfix, and not below minimum, no update needed
+    // If not a newer version, not an unapplied hotfix, and not below minimum, no update needed
     if (!isNewerThanCurrent && !isHotfix && !isBelowMin) {
       return null;
     }
 
-    if (!isMandatory && !force) {
-      const dismissedVer = localStorage.getItem('spytify_dismissed_update_version');
-      const dismissedPatch = localStorage.getItem('spytify_dismissed_patch_id');
-      if (
-        dismissedVer &&
-        dismissedVer === targetVersion &&
-        (!isHotfix || (cfg?.patchId && dismissedPatch === cfg.patchId))
-      ) {
+    if (!force) {
+      if (dismissedVer && dismissedVer === targetVersion && (!cfg?.patchId || dismissedPatchId === cfg.patchId)) {
+        return null;
+      }
+      if (cfg?.patchId && (appliedPatchId === cfg.patchId || dismissedPatchId === cfg.patchId)) {
         return null;
       }
     }
 
+    const remotePatchTime = cfg?.updatedAt || ghInfo?.publishedAt || '';
     const effectivePatchId = cfg?.patchId || (isHotfix ? `patch_${remotePatchTime}` : undefined);
 
     const info: UpdateInfo = {

@@ -323,6 +323,121 @@ const WEB_CURATED_CATALOG: Record<string, SearchResult[]> = {
   ],
 };
 
+const ARTIST_DISCOGRAPHY: Record<string, SearchResult[]> = {
+  'sơn tùng': [
+    { title: 'Đừng Làm Trái Tim Anh Đau', artist: 'Sơn Tùng M-TP', album: 'V-Pop Quán Quân', duration_secs: 326, source: 'youtube', url_or_id: 'abPmZCZZrFA', thumbnail: 'https://i.ytimg.com/vi/abPmZCZZrFA/hqdefault.jpg' },
+    { title: 'Chúng Ta Của Tương Lai', artist: 'Sơn Tùng M-TP', album: 'Top Hits', duration_secs: 254, source: 'youtube', url_or_id: 'cp8ec_4vh_c', thumbnail: 'https://i.ytimg.com/vi/cp8ec_4vh_c/hqdefault.jpg' },
+    { title: 'Nơi Này Có Anh', artist: 'Sơn Tùng M-TP', album: 'Hit Quốc Dân V-Pop', duration_secs: 279, source: 'youtube', url_or_id: 'FN7ALfpGxiI', thumbnail: 'https://i.ytimg.com/vi/FN7ALfpGxiI/hqdefault.jpg' },
+    { title: 'Lạc Trôi', artist: 'Sơn Tùng M-TP', album: 'Hit Collection', duration_secs: 245, source: 'youtube', url_or_id: 'Llw9Q6akRo4', thumbnail: 'https://i.ytimg.com/vi/Llw9Q6akRo4/hqdefault.jpg' },
+    { title: 'Hãy Trao Cho Anh', artist: 'Sơn Tùng M-TP ft. Snoop Dogg', album: 'Global Smash', duration_secs: 245, source: 'youtube', url_or_id: 'knW7-x7Y7RE', thumbnail: 'https://i.ytimg.com/vi/knW7-x7Y7RE/hqdefault.jpg' },
+    { title: 'Có Chắc Yêu Là Đây', artist: 'Sơn Tùng M-TP', album: 'Sweet Pop', duration_secs: 202, source: 'youtube', url_or_id: '6t-MjBazs3o', thumbnail: 'https://i.ytimg.com/vi/6t-MjBazs3o/hqdefault.jpg' },
+    { title: 'Muộn Rồi Mà Sao Còn', artist: 'Sơn Tùng M-TP', album: 'Acoustic R&B', duration_secs: 277, source: 'youtube', url_or_id: 'xypzmu5mMPY', thumbnail: 'https://i.ytimg.com/vi/xypzmu5mMPY/hqdefault.jpg' },
+    { title: 'Chúng Ta Của Hiện Tại', artist: 'Sơn Tùng M-TP', album: 'Ballad Collection', duration_secs: 301, source: 'youtube', url_or_id: 'psZ1g9fMfeo', thumbnail: 'https://i.ytimg.com/vi/psZ1g9fMfeo/hqdefault.jpg' },
+  ],
+  'vũ': [
+    { title: 'Bước Qua Mùa Cô Đơn', artist: 'Vũ.', album: 'Indie Ballad', duration_secs: 279, source: 'youtube', url_or_id: 'bX8d8XbS0hU', thumbnail: 'https://i.ytimg.com/vi/bX8d8XbS0hU/hqdefault.jpg' },
+    { title: 'Lạ Lùng', artist: 'Vũ.', album: 'Vũ Acoustic', duration_secs: 262, source: 'youtube', url_or_id: 'rcZ1b0_dD_w', thumbnail: 'https://i.ytimg.com/vi/rcZ1b0_dD_w/hqdefault.jpg' },
+    { title: 'Những Lời Hứa Bỏ Quên', artist: 'Vũ. x Dear Jane', album: 'Bảo Tàng Của Nuối Tiếc', duration_secs: 240, source: 'youtube', url_or_id: '6f304E6J7S0', thumbnail: 'https://i.ytimg.com/vi/6f304E6J7S0/hqdefault.jpg' },
+    { title: 'Bước Qua Nhau', artist: 'Vũ.', album: 'Một Vạn Năm', duration_secs: 257, source: 'youtube', url_or_id: 'D_3QG3PZ9jM', thumbnail: 'https://i.ytimg.com/vi/D_3QG3PZ9jM/hqdefault.jpg' },
+    { title: 'Đông Kiếm Em', artist: 'Vũ.', album: 'Vũ Chill', duration_secs: 236, source: 'youtube', url_or_id: '0oA50r4F8iQ', thumbnail: 'https://i.ytimg.com/vi/0oA50r4F8iQ/hqdefault.jpg' },
+    { title: 'Dành Hết Xuân Thì Để Chờ Nhau', artist: 'Vũ. x Hà Anh Tuấn', album: 'Bảo Tàng Của Nuối Tiếc', duration_secs: 285, source: 'youtube', url_or_id: 'y58S3o1Y5e4', thumbnail: 'https://i.ytimg.com/vi/y58S3o1Y5e4/hqdefault.jpg' },
+  ],
+  'đen': [
+    { title: 'Nấu Ăn Cho Em', artist: 'Đen Vâu (feat. PiaLinh)', album: 'Đen Vâu Hit Collection', duration_secs: 260, source: 'youtube', url_or_id: 'ukHK1GVyr0I', thumbnail: 'https://i.ytimg.com/vi/ukHK1GVyr0I/hqdefault.jpg' },
+    { title: 'Mang Tiền Về Cho Mẹ', artist: 'Đen ft. Nguyên Thảo', album: 'Đen Vâu Hits', duration_secs: 310, source: 'youtube', url_or_id: 'kXYiU_JCYtU', thumbnail: 'https://i.ytimg.com/vi/kXYiU_JCYtU/hqdefault.jpg' },
+    { title: 'Trốn Tìm', artist: 'Đen ft. MTV Band', album: 'Đen Vâu Hits', duration_secs: 252, source: 'youtube', url_or_id: '5tXqGz1ZpQ4', thumbnail: 'https://i.ytimg.com/vi/5tXqGz1ZpQ4/hqdefault.jpg' },
+    { title: 'Đi Về Nhà', artist: 'Đen x JustaTee', album: 'Tết Hit', duration_secs: 202, source: 'youtube', url_or_id: 'vJ0xM4734pM', thumbnail: 'https://i.ytimg.com/vi/vJ0xM4734pM/hqdefault.jpg' },
+    { title: 'Bài Này Chill Phết', artist: 'Đen ft. Min', album: 'Đen Vâu Hits', duration_secs: 278, source: 'youtube', url_or_id: 'a4_w5w_K3z8', thumbnail: 'https://i.ytimg.com/vi/a4_w5w_K3z8/hqdefault.jpg' },
+    { title: 'Hai Triệu Năm', artist: 'Đen ft. Biên', album: 'Đen Vâu Hits', duration_secs: 220, source: 'youtube', url_or_id: 'Y_W81y6s1m4', thumbnail: 'https://i.ytimg.com/vi/Y_W81y6s1m4/hqdefault.jpg' },
+  ],
+  'hieuthuhai': [
+    { title: 'Không Thể Say', artist: 'HIEUTHUHAI', album: 'Ai Cũng Phải Bắt Đầu Từ Đâu Đó', duration_secs: 215, source: 'youtube', url_or_id: 'i0nd3NPJ4MI', thumbnail: 'https://i.ytimg.com/vi/i0nd3NPJ4MI/hqdefault.jpg' },
+    { title: 'Ngủ Một Mình', artist: 'HIEUTHUHAI x Negav x Kewtiie', album: 'HIEUTHUHAI Top Hits', duration_secs: 212, source: 'youtube', url_or_id: 'gG_3Dq5m1tI', thumbnail: 'https://i.ytimg.com/vi/gG_3Dq5m1tI/hqdefault.jpg' },
+    { title: 'Vệ Tinh', artist: 'HIEUTHUHAI ft. Hoàng Tôn', album: 'HIEUTHUHAI Hits', duration_secs: 204, source: 'youtube', url_or_id: 'y9M31x_q0hY', thumbnail: 'https://i.ytimg.com/vi/y9M31x_q0hY/hqdefault.jpg' },
+    { title: 'NOLOVE NOLIFE', artist: 'HIEUTHUHAI', album: 'Ai Cũng Phải Bắt Đầu Từ Đâu Đó', duration_secs: 195, source: 'youtube', url_or_id: 't8q22x101pM', thumbnail: 'https://i.ytimg.com/vi/t8q22x101pM/hqdefault.jpg' },
+    { title: 'Giờ Thì Ai Cười', artist: 'HIEUTHUHAI', album: 'Ai Cũng Phải Bắt Đầu Từ Đâu Đó', duration_secs: 208, source: 'youtube', url_or_id: 'y28X_43q0rE', thumbnail: 'https://i.ytimg.com/vi/y28X_43q0rE/hqdefault.jpg' },
+    { title: 'Trình', artist: 'HIEUTHUHAI', album: 'Single 2024', duration_secs: 198, source: 'youtube', url_or_id: 'm_q1x3401Yw', thumbnail: 'https://i.ytimg.com/vi/m_q1x3401Yw/hqdefault.jpg' },
+  ],
+  'soobin': [
+    { title: 'Giá Như', artist: 'SOOBIN', album: 'Bật Nó Lên', duration_secs: 216, source: 'youtube', url_or_id: 'kFq-qT8g16Q', thumbnail: 'https://i.ytimg.com/vi/kFq-qT8g16Q/hqdefault.jpg' },
+    { title: 'Phía Sau Một Cô Gái', artist: 'Soobin Hoàng Sơn', album: 'Ballad Quốc Dân', duration_secs: 268, source: 'youtube', url_or_id: 'v28X_101p_87', thumbnail: 'https://i.ytimg.com/vi/v28X_101p_87/hqdefault.jpg' },
+    { title: 'Xin Đừng Lặng Im', artist: 'Soobin Hoàng Sơn', album: 'Soobin Ballad', duration_secs: 245, source: 'youtube', url_or_id: 'y91X_0120_8k', thumbnail: 'https://i.ytimg.com/vi/y91X_0120_8k/hqdefault.jpg' },
+    { title: 'Đi Để Trở Về', artist: 'Soobin Hoàng Sơn', album: 'Đi Để Trở Về', duration_secs: 218, source: 'youtube', url_or_id: 'l39X_0102_yU', thumbnail: 'https://i.ytimg.com/vi/l39X_0102_yU/hqdefault.jpg' },
+    { title: 'Blackjack', artist: 'SOOBIN ft. Binz', album: 'The Playah', duration_secs: 205, source: 'youtube', url_or_id: 'q19X_3012_yU', thumbnail: 'https://i.ytimg.com/vi/q19X_3012_yU/hqdefault.jpg' },
+  ],
+  'bruno mars': [
+    { title: 'Die With A Smile', artist: 'Lady Gaga & Bruno Mars', album: 'Billboard Hot 100 #1', duration_secs: 251, source: 'youtube', url_or_id: 'kPa7bsKwL-c', thumbnail: 'https://i.ytimg.com/vi/kPa7bsKwL-c/hqdefault.jpg' },
+    { title: 'APT. (feat. Bruno Mars)', artist: 'ROSÉ & Bruno Mars', album: 'Global Viral Sensation', duration_secs: 173, source: 'youtube', url_or_id: 'ekr2nIex040', thumbnail: 'https://i.ytimg.com/vi/ekr2nIex040/hqdefault.jpg' },
+    { title: "That's What I Like", artist: 'Bruno Mars', album: '24K Magic', duration_secs: 206, source: 'youtube', url_or_id: 'PMivT7MJ41M', thumbnail: 'https://i.ytimg.com/vi/PMivT7MJ41M/hqdefault.jpg' },
+    { title: 'Just the Way You Are', artist: 'Bruno Mars', album: 'Doo-Wops & Hooligans', duration_secs: 220, source: 'youtube', url_or_id: 'LjhCEhWiKXk', thumbnail: 'https://i.ytimg.com/vi/LjhCEhWiKXk/hqdefault.jpg' },
+    { title: 'Uptown Funk', artist: 'Mark Ronson ft. Bruno Mars', album: 'Uptown Special', duration_secs: 270, source: 'youtube', url_or_id: 'OPf0YbXqDm0', thumbnail: 'https://i.ytimg.com/vi/OPf0YbXqDm0/hqdefault.jpg' },
+    { title: '24K Magic', artist: 'Bruno Mars', album: '24K Magic', duration_secs: 226, source: 'youtube', url_or_id: 'UqyT8IEBbiY', thumbnail: 'https://i.ytimg.com/vi/UqyT8IEBbiY/hqdefault.jpg' },
+  ],
+  'billie eilish': [
+    { title: 'Birds of a Feather', artist: 'Billie Eilish', album: 'Hit Me Hard and Soft', duration_secs: 196, source: 'youtube', url_or_id: 'V9PVRfjEBTI', thumbnail: 'https://i.ytimg.com/vi/V9PVRfjEBTI/hqdefault.jpg' },
+    { title: 'bad guy', artist: 'Billie Eilish', album: 'WHEN WE ALL FALL ASLEEP', duration_secs: 194, source: 'youtube', url_or_id: 'dyRsYkfflJU', thumbnail: 'https://i.ytimg.com/vi/dyRsYkfflJU/hqdefault.jpg' },
+    { title: 'Happier Than Ever', artist: 'Billie Eilish', album: 'Happier Than Ever', duration_secs: 304, source: 'youtube', url_or_id: '5GJWxDKyk3A', thumbnail: 'https://i.ytimg.com/vi/5GJWxDKyk3A/hqdefault.jpg' },
+    { title: 'lovely', artist: 'Billie Eilish & Khalid', album: '13 Reasons Why', duration_secs: 200, source: 'youtube', url_or_id: 'V1Pl8CzNzCw', thumbnail: 'https://i.ytimg.com/vi/V1Pl8CzNzCw/hqdefault.jpg' },
+    { title: 'What Was I Made For?', artist: 'Billie Eilish', album: 'Barbie The Album', duration_secs: 222, source: 'youtube', url_or_id: 'cW8VLC9nnTo', thumbnail: 'https://i.ytimg.com/vi/cW8VLC9nnTo/hqdefault.jpg' },
+  ],
+  'taylor swift': [
+    { title: 'Cruel Summer', artist: 'Taylor Swift', album: 'Lover', duration_secs: 178, source: 'youtube', url_or_id: 'ic8j13piAhQ', thumbnail: 'https://i.ytimg.com/vi/ic8j13piAhQ/hqdefault.jpg' },
+    { title: 'Anti-Hero', artist: 'Taylor Swift', album: 'Midnights', duration_secs: 200, source: 'youtube', url_or_id: 'b1kbLwvqugk', thumbnail: 'https://i.ytimg.com/vi/b1kbLwvqugk/hqdefault.jpg' },
+    { title: 'Blank Space', artist: 'Taylor Swift', album: '1989', duration_secs: 231, source: 'youtube', url_or_id: 'e-ORhEE9VVg', thumbnail: 'https://i.ytimg.com/vi/e-ORhEE9VVg/hqdefault.jpg' },
+    { title: 'Shake It Off', artist: 'Taylor Swift', album: '1989', duration_secs: 242, source: 'youtube', url_or_id: 'nfWlot6h_JM', thumbnail: 'https://i.ytimg.com/vi/nfWlot6h_JM/hqdefault.jpg' },
+    { title: 'Fortnight (feat. Post Malone)', artist: 'Taylor Swift', album: 'TTPD', duration_secs: 228, source: 'youtube', url_or_id: 'q3zKK4v2hFw', thumbnail: 'https://i.ytimg.com/vi/q3zKK4v2hFw/hqdefault.jpg' },
+  ],
+  'rosé': [
+    { title: 'APT. (feat. Bruno Mars)', artist: 'ROSÉ & Bruno Mars', album: 'Global Viral Sensation', duration_secs: 173, source: 'youtube', url_or_id: 'ekr2nIex040', thumbnail: 'https://i.ytimg.com/vi/ekr2nIex040/hqdefault.jpg' },
+    { title: 'On The Ground', artist: 'ROSÉ', album: '-R-', duration_secs: 168, source: 'youtube', url_or_id: 'CKZvWhCqx1s', thumbnail: 'https://i.ytimg.com/vi/CKZvWhCqx1s/hqdefault.jpg' },
+    { title: 'Gone', artist: 'ROSÉ', album: '-R-', duration_secs: 207, source: 'youtube', url_or_id: 'K9_VFxzCuQ0', thumbnail: 'https://i.ytimg.com/vi/K9_VFxzCuQ0/hqdefault.jpg' },
+  ],
+  'rose': [
+    { title: 'APT. (feat. Bruno Mars)', artist: 'ROSÉ & Bruno Mars', album: 'Global Viral Sensation', duration_secs: 173, source: 'youtube', url_or_id: 'ekr2nIex040', thumbnail: 'https://i.ytimg.com/vi/ekr2nIex040/hqdefault.jpg' },
+    { title: 'On The Ground', artist: 'ROSÉ', album: '-R-', duration_secs: 168, source: 'youtube', url_or_id: 'CKZvWhCqx1s', thumbnail: 'https://i.ytimg.com/vi/CKZvWhCqx1s/hqdefault.jpg' },
+    { title: 'Gone', artist: 'ROSÉ', album: '-R-', duration_secs: 207, source: 'youtube', url_or_id: 'K9_VFxzCuQ0', thumbnail: 'https://i.ytimg.com/vi/K9_VFxzCuQ0/hqdefault.jpg' },
+  ],
+  'joji': [
+    { title: 'Glimpse of Us', artist: 'Joji', album: 'SMITHEREENS', duration_secs: 233, source: 'youtube', url_or_id: 'FvOpPeKSf_4', thumbnail: 'https://i.ytimg.com/vi/FvOpPeKSf_4/hqdefault.jpg' },
+    { title: 'SLOW DANCING IN THE DARK', artist: 'Joji', album: 'BALLADS 1', duration_secs: 209, source: 'youtube', url_or_id: 'K3QzzggA_-s', thumbnail: 'https://i.ytimg.com/vi/K3QzzggA_-s/hqdefault.jpg' },
+    { title: 'Sanctuary', artist: 'Joji', album: 'Nectar', duration_secs: 180, source: 'youtube', url_or_id: 'YWN814PDKoI', thumbnail: 'https://i.ytimg.com/vi/YWN814PDKoI/hqdefault.jpg' },
+  ],
+  'alan walker': [
+    { title: 'Faded', artist: 'Alan Walker', album: 'Different World', duration_secs: 212, source: 'youtube', url_or_id: '60ItHLz5WEA', thumbnail: 'https://i.ytimg.com/vi/60ItHLz5WEA/hqdefault.jpg' },
+    { title: 'The Spectre', artist: 'Alan Walker', album: 'Different World', duration_secs: 193, source: 'youtube', url_or_id: 'wJnBTPUQS5A', thumbnail: 'https://i.ytimg.com/vi/wJnBTPUQS5A/hqdefault.jpg' },
+    { title: 'Darkside', artist: 'Alan Walker ft. Au/Ra', album: 'Different World', duration_secs: 211, source: 'youtube', url_or_id: 'M-P4Q3pkGKY', thumbnail: 'https://i.ytimg.com/vi/M-P4Q3pkGKY/hqdefault.jpg' },
+  ],
+  'wren evans': [
+    { title: 'Từng Quen', artist: 'Wren Evans', album: 'Loi Choi', duration_secs: 174, source: 'youtube', url_or_id: 'zepHPnUDROE', thumbnail: 'https://i.ytimg.com/vi/zepHPnUDROE/hqdefault.jpg' },
+    { title: 'Thích Em Hơi Nhiều', artist: 'Wren Evans', album: 'V-Pop Hits', duration_secs: 185, source: 'youtube', url_or_id: 'r89X_0120_7m', thumbnail: 'https://i.ytimg.com/vi/r89X_0120_7m/hqdefault.jpg' },
+  ],
+  'sabrina carpenter': [
+    { title: 'Espresso', artist: 'Sabrina Carpenter', album: "Short n' Sweet", duration_secs: 175, source: 'youtube', url_or_id: 'eVli-tstM5E', thumbnail: 'https://i.ytimg.com/vi/eVli-tstM5E/hqdefault.jpg' },
+    { title: 'Taste', artist: 'Sabrina Carpenter', album: "Short n' Sweet", duration_secs: 157, source: 'youtube', url_or_id: '-u1_qW1Q2qU', thumbnail: 'https://i.ytimg.com/vi/-u1_qW1Q2qU/hqdefault.jpg' },
+    { title: 'Please Please Please', artist: 'Sabrina Carpenter', album: "Short n' Sweet", duration_secs: 186, source: 'youtube', url_or_id: 'cF1Na4AIecM', thumbnail: 'https://i.ytimg.com/vi/cF1Na4AIecM/hqdefault.jpg' },
+  ],
+  'newjeans': [
+    { title: 'How Sweet', artist: 'NewJeans', album: 'How Sweet EP', duration_secs: 219, source: 'youtube', url_or_id: 'Q3K0TOvTOno', thumbnail: 'https://i.ytimg.com/vi/Q3K0TOvTOno/hqdefault.jpg' },
+    { title: 'Super Shy', artist: 'NewJeans', album: 'Get Up', duration_secs: 154, source: 'youtube', url_or_id: 'ArmDp-zijuc', thumbnail: 'https://i.ytimg.com/vi/ArmDp-zijuc/hqdefault.jpg' },
+    { title: 'Ditto', artist: 'NewJeans', album: 'OMG', duration_secs: 186, source: 'youtube', url_or_id: 'pSUydWEqKwE', thumbnail: 'https://i.ytimg.com/vi/pSUydWEqKwE/hqdefault.jpg' },
+    { title: 'OMG', artist: 'NewJeans', album: 'OMG', duration_secs: 212, source: 'youtube', url_or_id: 'sVTy_wmn5SU', thumbnail: 'https://i.ytimg.com/vi/sVTy_wmn5SU/hqdefault.jpg' },
+  ],
+  'aespa': [
+    { title: 'Supernova', artist: 'aespa', album: 'Armageddon', duration_secs: 178, source: 'youtube', url_or_id: 'G8YNFjruzPk', thumbnail: 'https://i.ytimg.com/vi/G8YNFjruzPk/hqdefault.jpg' },
+    { title: 'Whiplash', artist: 'aespa', album: 'The 5th Mini Album', duration_secs: 184, source: 'youtube', url_or_id: 'jWQx2f-CErU', thumbnail: 'https://i.ytimg.com/vi/jWQx2f-CErU/hqdefault.jpg' },
+    { title: 'Armageddon', artist: 'aespa', album: 'Armageddon', duration_secs: 197, source: 'youtube', url_or_id: 'nFYwcndNuOY', thumbnail: 'https://i.ytimg.com/vi/nFYwcndNuOY/hqdefault.jpg' },
+  ],
+  'yoasobi': [
+    { title: 'Idol (アイドル)', artist: 'YOASOBI', album: 'Oshi no Ko OP', duration_secs: 213, source: 'youtube', url_or_id: 'ZRtdQ81jPUQ', thumbnail: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/hqdefault.jpg' },
+    { title: 'Racing Into The Night (夜に駆ける)', artist: 'YOASOBI', album: 'THE BOOK', duration_secs: 261, source: 'youtube', url_or_id: 'x8VYWazR5mM', thumbnail: 'https://i.ytimg.com/vi/x8VYWazR5mM/hqdefault.jpg' },
+    { title: 'Monster (怪物)', artist: 'YOASOBI', album: 'THE BOOK 2', duration_secs: 206, source: 'youtube', url_or_id: 'dy90tA3TT1c', thumbnail: 'https://i.ytimg.com/vi/dy90tA3TT1c/hqdefault.jpg' },
+  ],
+  'iu': [
+    { title: 'Love wins all', artist: 'IU', album: 'The Winning', duration_secs: 272, source: 'youtube', url_or_id: 'JleoAppaxi0', thumbnail: 'https://i.ytimg.com/vi/JleoAppaxi0/hqdefault.jpg' },
+    { title: 'Palette (feat. G-DRAGON)', artist: 'IU', album: 'Palette', duration_secs: 217, source: 'youtube', url_or_id: 'd9IxFzUkWLQ', thumbnail: 'https://i.ytimg.com/vi/d9IxFzUkWLQ/hqdefault.jpg' },
+  ],
+};
+
 function getAllCuratedTracks(): SearchResult[] {
   return [
     ...WEB_CURATED_CATALOG.usuk,
@@ -553,7 +668,13 @@ async function searchYoutubeWeb(query: string, apiTimeoutMs = 1800): Promise<Sea
   if (scoredCurated.length > 0) return scoredCurated;
 
   const audius = await searchAudiusWeb(query);
-  return audius.length > 0 ? audius : allCurated.slice(0, 10);
+  if (audius.length > 0) return audius;
+
+  // If query is an empty or generic request, return curated; otherwise return empty so search doesn't show wrong songs
+  if (!query || query.trim().length <= 2) {
+    return allCurated.slice(0, 10);
+  }
+  return [];
 }
 
 async function resolveAudiusStreamUrl(urlOrId: string): Promise<string> {
@@ -1138,17 +1259,102 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
     }
 
     case 'get_artist_album_mix': {
-      const artist = String(args.artist || 'Spytify Artist').trim();
-      const tracks = await searchYoutubeWeb(`${artist} top songs`);
-      const mix: ArtistMix = {
-        artist,
-        title: `${artist} Mix`,
-        description: `Tuyển tập bài hát của ${artist}`,
-        cover_art: tracks[0]?.thumbnail || null,
-        track_count: tracks.length,
-        tracks,
+      const rawArtist = String(args.artist || 'Spytify Artist').trim();
+      const normArtist = rawArtist.toLowerCase();
+
+      // 1. Direct hit in verified artist discography
+      let matchedTracks: SearchResult[] = [];
+      for (const [key, list] of Object.entries(ARTIST_DISCOGRAPHY)) {
+        if (normArtist.includes(key) || key.includes(normArtist)) {
+          matchedTracks = [...list];
+          break;
+        }
+      }
+
+      // 2. Scan all categories in WEB_CURATED_CATALOG for additional genuine hits by this artist
+      const seenIds = new Set(matchedTracks.map(t => t.url_or_id));
+      const seenTitles = new Set(matchedTracks.map(t => t.title.toLowerCase().trim()));
+      const allCurated = getAllCuratedTracks();
+      for (const t of allCurated) {
+        const a = t.artist.toLowerCase();
+        const normT = t.title.toLowerCase().trim();
+        if ((a.includes(normArtist) || normArtist.includes(a)) && !seenIds.has(t.url_or_id) && !seenTitles.has(normT)) {
+          seenIds.add(t.url_or_id);
+          seenTitles.add(normT);
+          matchedTracks.push(t);
+        }
+      }
+
+      // 3. Scan user history and favorites
+      const userId = args.userId ? String(args.userId) : null;
+      if (userId) {
+        const hist = readJson<HistoryItem[]>(`${HIST_PREFIX}${userId}`, []);
+        const favs = readJson<Track[]>(`${FAVS_PREFIX}${userId}`, []);
+        for (const h of hist) {
+          const a = (h.artist || '').toLowerCase();
+          const vid = h.path_or_url || h.track_id;
+          const normT = (h.track_title || '').toLowerCase().trim();
+          if ((a.includes(normArtist) || normArtist.includes(a)) && vid && !seenIds.has(vid) && !seenTitles.has(normT)) {
+            seenIds.add(vid);
+            seenTitles.add(normT);
+            matchedTracks.push({
+              title: h.track_title,
+              artist: h.artist,
+              album: `${rawArtist} Mix`,
+              duration_secs: h.duration_secs || 195,
+              source: (h.source as any) || 'youtube',
+              url_or_id: vid,
+              thumbnail: h.cover_art,
+            });
+          }
+        }
+        for (const f of favs) {
+          const a = (f.artist || '').toLowerCase();
+          const vid = f.path_or_url || f.id;
+          const normT = (f.title || '').toLowerCase().trim();
+          if ((a.includes(normArtist) || normArtist.includes(a)) && vid && !seenIds.has(vid) && !seenTitles.has(normT)) {
+            seenIds.add(vid);
+            seenTitles.add(normT);
+            matchedTracks.push({
+              title: f.title,
+              artist: f.artist,
+              album: `${rawArtist} Mix`,
+              duration_secs: f.duration_secs || 195,
+              source: (f.source as any) || 'youtube',
+              url_or_id: vid,
+              thumbnail: f.cover_art,
+            });
+          }
+        }
+      }
+
+      // 4. If we found matching tracks, return them immediately!
+      if (matchedTracks.length > 0) {
+        return {
+          artist: rawArtist,
+          title: `${rawArtist} Mix`,
+          description: `Tuyển tập các bài hát nổi bật nhất của ${rawArtist}`,
+          cover_art: matchedTracks[0]?.thumbnail || null,
+          track_count: matchedTracks.length,
+          tracks: matchedTracks,
+        };
+      }
+
+      // 5. If not found in catalog, search online AND strictly filter by artist so no unrelated tracks appear
+      const onlineResults = await searchYoutubeWeb(`${rawArtist} top songs`);
+      const filtered = onlineResults.filter(t => {
+        const text = `${t.artist} ${t.title}`.toLowerCase();
+        return text.includes(normArtist);
+      });
+
+      return {
+        artist: rawArtist,
+        title: `${rawArtist} Mix`,
+        description: `Tuyển tập bài hát của ${rawArtist}`,
+        cover_art: filtered[0]?.thumbnail || null,
+        track_count: filtered.length,
+        tracks: filtered,
       };
-      return mix;
     }
 
     case 'get_related_tracks': {

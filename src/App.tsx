@@ -182,7 +182,15 @@ export default function App() {
     const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
 
     const handleBroadcastEvent = (e: any) => {
-      setRemoteBroadcast(e.detail || null);
+      const b = e.detail;
+      if (b && b.id) {
+        const isDismissed = localStorage.getItem(`spytify_dismissed_broadcast_${b.id}`) === 'true';
+        if (isDismissed) {
+          setRemoteBroadcast(null);
+          return;
+        }
+      }
+      setRemoteBroadcast(b || null);
       setIsBroadcastDismissed(false);
     };
     window.addEventListener('spytify:remote-broadcast', handleBroadcastEvent);
@@ -221,18 +229,34 @@ export default function App() {
       if (!config || !config.version) return;
       const semverDiff = compareSemver(config.version, CURRENT_VERSION);
       const isNewer = semverDiff > 0;
-      const isSameOrNewer = semverDiff >= 0;
 
       // Check for hotfix patch pushed from Admin Dashboard
       const appliedPatchId = localStorage.getItem('spytify_applied_patch_id');
       const dismissedPatchId = localStorage.getItem('spytify_dismissed_patch_id');
-      const isHotfix =
-        Boolean(config.isHotfix || isSameOrNewer) &&
-        Boolean(
-          config.patchId &&
-            config.patchId !== appliedPatchId &&
-            (config.forceUpdate || config.patchId !== dismissedPatchId)
-        );
+      const dismissedVer = localStorage.getItem('spytify_dismissed_update_version');
+
+      // If version is not strictly newer, ONLY notify if an unapplied hotfix patchId exists
+      if (!isNewer) {
+        if (!config.isHotfix || !config.patchId || config.patchId === appliedPatchId || config.patchId === dismissedPatchId) {
+          return;
+        }
+      }
+
+      if (dismissedVer && dismissedVer === config.version && (!config.patchId || dismissedPatchId === config.patchId)) {
+        return;
+      }
+
+      if (config.patchId && (appliedPatchId === config.patchId || dismissedPatchId === config.patchId)) {
+        return;
+      }
+
+      const isHotfix = Boolean(
+        !isNewer &&
+        config.isHotfix &&
+        config.patchId &&
+        config.patchId !== appliedPatchId &&
+        config.patchId !== dismissedPatchId
+      );
 
       const isBelowMin = config.minSupportedVersion
         ? compareSemver(CURRENT_VERSION, config.minSupportedVersion) < 0
@@ -5386,7 +5410,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 )}
               </div>
               <button
-                onClick={() => setIsBroadcastDismissed(true)}
+                onClick={() => {
+                  setIsBroadcastDismissed(true);
+                  if (remoteBroadcast?.id) {
+                    localStorage.setItem(`spytify_dismissed_broadcast_${remoteBroadcast.id}`, 'true');
+                  }
+                }}
                 className="p-1 hover:opacity-100 opacity-70 cursor-pointer ml-3 shrink-0"
                 title="Đóng thông báo"
               >
