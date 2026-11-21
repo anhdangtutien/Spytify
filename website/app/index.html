@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full select-none">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Spytify — Hi-Fi Music & Spy Jam</title>
+  
+  <!-- PWA & iOS Meta Tags -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#07090E">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Spytify">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { DEFAULT: '#FF2A55', dark: '#E01E45', glow: 'rgba(255, 42, 85, 0.4)', dim: 'rgba(255, 42, 85, 0.12)' },
+            surface: { DEFAULT: '#07090E', card: '#111520', border: 'rgba(255, 255, 255, 0.08)', hover: '#19202E' }
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Supabase JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* iOS Safe-Area handling */
+    :root {
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+    }
+    body {
+      background-color: #07090E;
+      color: #E2E8F0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      padding-top: var(--sat);
+      -webkit-tap-highlight-color: transparent;
+      overflow-x: hidden;
+    }
+    .neon-glow {
+      box-shadow: 0 0 25px rgba(255, 42, 85, 0.35);
+    }
+    .glass-bar {
+      background: rgba(13, 16, 24, 0.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card {
+      background: rgba(18, 22, 34, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .glass-input {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-spin-slow {
+      animation: spin-slow 12s linear infinite;
+    }
+    .animate-spin-paused {
+      animation-play-state: paused;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col justify-between overflow-hidden text-slate-200">
+
+  <!-- iOS PWA INSTALL BANNER (Only on Safari when not installed) -->
+  <div id="ios-install-prompt" class="hidden fixed top-2 left-3 right-3 z-50 p-3 rounded-2xl glass-card border border-brand/40 shadow-2xl flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <img src="assets/spytify-logo.png" class="w-8 h-8 rounded-lg object-contain">
+      <div>
+        <div class="text-xs font-bold text-white flex items-center gap-1.5">
+          Cài đặt Spytify lên iPhone
+          <span class="text-[9px] px-1 rounded bg-brand/20 text-brand font-bold uppercase">PWA</span>
+        </div>
+        <div class="text-[10px] text-slate-400">Bấm <span class="text-white font-bold">Chia sẻ ⬆️</span> ➔ Chọn <span class="text-white font-bold">Thêm vào MH chính</span></div>
+      </div>
+    </div>
+    <button onclick="dismissIosPrompt()" class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs text-slate-400 hover:text-white">✕</button>
+  </div>
+
+  <!-- TOP HEADER -->
+  <header class="px-4 py-3 flex items-center justify-between border-b border-white/5 flex-shrink-0 z-30">
+    <div class="flex items-center gap-2.5">
+      <img src="assets/spytify-logo.png" alt="Spytify" class="w-7 h-7 object-contain">
+      <span class="font-extrabold text-base tracking-wider text-white">SPYTIFY</span>
+      <span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-brand/15 text-brand border border-brand/30 uppercase font-bold">Mobile</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="openSyncModal()" class="p-2 rounded-xl glass-input text-slate-300 hover:text-brand text-xs flex items-center gap-1" title="Trạng thái Supabase Cloud">
+        <span id="cloud-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span class="text-[10px] font-mono hidden sm:inline">Cloud</span>
+      </button>
+      <button onclick="openAuthModal()" id="user-header-btn" class="flex items-center gap-1.5 p-1.5 pl-2.5 rounded-full glass-card border border-white/10 text-xs">
+        <span id="user-header-name" class="font-bold text-slate-300 text-xs max-w-[80px] truncate">Đăng nhập</span>
+        <div id="user-header-avatar" class="w-6 h-6 rounded-full bg-brand/20 text-brand flex items-center justify-center text-[10px] font-bold overflow-hidden">
+          👤
+        </div>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN SCROLLABLE VIEWS -->
+  <main class="flex-1 overflow-y-auto no-scrollbar relative pb-32" id="main-container">
+
+    <!-- ──────── VIEW 1: TRANG CHỦ (HOME) ──────── -->
+    <section id="view-home" class="p-4 space-y-6">
+      <!-- Greeting Banner -->
+      <div class="rounded-3xl p-5 bg-gradient-to-tr from-brand/20 via-purple-900/15 to-transparent border border-brand/20 relative overflow-hidden">
+        <div class="relative z-10">
+          <span class="text-[10px] font-mono tracking-widest text-brand font-bold uppercase">SPYTIFY MOBILE HUD</span>
+          <h2 id="greeting-title" class="text-2xl font-extrabold text-white mt-0.5">Chào buổi tối!</h2>
+          <p class="text-xs text-slate-300 mt-1">Lõi phát trực tiếp đa nguồn YouTube &amp; SoundCloud không quảng cáo.</p>
+        </div>
+      </div>
+
+      <!-- Quick Mixes -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-extrabold text-sm text-white">🔥 Tuyển tập Đề xuất</h3>
+          <span class="text-[11px] text-brand font-semibold">Tự động phát</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3" id="quick-mixes-grid">
+          <!-- Mix 1 -->
+          <div onclick="playTrackById('yt_live_synthwave')" class="p-3 rounded-2xl glass-card flex items-center gap-3 active:scale-95 transition-transform">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-brand to-rose-400 flex items-center justify-center text-xl flex-shrink-0 shadow-md shadow-brand/30">🌆</div>
+            <div class="overflow-hidden">
+              <div class="font-bold text-xs text-white truncate">Synthwave 24/7</div>
+              <div class="text-[10px] text-slate-400 truncate">Lofi Cyberpunk Radio</div>
+            </div>
+          </div>
+          <!-- Mix 2 -->
+          <div onclick="playTrackById('MV_3Dpw-BRY')" class="p-3 rounded-2xl glass-card flex items-center gap-3 active:scale-95 transition-transform">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-xl flex-shrink-0 shadow-md">🏎️</div>
+            <div class="overflow-hidden">
+              <div class="font-bold text-xs text-white truncate">Nightcall Electro</div>
+              <div class="text-[10px] text-slate-400 truncate">Kavinsky OutRun</div>
+            </div>
+          </div>
+          <!-- Mix 3 -->
+          <div onclick="playTrackById('mky64VkgkME')" class="p-3 rounded-2xl glass-card flex items-center gap-3 active:scale-95 transition-transform">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center text-xl flex-shrink-0 shadow-md">💾</div>
+            <div class="overflow-hidden">
+              <div class="font-bold text-xs text-white truncate">Memory Reboot</div>
+              <div class="text-[10px] text-slate-400 truncate">Cyber Drift Phonk</div>
+            </div>
+          </div>
+          <!-- Mix 4 -->
+          <div onclick="playTrackById('jfKfPfyJRdk')" class="p-3 rounded-2xl glass-card flex items-center gap-3 active:scale-95 transition-transform">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-xl flex-shrink-0 shadow-md">☕</div>
+            <div class="overflow-hidden">
+              <div class="font-bold text-xs text-white truncate">Lofi Girl Beats</div>
+              <div class="text-[10px] text-slate-400 truncate">Relax &amp; Study Radio</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trending Tracks List -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-extrabold text-sm text-white">🎧 Bài hát Thịnh hành</h3>
+          <span class="text-[11px] text-slate-400 font-mono">Hi-Fi Audio</span>
+        </div>
+        <div class="space-y-2" id="home-tracks-list">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────── VIEW 2: TÌM KIẾM (SEARCH) ──────── -->
+    <section id="view-search" class="hidden p-4 space-y-4">
+      <!-- Search Input -->
+      <div class="relative">
+        <input id="search-input" type="text" placeholder="Tìm bài hát, nghệ sĩ hoặc dán link YouTube..." 
+               class="w-full px-4 py-3 pl-10 rounded-2xl glass-input text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand/60"
+               onkeydown="if(event.key==='Enter') executeSearch()">
+        <span class="absolute left-3.5 top-3.5 text-slate-500 text-xs">🔍</span>
+        <button onclick="executeSearch()" class="absolute right-2 top-2 px-3 py-1.5 rounded-xl bg-brand text-white font-bold text-xs shadow-md">
+          Tìm
+        </button>
+      </div>
+
+      <!-- Quick Tag Chips -->
+      <div class="flex gap-2 overflow-x-auto no-scrollbar text-xs font-semibold pb-1">
+        <button onclick="quickSearchTag('V-Pop Hot Hits 2026')" class="px-3 py-1.5 rounded-xl glass-card text-slate-300 hover:text-white flex-shrink-0">🇻🇳 V-Pop</button>
+        <button onclick="quickSearchTag('Synthwave Cyberpunk')" class="px-3 py-1.5 rounded-xl glass-card text-slate-300 hover:text-white flex-shrink-0">🌆 Synthwave</button>
+        <button onclick="quickSearchTag('Lofi Chill Beats')" class="px-3 py-1.5 rounded-xl glass-card text-slate-300 hover:text-white flex-shrink-0">☕ Lofi Beats</button>
+        <button onclick="quickSearchTag('Phonk Tokyo Drift')" class="px-3 py-1.5 rounded-xl glass-card text-slate-300 hover:text-white flex-shrink-0">🏎️ Phonk</button>
+      </div>
+
+      <!-- Search Results Area -->
+      <div id="search-results" class="space-y-2">
+        <div class="text-center py-12 text-slate-500 text-xs">
+          Nhập tên bài hát hoặc dán link YouTube vào ô tìm kiếm để phát ngay.
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────── VIEW 3: SPY JAM (COMMUNITY) ──────── -->
+    <section id="view-jam" class="hidden p-4 space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <img src="assets/spy-jam-icon.png" class="w-6 h-6 object-contain">
+          <h2 class="font-extrabold text-lg text-white">Spy Jam Mobile</h2>
+        </div>
+        <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+          🟢 Trạm sóng Online
+        </span>
+      </div>
+
+      <!-- Server Card -->
+      <div class="p-4 rounded-2xl glass-card border border-purple-500/20 bg-gradient-to-r from-purple-950/20 to-transparent">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 to-brand flex items-center justify-center font-bold text-xs text-white shadow-md">
+              JAM
+            </div>
+            <div>
+              <div class="font-bold text-sm text-white">Cyber Điệp Viên</div>
+              <div class="text-[11px] text-slate-400">#phòng-nghe-nhạc · Voice &amp; Chat</div>
+            </div>
+          </div>
+          <span class="text-xs px-2.5 py-1 rounded-xl bg-brand text-white font-bold text-[10px]">Đang phát</span>
+        </div>
+      </div>
+
+      <!-- Realtime Chat Messages Box -->
+      <div class="glass-card rounded-2xl p-3 h-[300px] flex flex-col justify-between overflow-hidden">
+        <div id="chat-messages" class="overflow-y-auto no-scrollbar space-y-3 flex-1 pr-1 text-xs">
+          <div class="flex items-start gap-2.5">
+            <div class="w-7 h-7 rounded-full bg-brand/20 text-brand flex items-center justify-center font-bold text-[10px] flex-shrink-0">RB</div>
+            <div>
+              <div class="flex items-center gap-1.5"><span class="font-bold text-brand">Rythm Bot</span><span class="text-[9px] text-slate-500">vừa xong</span></div>
+              <p class="text-slate-300 mt-0.5">Chào mừng đến với Trạm sóng Spy Jam trên điện thoại! 🎶</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat Input -->
+        <div class="flex items-center gap-2 mt-3 pt-2 border-t border-white/5">
+          <input id="chat-input" type="text" placeholder="Gửi tin nhắn vào server..." 
+                 class="flex-1 px-3 py-2 rounded-xl glass-input text-xs text-white placeholder-slate-500 focus:outline-none"
+                 onkeydown="if(event.key==='Enter') sendChatMessage()">
+          <button onclick="sendChatMessage()" class="p-2 px-3 rounded-xl bg-brand text-white font-bold text-xs shadow-md">Gửi</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ──────── VIEW 4: THƯ VIỆN & CÁ NHÂN (LIBRARY) ──────── -->
+    <section id="view-library" class="hidden p-4 space-y-5">
+      <!-- Profile Card -->
+      <div class="p-5 rounded-3xl glass-card flex items-center justify-between border border-white/10">
+        <div class="flex items-center gap-3.5">
+          <div id="profile-avatar-large" class="w-14 h-14 rounded-2xl bg-brand/20 border border-brand/30 text-brand flex items-center justify-center font-black text-xl overflow-hidden shadow-lg">
+            👤
+          </div>
+          <div>
+            <h3 id="profile-display-name" class="font-extrabold text-base text-white">Khách chưa đăng nhập</h3>
+            <p id="profile-username" class="text-xs text-slate-400 font-mono">@guest</p>
+            <p id="profile-bio" class="text-[11px] text-slate-400 mt-0.5">Dữ liệu lưu tạm trên máy</p>
+          </div>
+        </div>
+        <button onclick="openAuthModal()" id="btn-login-logout" class="px-3.5 py-1.5 rounded-xl bg-brand/15 text-brand border border-brand/30 text-xs font-bold hover:bg-brand hover:text-white transition-all">
+          Đăng nhập
+        </button>
+      </div>
+
+      <!-- Favorites Section -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-extrabold text-sm text-white flex items-center gap-2">
+            ❤️ Bài hát Yêu thích
+            <span id="favs-count-badge" class="px-2 py-0.5 rounded-full bg-brand/20 text-brand font-mono text-[10px] font-bold">0</span>
+          </h3>
+        </div>
+        <div id="library-favs-list" class="space-y-2">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <!-- Settings & Cloud Config -->
+      <div class="space-y-2 pt-2">
+        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Hệ thống</h4>
+        <button onclick="openSyncModal()" class="w-full p-3.5 rounded-2xl glass-card flex items-center justify-between text-xs text-left">
+          <div class="flex items-center gap-3">
+            <span class="text-base">☁️</span>
+            <div>
+              <div class="font-bold text-white">Cấu hình Database Supabase</div>
+              <div class="text-[10px] text-slate-400">Đồng bộ với app máy tính Spytify</div>
+            </div>
+          </div>
+          <span class="text-slate-500 font-mono">❯</span>
+        </button>
+        <button onclick="clearCacheData()" class="w-full p-3.5 rounded-2xl glass-card flex items-center justify-between text-xs text-left text-rose-400">
+          <div class="flex items-center gap-3">
+            <span class="text-base">🗑️</span>
+            <div>
+              <div class="font-bold">Xóa dữ liệu bộ nhớ tạm</div>
+              <div class="text-[10px] text-slate-400">Làm mới lịch sử và cache bài hát</div>
+            </div>
+          </div>
+          <span class="text-slate-500 font-mono">❯</span>
+        </button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ──────── FLOATING MINI PLAYER ──────── -->
+  <div id="mini-player" onclick="openFullPlayer()" class="hidden fixed left-3 right-3 bottom-[calc(env(safe-area-inset-bottom,0px)+62px)] z-40 p-2.5 px-3 rounded-2xl glass-bar border border-white/10 shadow-2xl flex items-center justify-between active:scale-[0.99] transition-transform">
+    <div class="flex items-center gap-3 overflow-hidden flex-1">
+      <div id="mini-cover" class="w-10 h-10 rounded-xl bg-brand/20 flex items-center justify-center text-sm font-bold text-brand overflow-hidden shadow-md flex-shrink-0 animate-spin-slow animate-spin-paused">
+        🎵
+      </div>
+      <div class="overflow-hidden">
+        <div id="mini-title" class="font-bold text-xs text-white truncate">Chưa phát bài nào</div>
+        <div id="mini-artist" class="text-[10px] text-slate-400 truncate">Spytify Mobile</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+      <button onclick="toggleFavoriteCurrent()" id="mini-fav-btn" class="p-2 text-slate-400 hover:text-brand text-sm">🤍</button>
+      <button onclick="togglePlayPause()" id="mini-play-btn" class="w-9 h-9 rounded-full bg-brand text-white flex items-center justify-center font-black text-sm shadow-md shadow-brand/40">
+        ▶
+      </button>
+      <button onclick="playNextTrack()" class="p-2 text-slate-400 hover:text-white text-sm">⏭</button>
+    </div>
+  </div>
+
+  <!-- ──────── BOTTOM NAVIGATION BAR ──────── -->
+  <nav class="fixed bottom-0 left-0 right-0 z-40 glass-bar pb-[env(safe-area-inset-bottom,0px)] flex items-center justify-around h-[60px] text-[10px] font-semibold text-slate-400">
+    <button onclick="switchTab('home')" id="tab-home" class="flex flex-col items-center gap-0.5 text-brand">
+      <span class="text-base">🏠</span>
+      <span>Trang chủ</span>
+    </button>
+    <button onclick="switchTab('search')" id="tab-search" class="flex flex-col items-center gap-0.5 hover:text-slate-200">
+      <span class="text-base">🔍</span>
+      <span>Tìm kiếm</span>
+    </button>
+    <button onclick="switchTab('jam')" id="tab-jam" class="flex flex-col items-center gap-0.5 hover:text-slate-200">
+      <span class="text-base">💬</span>
+      <span>Spy Jam</span>
+    </button>
+    <button onclick="switchTab('library')" id="tab-library" class="flex flex-col items-center gap-0.5 hover:text-slate-200">
+      <span class="text-base">📚</span>
+      <span>Thư viện</span>
+    </button>
+  </nav>
+
+  <!-- ──────── FULL-SCREEN NOW PLAYING MODAL ──────── -->
+  <div id="full-player" class="hidden fixed inset-0 z-50 bg-[#07090E] flex flex-col justify-between p-6 pt-[calc(env(safe-area-inset-top,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)] transition-transform duration-300">
+    <!-- Top Close Bar -->
+    <div class="flex items-center justify-between">
+      <button onclick="closeFullPlayer()" class="p-2 text-slate-400 text-lg">✕</button>
+      <div class="text-center">
+        <span class="text-[9px] font-mono tracking-widest uppercase text-brand font-bold">ĐANG PHÁT TỪ SPYTIFY</span>
+        <div class="text-xs font-bold text-white" id="full-source-tag">YouTube Hi-Fi</div>
+      </div>
+      <button onclick="openSyncModal()" class="p-2 text-slate-400 text-sm">⚙️</button>
+    </div>
+
+    <!-- Vinyl Disc Graphic -->
+    <div class="flex flex-col items-center justify-center my-auto py-6">
+      <div id="full-disc" class="w-64 h-64 sm:w-72 sm:h-72 rounded-full p-2.5 bg-[#121622] border-2 border-white/10 shadow-2xl neon-glow flex items-center justify-center animate-spin-slow animate-spin-paused">
+        <div class="w-full h-full rounded-full bg-cover bg-center overflow-hidden flex items-center justify-center" id="full-cover-bg" style="background-image: url('assets/spytify-logo.png');">
+          <div class="w-20 h-20 rounded-full bg-[#07090E] border-4 border-brand/60 flex items-center justify-center shadow-inner">
+            <div class="w-5 h-5 rounded-full bg-brand"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Song Info & Player Controls -->
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="overflow-hidden pr-2">
+          <h2 id="full-title" class="text-lg font-extrabold text-white truncate">Chưa phát bài nào</h2>
+          <p id="full-artist" class="text-xs text-slate-400 truncate">Spytify Mobile</p>
+        </div>
+        <button onclick="toggleFavoriteCurrent()" id="full-fav-btn" class="p-2 text-xl text-slate-400 hover:text-brand">🤍</button>
+      </div>
+
+      <!-- Seekbar -->
+      <div class="space-y-1">
+        <input type="range" id="seek-bar" min="0" max="100" value="0" 
+               class="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand"
+               oninput="onSeekChange(this.value)">
+        <div class="flex justify-between text-[10px] font-mono text-slate-500">
+          <span id="current-time">00:00</span>
+          <span id="total-time">00:00</span>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex items-center justify-between px-4 py-2">
+        <button onclick="toggleShuffle()" id="shuffle-btn" class="p-2 text-slate-500 text-base">🔀</button>
+        <button onclick="playPrevTrack()" class="p-2 text-white text-xl">⏮</button>
+        <button onclick="togglePlayPause()" id="full-play-btn" class="w-16 h-16 rounded-full bg-brand text-white flex items-center justify-center font-black text-2xl shadow-xl shadow-brand/40 active:scale-95 transition-transform">
+          ▶
+        </button>
+        <button onclick="playNextTrack()" class="p-2 text-white text-xl">⏭</button>
+        <button onclick="toggleRepeat()" id="repeat-btn" class="p-2 text-slate-500 text-base">🔁</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────── AUTH MODAL (LOGIN / REGISTER VIA SUPABASE) ──────── -->
+  <div id="auth-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onclick="closeAuthModal()">
+    <div class="glass-card rounded-3xl p-6 w-full max-w-sm border border-brand/30 shadow-2xl" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="auth-modal-title" class="text-base font-extrabold text-white">Đăng nhập tài khoản</h3>
+        <button onclick="closeAuthModal()" class="w-7 h-7 rounded-full bg-white/10 text-slate-400 flex items-center justify-center text-xs">✕</button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-[10px] font-mono text-slate-400">Tên đăng nhập hoặc Email</label>
+          <input id="auth-identifier" type="text" placeholder="Ví dụ: xtromaly123" class="w-full mt-1 px-3 py-2.5 rounded-xl glass-input text-xs text-white focus:outline-none focus:border-brand">
+        </div>
+        <div>
+          <label class="text-[10px] font-mono text-slate-400">Mật khẩu</label>
+          <input id="auth-password" type="password" placeholder="••••••" class="w-full mt-1 px-3 py-2.5 rounded-xl glass-input text-xs text-white focus:outline-none focus:border-brand">
+        </div>
+        <div id="auth-error" class="hidden text-[11px] text-rose-400 font-medium"></div>
+
+        <button onclick="submitAuthForm()" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-brand text-white font-bold text-xs shadow-lg shadow-brand/30 mt-2">
+          Đăng nhập ngay
+        </button>
+      </div>
+
+      <div class="mt-4 pt-3 border-t border-white/5 text-center">
+        <button onclick="toggleAuthMode()" id="auth-toggle-mode-btn" class="text-xs text-slate-400 hover:text-white">
+          Chưa có tài khoản? <span class="text-brand font-bold">Đăng ký ngay</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ──────── SUPABASE CONFIG & SYNC MODAL ──────── -->
+  <div id="sync-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4" onclick="closeSyncModal()">
+    <div class="glass-card rounded-3xl p-6 w-full max-w-sm border border-white/10 shadow-2xl space-y-4" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-extrabold text-white flex items-center gap-2">☁️ Supabase Cloud Sync</h3>
+        <button onclick="closeSyncModal()" class="w-7 h-7 rounded-full bg-white/10 text-slate-400 flex items-center justify-center text-xs">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Kết nối đến cùng Database Supabase với Spytify Desktop để đồng bộ bài hát yêu thích và trạm thoại.
+      </p>
+      <div class="space-y-3">
+        <div>
+          <label class="text-[10px] font-mono text-slate-400">Supabase URL</label>
+          <input id="cfg-supabase-url" type="text" class="w-full mt-1 px-3 py-2 rounded-xl glass-input text-[11px] text-white font-mono focus:outline-none focus:border-brand">
+        </div>
+        <div>
+          <label class="text-[10px] font-mono text-slate-400">Anon Key</label>
+          <input id="cfg-supabase-key" type="password" class="w-full mt-1 px-3 py-2 rounded-xl glass-input text-[11px] text-white font-mono focus:outline-none focus:border-brand">
+        </div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button onclick="saveSupabaseSettings()" class="flex-1 py-2.5 rounded-xl bg-brand text-white font-bold text-xs shadow-md">
+          Lưu &amp; Kết nối
+        </button>
+        <button onclick="resetDefaultSupabase()" class="px-3 py-2.5 rounded-xl glass-card text-slate-400 text-xs">
+          Mặc định
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HIDDEN EMBEDDED AUDIO & YOUTUBE PLAYER CONTAINER -->
+  <div id="yt-player-container" class="hidden">
+    <div id="yt-player"></div>
+  </div>
+  <audio id="native-audio" class="hidden" playsinline></audio>
+
+  <!-- YOUTUBE IFRAME API SCRIPT -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
+  <!-- APP JAVASCRIPT LOGIC -->
+  <script>
+    // ──────── DEFAULT SUPABASE CONFIGURATION ────────
+    const DEFAULT_SUPABASE_URL = 'https://ggfbbmdyughnhrmyrwea.supabase.co';
+    const DEFAULT_SUPABASE_KEY = 'sb_publishable_v6t5_lUSc8snoAtuntaWKQ_TBTh4nUT';
+
+    function getSupabaseConfig() {
+      const url = localStorage.getItem('spytify_supabase_url') || DEFAULT_SUPABASE_URL;
+      const key = localStorage.getItem('spytify_supabase_anon_key') || DEFAULT_SUPABASE_KEY;
+      return { url: url.trim().replace(/\/+$/, '').replace(/\/rest\/v1\/?$/, ''), key: key.trim() };
+    }
+
+    let supabaseClient = null;
+    function initSupabase() {
+      try {
+        const { url, key } = getSupabaseConfig();
+        if (window.supabase && url && key) {
+          supabaseClient = window.supabase.createClient(url, key);
+          document.getElementById('cloud-status-dot').className = 'w-2 h-2 rounded-full bg-emerald-400';
+        }
+      } catch (e) {
+        console.warn('Supabase init error:', e);
+        document.getElementById('cloud-status-dot').className = 'w-2 h-2 rounded-full bg-rose-400';
+      }
+    }
+
+    // ──────── USER AUTHENTICATION STATE ────────
+    let currentUser = null;
+    let isRegisterMode = false;
+
+    function loadSavedUser() {
+      try {
+        const saved = localStorage.getItem('spytify_mobile_user');
+        if (saved) {
+          currentUser = JSON.parse(saved);
+          updateUserUI();
+          syncFavoritesFromCloud();
+        }
+      } catch (e) {}
+    }
+
+    function updateUserUI() {
+      const nameEl = document.getElementById('user-header-name');
+      const avatarEl = document.getElementById('user-header-avatar');
+      const profNameEl = document.getElementById('profile-display-name');
+      const profUserEl = document.getElementById('profile-username');
+      const profAvatarEl = document.getElementById('profile-avatar-large');
+      const profBioEl = document.getElementById('profile-bio');
+      const authBtn = document.getElementById('btn-login-logout');
+
+      if (currentUser) {
+        const dName = currentUser.display_name || currentUser.username || 'Điệp viên';
+        nameEl.textContent = dName;
+        profNameEl.textContent = dName;
+        profUserEl.textContent = '@' + (currentUser.username || 'user');
+        profBioEl.textContent = currentUser.bio || 'Đồng bộ qua Supabase Cloud';
+        authBtn.textContent = 'Đăng xuất';
+        authBtn.className = 'px-3.5 py-1.5 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 text-xs font-bold';
+
+        if (currentUser.avatar) {
+          avatarEl.innerHTML = `<img src="${currentUser.avatar}" class="w-full h-full object-cover">`;
+          profAvatarEl.innerHTML = `<img src="${currentUser.avatar}" class="w-full h-full object-cover">`;
+        }
+      } else {
+        nameEl.textContent = 'Đăng nhập';
+        profNameEl.textContent = 'Khách chưa đăng nhập';
+        profUserEl.textContent = '@guest';
+        profBioEl.textContent = 'Dữ liệu lưu tạm trên máy';
+        avatarEl.innerHTML = '👤';
+        profAvatarEl.innerHTML = '👤';
+        authBtn.textContent = 'Đăng nhập';
+        authBtn.className = 'px-3.5 py-1.5 rounded-xl bg-brand/15 text-brand border border-brand/30 text-xs font-bold';
+      }
+    }
+
+    async function hashPassword(password, salt) {
+      const enc = new TextEncoder();
+      const data = enc.encode(password + ':' + salt);
+      const hashBuf = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // ──────── PLAYBACK ENGINE (YOUTUBE & HTML5) ────────
+    let ytPlayer = null;
+    let ytReady = false;
+    const nativeAudio = document.getElementById('native-audio');
+
+    window.onYouTubeIframeAPIReady = function() {
+      ytPlayer = new YT.Player('yt-player', {
+        height: '1',
+        width: '1',
+        playerVars: { autoplay: 1, controls: 0, playsinline: 1, origin: window.location.origin },
+        events: {
+          onReady: () => { ytReady = true; },
+          onStateChange: onYtStateChange
+        }
+      });
+    };
+
+    function onYtStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) {
+        setPlayingState(true);
+      } else if (event.data === YT.PlayerState.PAUSED) {
+        setPlayingState(false);
+      } else if (event.data === YT.PlayerState.ENDED) {
+        playNextTrack();
+      }
+    }
+
+    // ──────── PLAYLIST & TRACK DATA ────────
+    const DEFAULT_TRACKS = [
+      { id: 'yt_live_synthwave', title: 'Synthwave Radio 24/7 (Lofi Girl)', artist: 'Lofi Girl', path: 'jfKfPfyJRdk', cover: 'assets/spytify-logo.png' },
+      { id: 'MV_3Dpw-BRY', title: 'Nightcall (Electro Original Mix)', artist: 'Kavinsky', path: 'MV_3Dpw-BRY', cover: 'assets/spytify-logo.png' },
+      { id: 'mky64VkgkME', title: 'Memory Reboot (Cyber Drift Phonk)', artist: 'VØJ x Narvent', path: 'mky64VkgkME', cover: 'assets/spytify-logo.png' },
+      { id: 'jfKfPfyJRdk', title: 'Lofi Hip Hop Study Radio', artist: 'Chillhop Beats', path: 'jfKfPfyJRdk', cover: 'assets/spytify-logo.png' }
+    ];
+
+    let currentQueue = [...DEFAULT_TRACKS];
+    let currentIndex = 0;
+    let isPlaying = false;
+    let userFavorites = JSON.parse(localStorage.getItem('spytify_mobile_favs') || '[]');
+
+    function renderHomeTracks() {
+      const container = document.getElementById('home-tracks-list');
+      container.innerHTML = currentQueue.map((t, idx) => `
+        <div onclick="playTrackByIndex(${idx})" class="p-3 rounded-2xl glass-card flex items-center justify-between active:scale-[0.98] transition-transform">
+          <div class="flex items-center gap-3 overflow-hidden">
+            <span class="w-5 text-center text-xs font-mono font-bold ${currentIndex === idx && isPlaying ? 'text-brand animate-pulse' : 'text-slate-500'}">
+              ${currentIndex === idx && isPlaying ? '▶' : (idx + 1)}
+            </span>
+            <div class="overflow-hidden">
+              <div class="font-bold text-xs text-white truncate ${currentIndex === idx ? 'text-brand' : ''}">${t.title}</div>
+              <div class="text-[10px] text-slate-400 truncate">${t.artist}</div>
+            </div>
+          </div>
+          <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-slate-400">YT</span>
+        </div>
+      `).join('');
+    }
+
+    function playTrackByIndex(idx) {
+      if (idx < 0 || idx >= currentQueue.length) return;
+      currentIndex = idx;
+      const track = currentQueue[currentIndex];
+      executePlayTrack(track);
+    }
+
+    function playTrackById(id) {
+      const foundIdx = currentQueue.findIndex(t => t.id === id || t.path === id);
+      if (foundIdx !== -1) {
+        playTrackByIndex(foundIdx);
+      } else {
+        const newTrack = { id, title: id, artist: 'YouTube Stream', path: id, cover: 'assets/spytify-logo.png' };
+        currentQueue.unshift(newTrack);
+        playTrackByIndex(0);
+      }
+    }
+
+    function executePlayTrack(track) {
+      let videoId = track.path || track.id;
+      if (videoId.startsWith('yt_')) videoId = videoId.replace('yt_', '');
+      if (videoId.includes('v=')) videoId = videoId.split('v=')[1].split('&')[0];
+      if (videoId.includes('youtu.be/')) videoId = videoId.split('youtu.be/')[1].split('?')[0];
+
+      if (ytPlayer && ytPlayer.loadVideoById) {
+        ytPlayer.loadVideoById(videoId);
+        ytPlayer.playVideo();
+      }
+
+      // Update UI
+      updatePlayerUI(track);
+      setPlayingState(true);
+
+      // Setup iOS MediaSession
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: track.title,
+          artist: track.artist,
+          album: 'Spytify Mobile',
+          artwork: [{ src: track.cover || 'assets/icon-512.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.setActionHandler('play', togglePlayPause);
+        navigator.mediaSession.setActionHandler('pause', togglePlayPause);
+        navigator.mediaSession.setActionHandler('previoustrack', playPrevTrack);
+        navigator.mediaSession.setActionHandler('nexttrack', playNextTrack);
+      }
+
+      // Record to Supabase History if logged in
+      recordHistory(track);
+    }
+
+    function updatePlayerUI(track) {
+      document.getElementById('mini-player').classList.remove('hidden');
+      document.getElementById('mini-title').textContent = track.title;
+      document.getElementById('mini-artist').textContent = track.artist;
+      document.getElementById('full-title').textContent = track.title;
+      document.getElementById('full-artist').textContent = track.artist;
+
+      const isFav = userFavorites.some(f => f.id === track.id);
+      document.getElementById('mini-fav-btn').textContent = isFav ? '❤️' : '🤍';
+      document.getElementById('full-fav-btn').textContent = isFav ? '❤️' : '🤍';
+      renderHomeTracks();
+    }
+
+    function setPlayingState(playing) {
+      isPlaying = playing;
+      const playIcons = playing ? '⏸' : '▶';
+      document.getElementById('mini-play-btn').textContent = playIcons;
+      document.getElementById('full-play-btn').textContent = playIcons;
+
+      const miniCover = document.getElementById('mini-cover');
+      const fullDisc = document.getElementById('full-disc');
+      if (playing) {
+        miniCover.classList.remove('animate-spin-paused');
+        fullDisc.classList.remove('animate-spin-paused');
+      } else {
+        miniCover.classList.add('animate-spin-paused');
+        fullDisc.classList.add('animate-spin-paused');
+      }
+    }
+
+    function togglePlayPause() {
+      if (!isPlaying) {
+        if (ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
+        setPlayingState(true);
+      } else {
+        if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
+        setPlayingState(false);
+      }
+    }
+
+    function playNextTrack() {
+      if (currentQueue.length === 0) return;
+      currentIndex = (currentIndex + 1) % currentQueue.length;
+      executePlayTrack(currentQueue[currentIndex]);
+    }
+
+    function playPrevTrack() {
+      if (currentQueue.length === 0) return;
+      currentIndex = (currentIndex - 1 + currentQueue.length) % currentQueue.length;
+      executePlayTrack(currentQueue[currentIndex]);
+    }
+
+    // Progress Bar timer
+    setInterval(() => {
+      if (ytPlayer && ytPlayer.getCurrentTime && isPlaying) {
+        const cur = ytPlayer.getCurrentTime();
+        const dur = ytPlayer.getDuration() || 1;
+        document.getElementById('seek-bar').value = (cur / dur) * 100;
+        document.getElementById('current-time').textContent = formatSeconds(cur);
+        document.getElementById('total-time').textContent = formatSeconds(dur);
+      }
+    }, 1000);
+
+    function onSeekChange(val) {
+      if (ytPlayer && ytPlayer.getDuration) {
+        const dur = ytPlayer.getDuration();
+        ytPlayer.seekTo((val / 100) * dur, true);
+      }
+    }
+
+    function formatSeconds(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    // ──────── FAVORITES & LIBRARY ────────
+    function toggleFavoriteCurrent() {
+      const track = currentQueue[currentIndex];
+      if (!track) return;
+      const existIdx = userFavorites.findIndex(f => f.id === track.id);
+      if (existIdx !== -1) {
+        userFavorites.splice(existIdx, 1);
+      } else {
+        userFavorites.unshift(track);
+      }
+      localStorage.setItem('spytify_mobile_favs', JSON.stringify(userFavorites));
+      updatePlayerUI(track);
+      renderFavoritesList();
+      syncFavoritesToCloud(track);
+    }
+
+    function renderFavoritesList() {
+      document.getElementById('favs-count-badge').textContent = userFavorites.length;
+      const container = document.getElementById('library-favs-list');
+      if (userFavorites.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-500 py-6 text-center">Chưa có bài hát yêu thích nào. Bấm nút ❤️ khi nghe nhạc để lưu.</div>';
+        return;
+      }
+      container.innerHTML = userFavorites.map((t, idx) => `
+        <div onclick="playFavorite(${idx})" class="p-3 rounded-2xl glass-card flex items-center justify-between active:scale-[0.98] transition-transform">
+          <div class="flex items-center gap-3 overflow-hidden">
+            <span class="text-sm">❤️</span>
+            <div class="overflow-hidden">
+              <div class="font-bold text-xs text-white truncate">${t.title}</div>
+              <div class="text-[10px] text-slate-400 truncate">${t.artist}</div>
+            </div>
+          </div>
+          <span class="text-[10px] text-brand font-bold">Phát</span>
+        </div>
+      `).join('');
+    }
+
+    function playFavorite(idx) {
+      currentQueue = [...userFavorites];
+      playTrackByIndex(idx);
+    }
+
+    async function syncFavoritesFromCloud() {
+      if (!supabaseClient || !currentUser) return;
+      try {
+        const { data, error } = await supabaseClient
+          .from('spytify_favorites')
+          .select('track_json')
+          .eq('user_id', currentUser.id);
+        if (data && data.length > 0) {
+          const cloudFavs = data.map(d => d.track_json).filter(Boolean);
+          userFavorites = cloudFavs;
+          localStorage.setItem('spytify_mobile_favs', JSON.stringify(userFavorites));
+          renderFavoritesList();
+        }
+      } catch (e) {}
+    }
+
+    async function syncFavoritesToCloud(track) {
+      if (!supabaseClient || !currentUser) return;
+      try {
+        await supabaseClient.from('spytify_favorites').upsert({
+          id: `fav_${currentUser.id}_${track.id}`,
+          user_id: currentUser.id,
+          track_id: track.id,
+          track_json: track,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+      } catch (e) {}
+    }
+
+    async function recordHistory(track) {
+      if (!supabaseClient || !currentUser) return;
+      try {
+        await supabaseClient.from('spytify_history').insert({
+          id: `hist_${currentUser.id}_${Date.now()}`,
+          user_id: currentUser.id,
+          track_id: track.id,
+          track_title: track.title,
+          artist: track.artist,
+          source: 'youtube',
+          duration_secs: 180,
+          track_json: track,
+          listened_at: new Date().toISOString()
+        });
+      } catch (e) {}
+    }
+
+    // ──────── TABS NAVIGATION ────────
+    function switchTab(tab) {
+      const views = ['home', 'search', 'jam', 'library'];
+      views.forEach(v => {
+        document.getElementById(`view-${v}`).classList.add('hidden');
+        document.getElementById(`tab-${v}`).className = 'flex flex-col items-center gap-0.5 hover:text-slate-200';
+      });
+      document.getElementById(`view-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).className = 'flex flex-col items-center gap-0.5 text-brand';
+      if (tab === 'library') renderFavoritesList();
+    }
+
+    // ──────── FULL SCREEN PLAYER ────────
+    function openFullPlayer() {
+      document.getElementById('full-player').classList.remove('hidden');
+    }
+    function closeFullPlayer() {
+      document.getElementById('full-player').classList.add('hidden');
+    }
+
+    // ──────── SEARCH EXECUTION ────────
+    function executeSearch() {
+      const query = document.getElementById('search-input').value.trim();
+      if (!query) return;
+
+      const container = document.getElementById('search-results');
+      container.innerHTML = '<div class="text-center py-8 text-xs text-brand animate-pulse">Đang tìm bài hát...</div>';
+
+      // Check if direct YouTube URL
+      if (query.includes('youtube.com/') || query.includes('youtu.be/')) {
+        const mockTrack = { id: query, title: 'YouTube Stream', artist: query, path: query, cover: 'assets/spytify-logo.png' };
+        currentQueue.unshift(mockTrack);
+        playTrackByIndex(0);
+        container.innerHTML = `
+          <div onclick="playTrackById('${query}')" class="p-3.5 rounded-2xl glass-card flex items-center justify-between">
+            <div class="overflow-hidden">
+              <div class="font-bold text-xs text-white">▶ Phát trực tiếp URL YouTube</div>
+              <div class="text-[10px] text-slate-400 truncate">${query}</div>
+            </div>
+            <span class="text-brand font-bold text-xs">Phát ngay</span>
+          </div>`;
+        return;
+      }
+
+      // Generate instant curated results matching query
+      setTimeout(() => {
+        const results = [
+          { id: 'search_1', title: query + ' (Official Audio / Video)', artist: 'Nghệ sĩ Đề xuất', path: query },
+          { id: 'search_2', title: query + ' - Remix Bass Boosted', artist: 'Spytify DJ Remix', path: query + ' remix' },
+          { id: 'search_3', title: query + ' - Lofi Chill Version', artist: 'Lofi Records', path: query + ' lofi' }
+        ];
+
+        container.innerHTML = results.map(r => `
+          <div onclick="playTrackById('${r.path}')" class="p-3.5 rounded-2xl glass-card flex items-center justify-between active:scale-[0.98] transition-transform">
+            <div class="flex items-center gap-3 overflow-hidden">
+              <span class="text-base text-brand">▶</span>
+              <div class="overflow-hidden">
+                <div class="font-bold text-xs text-white truncate">${r.title}</div>
+                <div class="text-[10px] text-slate-400 truncate">${r.artist}</div>
+              </div>
+            </div>
+            <span class="text-[10px] font-mono px-2 py-1 rounded-xl bg-brand/15 text-brand font-bold">Phát</span>
+          </div>
+        `).join('');
+      }, 300);
+    }
+
+    function quickSearchTag(tag) {
+      document.getElementById('search-input').value = tag;
+      executeSearch();
+    }
+
+    // ──────── SPY JAM REALTIME CHAT ────────
+    function sendChatMessage() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const user = currentUser ? (currentUser.display_name || currentUser.username) : 'Điệp viên Khách';
+      const box = document.getElementById('chat-messages');
+
+      box.innerHTML += `
+        <div class="flex items-start gap-2.5">
+          <div class="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[10px] flex-shrink-0">
+            ${user.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5"><span class="font-bold text-emerald-300">${user}</span><span class="text-[9px] text-slate-500">vừa xong</span></div>
+            <p class="text-slate-200 mt-0.5">${text}</p>
+          </div>
+        </div>
+      `;
+      input.value = '';
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // ──────── AUTH MODAL & LOGIC ────────
+    function openAuthModal() {
+      if (currentUser) {
+        if (confirm('Bạn có chắc chắn muốn đăng xuất tài khoản này?')) {
+          currentUser = null;
+          localStorage.removeItem('spytify_mobile_user');
+          updateUserUI();
+        }
+        return;
+      }
+      document.getElementById('auth-modal').classList.remove('hidden');
+    }
+    function closeAuthModal() {
+      document.getElementById('auth-modal').classList.add('hidden');
+    }
+    function toggleAuthMode() {
+      isRegisterMode = !isRegisterMode;
+      document.getElementById('auth-modal-title').textContent = isRegisterMode ? 'Tạo tài khoản Spytify' : 'Đăng nhập tài khoản';
+      document.getElementById('auth-submit-btn').textContent = isRegisterMode ? 'Đăng ký ngay' : 'Đăng nhập ngay';
+      document.getElementById('auth-toggle-mode-btn').innerHTML = isRegisterMode ? 'Đã có tài khoản? <span class="text-brand font-bold">Đăng nhập</span>' : 'Chưa có tài khoản? <span class="text-brand font-bold">Đăng ký ngay</span>';
+    }
+
+    async function submitAuthForm() {
+      const iden = document.getElementById('auth-identifier').value.trim();
+      const pwd = document.getElementById('auth-password').value.trim();
+      const errEl = document.getElementById('auth-error');
+      errEl.classList.add('hidden');
+
+      if (!iden || !pwd) {
+        errEl.textContent = 'Vui lòng nhập đầy đủ thông tin';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      if (!supabaseClient) {
+        errEl.textContent = 'Chưa kết nối được Supabase Cloud';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const cleanUsername = iden.toLowerCase().replace(/^@+/, '');
+
+      try {
+        if (!isRegisterMode) {
+          // LOGIN
+          const { data: profile, error } = await supabaseClient
+            .from('spytify_profiles')
+            .select('*')
+            .or(`username.ilike.${cleanUsername},email.ilike.${cleanUsername}`)
+            .maybeSingle();
+
+          if (error || !profile) {
+            errEl.textContent = 'Tài khoản không tồn tại trên Cloud';
+            errEl.classList.remove('hidden');
+            return;
+          }
+
+          if (profile.password_hash && profile.salt) {
+            const computedHash = await hashPassword(pwd, profile.salt);
+            if (computedHash !== profile.password_hash) {
+              errEl.textContent = 'Mật khẩu không chính xác';
+              errEl.classList.remove('hidden');
+              return;
+            }
+          }
+
+          currentUser = {
+            id: profile.id,
+            username: profile.username || cleanUsername,
+            display_name: profile.display_name || cleanUsername,
+            email: profile.email || null,
+            avatar: profile.avatar || null,
+            bio: profile.bio || null
+          };
+          localStorage.setItem('spytify_mobile_user', JSON.stringify(currentUser));
+          updateUserUI();
+          syncFavoritesFromCloud();
+          closeAuthModal();
+        } else {
+          // REGISTER
+          const userId = 'usr_' + Math.random().toString(36).substring(2, 12);
+          const salt = Math.random().toString(36).substring(2, 15);
+          const hash = await hashPassword(pwd, salt);
+
+          const { error } = await supabaseClient.from('spytify_profiles').upsert({
+            id: userId,
+            username: cleanUsername,
+            display_name: cleanUsername,
+            password_hash: hash,
+            salt: salt,
+            updated_at: new Date().toISOString()
+          });
+
+          if (error) {
+            errEl.textContent = 'Đăng ký thất bại: ' + error.message;
+            errEl.classList.remove('hidden');
+            return;
+          }
+
+          currentUser = { id: userId, username: cleanUsername, display_name: cleanUsername };
+          localStorage.setItem('spytify_mobile_user', JSON.stringify(currentUser));
+          updateUserUI();
+          closeAuthModal();
+        }
+      } catch (err) {
+        errEl.textContent = 'Lỗi kết nối: ' + err.message;
+        errEl.classList.remove('hidden');
+      }
+    }
+
+    // ──────── SUPABASE SYNC MODAL ────────
+    function openSyncModal() {
+      const cfg = getSupabaseConfig();
+      document.getElementById('cfg-supabase-url').value = cfg.url;
+      document.getElementById('cfg-supabase-key').value = cfg.key;
+      document.getElementById('sync-modal').classList.remove('hidden');
+    }
+    function closeSyncModal() {
+      document.getElementById('sync-modal').classList.add('hidden');
+    }
+    function saveSupabaseSettings() {
+      const url = document.getElementById('cfg-supabase-url').value.trim();
+      const key = document.getElementById('cfg-supabase-key').value.trim();
+      if (url && key) {
+        localStorage.setItem('spytify_supabase_url', url);
+        localStorage.setItem('spytify_supabase_anon_key', key);
+        initSupabase();
+        closeSyncModal();
+        alert('Đã cập nhật cấu hình Supabase Cloud thành công!');
+      }
+    }
+    function resetDefaultSupabase() {
+      localStorage.removeItem('spytify_supabase_url');
+      localStorage.removeItem('spytify_supabase_anon_key');
+      initSupabase();
+      openSyncModal();
+    }
+    function clearCacheData() {
+      if (confirm('Xóa dữ liệu bộ nhớ tạm trên điện thoại?')) {
+        localStorage.removeItem('spytify_mobile_favs');
+        userFavorites = [];
+        renderFavoritesList();
+        alert('Đã xóa bộ nhớ tạm thành công!');
+      }
+    }
+
+    // ──────── iOS INSTALL PROMPT DISMISS ────────
+    function checkIosPrompt() {
+      const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+      if (isIos && !isStandalone && !localStorage.getItem('ios_prompt_dismissed')) {
+        document.getElementById('ios-install-prompt').classList.remove('hidden');
+      }
+    }
+    function dismissIosPrompt() {
+      document.getElementById('ios-install-prompt').classList.add('hidden');
+      localStorage.setItem('ios_prompt_dismissed', '1');
+    }
+
+    // ──────── INITIALIZATION ────────
+    document.addEventListener('DOMContentLoaded', () => {
+      initSupabase();
+      loadSavedUser();
+      renderHomeTracks();
+      renderFavoritesList();
+      checkIosPrompt();
+
+      // Service Worker registration for PWA
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      }
+    });
+  </script>
+</body>
+</html>

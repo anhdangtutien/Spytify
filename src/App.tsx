@@ -3731,6 +3731,36 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         return hasSaved ? updated : [savedTrack, ...updated];
       });
 
+      // Also mark the track as downloaded inside any user albums containing it
+      setAlbums(prev => {
+        let changed = false;
+        const normTitle = track.title.trim().toLowerCase();
+        const normArtist = track.artist.trim().toLowerCase();
+        const updated = prev.map(album => {
+          let albumChanged = false;
+          const nextTracks = (album.tracks || []).map(t => {
+            if (
+              t.id === track.id ||
+              t.id === savedTrack.id ||
+              (t.path_or_url && (t.path_or_url === track.path_or_url || t.path_or_url === savedTrack.path_or_url)) ||
+              (t.title.trim().toLowerCase() === normTitle && t.artist.trim().toLowerCase() === normArtist)
+            ) {
+              if (!t.is_downloaded) {
+                albumChanged = true;
+                changed = true;
+                return { ...t, is_downloaded: true };
+              }
+            }
+            return t;
+          });
+          return albumChanged ? { ...album, tracks: nextTracks } : album;
+        });
+        if (changed) {
+          persistAlbumsForUser(currentUserRef.current?.id, updated);
+        }
+        return changed ? updated : prev;
+      });
+
       // If the online track was in favorites, also add the savedTrack ID to favorites
       if (favorites.has(track.id)) {
         setFavorites(prev => new Set(prev).add(savedTrack.id));
@@ -3766,8 +3796,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleDownloadAlbum = async (album: UserAlbum) => {
     const cleanTracks = deduplicateTracks(album.tracks || []);
-    const tracksToDownload = cleanTracks.filter(t => t.source !== 'local' && !t.is_downloaded);
+    const localPool = tracks.filter(t => t.source === 'local' || t.is_downloaded);
+    const isAlreadyLocal = (t: Track) => {
+      if (t.source === 'local' || t.is_downloaded) return true;
+      const nTitle = t.title.trim().toLowerCase();
+      const nArtist = t.artist.trim().toLowerCase();
+      return localPool.some(
+        lt =>
+          lt.id === t.id ||
+          (lt.path_or_url && lt.path_or_url === t.path_or_url) ||
+          (lt.title.trim().toLowerCase() === nTitle && lt.artist.trim().toLowerCase() === nArtist)
+      );
+    };
+    const tracksToDownload = cleanTracks.filter(t => !isAlreadyLocal(t));
     if (tracksToDownload.length === 0) {
+      // Sync is_downloaded flag on album tracks if needed
+      setAlbums(prev => {
+        const updated = prev.map(a =>
+          a.id === album.id
+            ? { ...a, tracks: (a.tracks || []).map(t => ({ ...t, is_downloaded: true })) }
+            : a
+        );
+        persistAlbumsForUser(currentUserRef.current?.id, updated);
+        return updated;
+      });
       showNotification(language === 'vi' ? 'Toàn bộ bài hát trong album này đã được tải về máy!' : 'All songs in this album are already downloaded!');
       return;
     }
@@ -4768,7 +4820,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onTogglePlay={handleTogglePlay}
                 accentColor={activeAccentColor}
                 language={language}
-                availableTracks={tracks.filter(t => t.source === 'local')}
+                availableTracks={tracks.filter(t => t.source === 'local' || t.is_downloaded)}
                 onDownloadAlbum={handleDownloadAlbum}
                 onCancelDownloadAlbum={handleCancelDownloadAlbum}
                 downloadingAlbumId={downloadingAlbumId}

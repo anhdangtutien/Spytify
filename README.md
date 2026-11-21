@@ -1,11 +1,11 @@
-# 🕵️‍♂️ Spytify — Spy Music (v1.0.9 alpha)
+# 🕵️‍♂️ Spytify — Spy Music (v1.1.4)
 
 <div align="center">
 
-![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.0.9_alpha-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
+![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.1.4-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
 ![Tauri v2](https://img.shields.io/badge/TAURI-v2-FFC131?style=for-the-badge&logo=tauri&logoColor=black)
 ![React 19](https://img.shields.io/badge/REACT_19-CYBER_HUD-61DAFB?style=for-the-badge&logo=react&logoColor=black)
-![Rust Engine](https://img.shields.io/badge/RUST_ENGINE-NATIVE_SORT_FILTER-DEA584?style=for-the-badge&logo=rust&logoColor=black)
+![Rust Engine](https://img.shields.io/badge/RUST_ENGINE-NATIVE_AUDIO_&_OTA-DEA584?style=for-the-badge&logo=rust&logoColor=black)
 ![Multiplatform](https://img.shields.io/badge/PLATFORMS-WINDOWS%20%7C%20MACOS-00E5FF?style=for-the-badge)
 
 **Ultra-lightweight Hi-Fi Music Player & Real-time Community Voice Hub.**
@@ -16,79 +16,46 @@
 
 ---
 
-## 🇬🇧 English — What's New in v1.0.9 alpha
+## 🇻🇳 Tiếng Việt — Điểm mới trong v1.1.4 (Bản phát hành & Vá lỗi OTA)
 
-Spytify 1.0.9 fixes default Supabase URL sanitization and login handling:
-- **☁️ Supabase URL Sanitization**: Cleans trailing `/rest/v1/` and slashes from default connection URLs automatically.
-- **👤 Username Prefix Normalization**: Strips `@` prefix automatically during login.
-- **🎙️ Realtime Voice Call Signaling**: Restores WebRTC signaling over Supabase Realtime Broadcast.
+Spytify **v1.1.4** nâng cấp toàn diện hệ thống cập nhật trực tuyến (OTA Hotfix), quản lý tải xuống Album và giao diện khám phá nghệ sĩ trên Trang chủ:
 
----
-
-## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.9 alpha
-
-Spytify 1.0.9 sửa lỗi làm sạch URL Supabase mặc định và chuẩn hóa đăng nhập:
-- **☁️ Tự động làm sạch URL Supabase**: Cắt bỏ `/rest/v1/` và dấu gạch chéo cuối tự động, tránh lỗi 404 khi kết nối.
-- **👤 Chuẩn hóa Username**: Tự động loại bỏ tiền tố `@` khi đăng nhập (@username hoặc username đều hoạt động).
-- **🎙️ Tín hiệu phòng thoại Realtime**: Khôi phục signaling WebRTC cho Voice Call và Screen Share qua Supabase Realtime Broadcast.
-
----
-
-## 🇬🇧 English — What's New in v1.0.8 alpha
-
-Spytify 1.0.8 fixes cloud database credentials injection in CI builds and optimizes community servers:
-- **☁️ Automated Supabase CI Injection**: Automatically injects credentials from GitHub Secrets into client build bundle.
-- **🛡️ Dedicated Community Tables**: Direct message, community server, and invite storage optimizations.
+- **⚡ Cập nhật tự động & Vá lỗi nóng (Realtime OTA & Hotfix)**:
+  - Hỗ trợ nhận bản cập nhật mới và **bản vá lỗi nóng (Hotfix)** ngay trên cùng phiên bản hiện tại theo thời gian thực từ **Spytify Admin Dashboard** mà không cần tải thủ công qua trình duyệt.
+  - Đồng bộ 3 lớp (**Supabase Realtime Broadcast** + **Postgres Changes** + **Background Poll**) giúp nhận thông báo hệ thống và bản vá tức thì đối với mọi phiên bản từ `v1.0.0` trở lên.
+- **💿 Quản lý Album & Trạng thái tải xuống thông minh**:
+  - **Kí hiệu Đã tải (`✓ Đã tải`)**: Tự động hiển thị huy hiệu `✓ Đã tải` và `ĐÃ TẢI • LOSSLESS` trên từng bài hát đã tải trong Album, trên Banner chi tiết Album (`✓ ĐÃ TẢI XUỐNG X/X`) và trên thẻ Album ngoài danh sách.
+  - **Dừng tải Album tức thì**: Bổ sung nút **"Dừng tải album"** cho phép hủy hàng đợi tải bất kỳ lúc nào khi album có nhiều bài hát.
+  - **Pop-up xác nhận xóa Album**: Hộp thoại xác nhận xóa Album đồng bộ giao diện Spytify (kèm thông tin ảnh bìa, số lượng bài hát và giữ nguyên các file nhạc đã tải về máy).
+- **🎤 Trang chủ & Chân dung Nghệ sĩ chính chủ**:
+  - **Màn hình lớn giới thiệu Nghệ sĩ (Hero Showcase Billboard)**: Tự động chuyển cảnh cross-fade mượt mà giữa các nghệ sĩ hay nghe.
+  - **Auto-Slideshow Nghệ sĩ đề xuất & Bảng xếp hạng Top 10**: Tự động trượt ngang danh sách nghệ sĩ (tạm dừng khi di chuột) và thiết kế lại bảng xếp hạng Trending Top 10 hiện đại.
+  - **Chân dung Nghệ sĩ độ phân giải cao**: Đồng bộ ảnh chân dung chính chủ từ CDN âm nhạc với thuật toán ưu tiên lượng người hâm mộ (`max(nb_fan)`), loại bỏ hoàn toàn ảnh stock và viền đen.
 
 ---
 
-## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.8 alpha
+## 🇬🇧 English — What's New in v1.1.4 (OTA Hotfix & Album Enhancements)
 
-Spytify 1.0.8 sửa cơ chế inject thông tin Supabase từ CI khi build và tối ưu hóa hệ thống máy chủ cộng đồng:
-- **☁️ Tự động nạp cấu hình Supabase**: Tự động inject credentials từ GitHub Secrets vào bộ cài ứng dụng.
-- **🛡️ Tối ưu hóa bảng cộng đồng**: Cải thiện đồng bộ máy chủ Spy Jam, tin nhắn và lời mời tham gia server.
+Spytify **v1.1.4** upgrades the real-time OTA Hotfix system, Album download tracking, and Home artist discovery:
 
----
-
-## 🇬🇧 English — What's New in v1.0.7 alpha
-
-Spytify 1.0.7 improves cross-device profile synchronization, alongside the personalized Spy Jam features introduced in 1.0.6:
-
-- **☁️ Cloud profile synchronization**:
-  - Avatar, bio, and thought/status updates are synchronized across signed-in devices.
-- **💬 Server chat and unread navigation**:
-  - Server icons show unread message counts; chat displays an unread summary, a new-message divider, and a one-click jump to the present.
-  - Mentions support `@user` and `@everyone`, with message highlighting, in-app notifications, and improved keyboard navigation.
-  - Servers remember each user's last text channel and reopen there instead of selecting a voice room.
-- **🎙️ Voice and screen-sharing controls**:
-  - Choose 30, 60, or 90 FPS for screen sharing from Voice & Video settings or call settings.
-  - Camera, screen-sharing, and call controls are available in the room, with a collapsible floating control dock.
-- **👤 Account-specific data and localization**:
-  - Albums are stored and synced per account.
-  - Settings and authentication screens are localized across the supported languages.
-- **⚡ Native Rust track tools**:
-  - Rust-powered sorting and filtering are integrated into the main track tables.
+- **⚡ Real-time OTA Updates & Same-Version Hotfixes**:
+  - Receive new releases and **same-version Hotfix patches** in real time from **Spytify Admin Dashboard** with 1-click auto-install—no manual browser downloads required.
+  - Triple-layer sync (**Supabase Realtime Broadcast** + **Postgres Changes** + **Background Polling**) delivers instant system announcements and patches across clients (`v1.0.0+`).
+- **💿 Smart Album Download Indicators & Controls**:
+  - **Downloaded Badges (`✓ Downloaded`)**: Automatically displays downloaded badges on individual album tracks, the album detail banner, and album grid cards.
+  - **Cancel Album Download**: Stop batch album downloads at any time with a single click.
+  - **Delete Album Confirmation Pop-up**: Custom confirmation modal displaying album artwork and track counts while preserving local audio files on disk.
+- **🎤 Hero Artist Showcase & Verified Artist Portraits**:
+  - **Hero Billboard & Auto-Slideshow**: Cross-fading hero banner and auto-scrolling artist recommendations on the Home screen, plus a redesigned Trending Top 10 chart.
+  - **Verified High-Res Artist Portraits**: Fan-count prioritized portrait lookup (`max(nb_fan)`) eliminates stock placeholder images and letterboxed video thumbnails.
 
 ---
 
-## 🇻🇳 Tiếng Việt — Điểm mới trong v1.0.7 alpha
+## 🇻🇳 Tiếng Việt — Điểm mới trong v1.1.2 – v1.1.3
 
-Spytify 1.0.7 sửa đồng bộ hồ sơ giữa các thiết bị, bên cạnh các tính năng Spy Jam cá nhân hóa được giới thiệu ở bản 1.0.6:
-
-- **☁️ Đồng bộ hồ sơ đám mây**:
-  - Avatar, tiểu sử và suy nghĩ/trạng thái được đồng bộ giữa các thiết bị đã đăng nhập.
-- **💬 Chat server và điều hướng tin chưa đọc**:
-  - Icon server hiển thị số tin chưa đọc; khung chat có thanh tóm tắt, vạch phân cách tin mới và nút nhảy tới hiện tại.
-  - Hỗ trợ nhắc `@user`, `@everyone`, highlight tin nhắn, thông báo trong ứng dụng và cải thiện điều hướng gợi ý bằng bàn phím.
-  - Ghi nhớ kênh chat văn bản gần nhất của từng user trong mỗi server, không tự mở phòng thoại.
-- **🎙️ Điều khiển thoại và chia sẻ màn hình**:
-  - Chọn 30, 60 hoặc 90 FPS trong mục Giọng nói & video hoặc cài đặt cuộc gọi.
-  - Bật camera, chia sẻ màn hình và điều khiển cuộc gọi ngay trong phòng; thanh điều khiển có thể thu gọn.
-- **👤 Dữ liệu riêng theo tài khoản và đa ngôn ngữ**:
-  - Album được lưu và đồng bộ riêng theo từng tài khoản.
-  - Mục cài đặt và màn hình đăng nhập được bản địa hóa theo các ngôn ngữ được hỗ trợ.
-- **⚡ Công cụ nhạc Rust Native**:
-  - Tích hợp chức năng sắp xếp và lọc bằng Rust trực tiếp vào các bảng danh sách bài hát.
+- **🎧 Âm thanh vòm 3D Studio Spatializer**: Xử lý âm thanh Binaural Haas Crossfeed kết hợp Diffuse Room Acoustics và EQ tùy chỉnh trực tiếp.
+- **🖱️ Kéo thả sắp xếp bài hát 3 vùng (Pointer Events)**: Hỗ trợ chèn liền trước, chèn liền sau hoặc đổi chỗ trực tiếp (`Swap`) siêu mượt trong danh sách bài hát và Album.
+- **☁️ Tối ưu hóa băng thông Supabase & Đồng bộ Avatar**: Giảm dung lượng gói tin Realtime và đồng bộ tức thì ảnh đại diện giữa các tài khoản.
 
 ---
 
@@ -96,14 +63,14 @@ Spytify 1.0.7 sửa đồng bộ hồ sơ giữa các thiết bị, bên cạnh 
 
 | Hệ điều hành | Định dạng | Tải bản mới nhất |
 | :--- | :--- | :--- |
-| **Windows 10 / 11** | `.exe` (NSIS Setup) | [📥 GitHub Releases](https://github.com/anhdangtutien/Spytify/releases) |
-| **macOS (Apple Silicon & Intel)** | `.dmg` (Universal) | [🍏 GitHub Releases](https://github.com/anhdangtutien/Spytify/releases) |
+| **Windows 10 / 11** | `.exe` (NSIS Setup) / `.msi` | [📥 GitHub Releases (v1.1.4)](https://github.com/anhdangtutien/Spytify/releases/latest) |
+| **macOS (Apple Silicon & Intel)** | `.dmg` (Universal) | [🍏 GitHub Releases (v1.1.4)](https://github.com/anhdangtutien/Spytify/releases/latest) |
 
 ## 🛠️ Build từ mã nguồn (Development)
 
 ```bash
 npm install
-npm run tauri dev      # Chạy dev
+npm run tauri dev      # Chạy môi trường phát triển
 npm run tauri build    # Đóng gói bản cài đặt tại src-tauri/target/release/bundle/
 ```
 

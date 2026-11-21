@@ -1,0 +1,29 @@
+{
+  "name": "Spytify — Hi-Fi Music & Spy Jam",
+  "short_name": "Spytify",
+  "description": "Trình phát nhạc Hi-Fi siêu nhẹ và Trạm sóng cộng đồng Spy Jam",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07090E",
+  "theme_color": "#07090E",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

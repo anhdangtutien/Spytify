@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, Disc, Play, Trash2, Music, ArrowLeft, Clock3, FolderPlus, 
-  Sparkles, Layers, Check, X, Pencil, Image as ImageIcon, GripVertical, Download, Loader2, Square
+  Sparkles, Layers, Check, CheckCircle2, AlertTriangle, X, Pencil, Image as ImageIcon, GripVertical, Download, Loader2, Square
 } from 'lucide-react';
 import { Track, UserAlbum } from '../types';
 import { TrackTable } from './TrackTable';
@@ -69,10 +69,51 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   const [editDesc, setEditDesc] = useState('');
   const [editCoverArt, setEditCoverArt] = useState('');
 
+  // Delete Album Confirmation Pop-up State
+  const [albumToDelete, setAlbumToDelete] = useState<UserAlbum | null>(null);
+
+  // Check if a track is downloaded locally (either flagged directly or matched in availableTracks pool)
+  const downloadedLookup = useMemo(() => {
+    const ids = new Set<string>();
+    const paths = new Set<string>();
+    const titleArtists = new Set<string>();
+    const titles = new Set<string>();
+    for (const t of availableTracks || []) {
+      if (t.id) ids.add(t.id);
+      if (t.path_or_url) paths.add(t.path_or_url);
+      const nt = (t.title || '').trim().toLowerCase();
+      const na = (t.artist || '').trim().toLowerCase();
+      if (nt) {
+        titles.add(nt);
+        titleArtists.add(`${nt}|||${na}`);
+      }
+    }
+    return { ids, paths, titleArtists, titles };
+  }, [availableTracks]);
+
+  const isTrackDownloaded = (track: Track): boolean => {
+    if (!track) return false;
+    if (track.source === 'local' || track.is_downloaded) return true;
+    if (track.id && downloadedLookup.ids.has(track.id)) return true;
+    if (track.path_or_url && downloadedLookup.paths.has(track.path_or_url)) return true;
+    const nt = (track.title || '').trim().toLowerCase();
+    const na = (track.artist || '').trim().toLowerCase();
+    if (nt && downloadedLookup.titleArtists.has(`${nt}|||${na}`)) return true;
+    if (nt && downloadedLookup.titles.has(nt)) return true;
+    return false;
+  };
+
   const selectedAlbum = albums.find(a => a.id === selectedAlbumId);
   const cleanAlbumTracks = useMemo(() => {
     return selectedAlbum ? deduplicateTracks(selectedAlbum.tracks || []) : [];
   }, [selectedAlbum]);
+
+  const selectedAlbumDownloadedCount = useMemo(() => {
+    return cleanAlbumTracks.filter(t => isTrackDownloaded(t)).length;
+  }, [cleanAlbumTracks, downloadedLookup]);
+
+  const isSelectedAlbumFullyDownloaded =
+    cleanAlbumTracks.length > 0 && selectedAlbumDownloadedCount === cleanAlbumTracks.length;
 
   const candidateTracks = useMemo(() => {
     if (!selectedAlbum || !availableTracks) return [];
@@ -631,6 +672,115 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
         </div>
       )}
 
+      {/* ─── POP-UP XÁC NHẬN XÓA ALBUM ──────────────────────────────────── */}
+      {albumToDelete && (
+        <div
+          className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 select-none animate-in fade-in duration-200"
+          onClick={() => setAlbumToDelete(null)}
+        >
+          <div
+            className="w-full max-w-md bg-[#0c0c14] border border-red-500/30 rounded-2xl p-6 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              boxShadow: '0 10px 40px rgba(239, 68, 68, 0.2), 0 0 1px rgba(239, 68, 68, 0.4)',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setAlbumToDelete(null)}
+              className="absolute top-4 right-4 text-[#777] hover:text-white p-1.5 rounded-lg hover:bg-white/5 cursor-pointer transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0 shadow-inner">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  {language === 'vi' ? 'Xác nhận xóa Album' : 'Delete Album Confirmation'}
+                </h3>
+                <p className="text-[11px] text-[#888] font-mono">
+                  {language === 'vi' ? 'Hành động này không thể hoàn tác' : 'This action cannot be undone'}
+                </p>
+              </div>
+            </div>
+
+            {/* Album Summary Card inside Pop-up */}
+            <div className="p-3 rounded-xl bg-[#12121c] border border-[#222230] flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-lg overflow-hidden bg-[#181824] border border-white/10 shrink-0 flex items-center justify-center">
+                {albumToDelete.cover_art || (albumToDelete.tracks.length > 0 && albumToDelete.tracks[0].cover_art) ? (
+                  <img
+                    src={optimizeThumbnailUrl(
+                      albumToDelete.cover_art || albumToDelete.tracks[0].cover_art || '',
+                      albumToDelete.id
+                    )}
+                    alt={albumToDelete.title}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => handleImageError(e, albumToDelete.id)}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Disc className="w-6 h-6" style={{ color: accentColor }} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-white truncate">{albumToDelete.title}</p>
+                <p className="text-[11px] text-[#888] font-mono">
+                  {getTranslation(language, 'album.trackCount', {
+                    count: deduplicateTracks(albumToDelete.tracks || []).length,
+                  })}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-6">
+              {language === 'vi' ? (
+                <>
+                  Bạn có chắc chắn muốn xóa album <strong className="text-white">"{albumToDelete.title}"</strong> khỏi thư viện không?
+                  <span className="block text-[11px] text-[#888] mt-1">
+                    Lưu ý: Các bài hát đã được tải xuống máy của bạn sẽ vẫn được giữ nguyên.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete the album <strong className="text-white">"{albumToDelete.title}"</strong>?
+                  <span className="block text-[11px] text-[#888] mt-1">
+                    Note: Songs already downloaded to your device will remain intact.
+                  </span>
+                </>
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setAlbumToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+              >
+                {language === 'vi' ? 'Hủy bỏ' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const idToDelete = albumToDelete.id;
+                  setAlbumToDelete(null);
+                  onDeleteAlbum(idToDelete);
+                  if (selectedAlbumId === idToDelete) {
+                    setSelectedAlbumId(null);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/25 transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{language === 'vi' ? 'Xóa Album' : 'Delete Album'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── CHI TIẾT ALBUM ĐANG CHỌN ────────────────────────────────────── */}
       {selectedAlbum ? (
         <div className="space-y-6">
@@ -667,16 +817,29 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
             </div>
 
             <div className="flex-1 space-y-2 text-center sm:text-left">
-              <span 
-                className="text-[10px] font-mono uppercase tracking-wider font-bold px-2.5 py-0.5 rounded border"
-                style={{
-                  color: accentColor,
-                  backgroundColor: `${accentColor}15`,
-                  borderColor: `${accentColor}30`,
-                }}
-              >
-                {getTranslation(language, 'album.userBadge')}
-              </span>
+              <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                <span 
+                  className="text-[10px] font-mono uppercase tracking-wider font-bold px-2.5 py-0.5 rounded border"
+                  style={{
+                    color: accentColor,
+                    backgroundColor: `${accentColor}15`,
+                    borderColor: `${accentColor}30`,
+                  }}
+                >
+                  {getTranslation(language, 'album.userBadge')}
+                </span>
+                {isSelectedAlbumFullyDownloaded ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider font-bold px-2.5 py-0.5 rounded border text-emerald-400 bg-emerald-500/15 border-emerald-500/30">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>{language === 'vi' ? `Đã tải xuống (${selectedAlbumDownloadedCount}/${cleanAlbumTracks.length})` : `Downloaded (${selectedAlbumDownloadedCount}/${cleanAlbumTracks.length})`}</span>
+                  </span>
+                ) : selectedAlbumDownloadedCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider font-bold px-2.5 py-0.5 rounded border text-cyan-400 bg-cyan-500/15 border-cyan-500/30">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>{language === 'vi' ? `Đã tải ${selectedAlbumDownloadedCount}/${cleanAlbumTracks.length} bài` : `Downloaded ${selectedAlbumDownloadedCount}/${cleanAlbumTracks.length}`}</span>
+                  </span>
+                ) : null}
+              </div>
               <h1 className="text-2xl font-black text-white tracking-tight">{selectedAlbum.title}</h1>
               {selectedAlbum.description && (
                 <p className="text-xs text-[#8e8e9f] max-w-xl">{selectedAlbum.description}</p>
@@ -733,6 +896,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       <Square className="w-3.5 h-3.5 fill-current" />
                       <span>{language === 'vi' ? 'Dừng tải album' : 'Stop Download'}</span>
                     </button>
+                  ) : isSelectedAlbumFullyDownloaded ? (
+                    <div
+                      className="px-4 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold"
+                      title={language === 'vi' ? 'Toàn bộ bài hát trong album đã được tải xuống máy' : 'All tracks in this album are downloaded'}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{language === 'vi' ? 'Đã tải xuống Album' : 'Album Downloaded'}</span>
+                    </div>
                   ) : (
                     <button
                       onClick={() => onDownloadAlbum({ ...selectedAlbum, tracks: cleanAlbumTracks })}
@@ -748,18 +919,15 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                       <span>
                         {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id))
                           ? (language === 'vi' ? 'Đang tải album...' : 'Downloading...')
+                          : selectedAlbumDownloadedCount > 0
+                          ? (language === 'vi' ? `Tải nốt (${cleanAlbumTracks.length - selectedAlbumDownloadedCount} bài)` : `Download Remaining (${cleanAlbumTracks.length - selectedAlbumDownloadedCount})`)
                           : (language === 'vi' ? 'Tải xuống Album' : 'Download Album')}
                       </span>
                     </button>
                   )
                 )}
                 <button
-                  onClick={() => {
-                    if (confirm(getTranslation(language, 'album.deleteConfirm', { title: selectedAlbum.title }))) {
-                      onDeleteAlbum(selectedAlbum.id);
-                      setSelectedAlbumId(null);
-                    }
-                  }}
+                  onClick={() => setAlbumToDelete(selectedAlbum)}
                   className="p-2.5 rounded-xl bg-[#14141c] hover:bg-red-500/20 text-[#888] hover:text-red-400 border border-[#22222e] transition-colors cursor-pointer"
                   title={getTranslation(language, 'album.deleteTitle')}
                 >
@@ -941,18 +1109,29 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
                         {/* Title & Artist */}
                         <div className="overflow-hidden min-w-0 flex-1">
-                          <p 
-                            className="text-xs font-semibold truncate transition-colors"
-                            style={{ color: isCurrent ? accentColor : 'white' }}
-                          >
-                            {track.title}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p 
+                              className="text-xs font-semibold truncate transition-colors"
+                              style={{ color: isCurrent ? accentColor : 'white' }}
+                            >
+                              {track.title}
+                            </p>
+                            {isTrackDownloaded(track) && (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[9px] font-mono font-bold text-emerald-400 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 shrink-0"
+                                title={language === 'vi' ? 'Bài hát này đã được tải xuống máy' : 'Downloaded to device'}
+                              >
+                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                <span>{language === 'vi' ? 'Đã tải' : 'Downloaded'}</span>
+                              </span>
+                            )}
+                          </div>
                           <p className="text-[11px] text-[#8e8e9f] truncate">{track.artist}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {track.source !== 'local' && !track.is_downloaded && onDownloadTrack && (
+                        {!isTrackDownloaded(track) && onDownloadTrack && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -969,10 +1148,13 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                             )}
                           </button>
                         )}
-                        {(track.source === 'local' || track.is_downloaded) && (
-                          <span className="flex items-center gap-1 text-[9px] font-mono text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                            <Check className="w-2.5 h-2.5" />
-                            <span>LOSSLESS</span>
+                        {isTrackDownloaded(track) && (
+                          <span
+                            className="flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25"
+                            title={language === 'vi' ? 'Đã tải xuống máy (Offline Lossless)' : 'Downloaded Offline'}
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>{language === 'vi' ? 'ĐÃ TẢI • LOSSLESS' : 'DOWNLOADED'}</span>
                           </span>
                         )}
                         <span className="text-[10px] text-[#666] font-mono uppercase px-2 py-0.5 rounded bg-[#14141c]">
@@ -1055,7 +1237,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
               {albums.map((album) => {
-                const coverArt = album.cover_art || (album.tracks.length > 0 ? album.tracks[0].cover_art : null);
+                const albumCleanTracks = deduplicateTracks(album.tracks || []);
+                const coverArt = album.cover_art || (albumCleanTracks.length > 0 ? albumCleanTracks[0].cover_art : null);
+                const albumDownloadedCount = albumCleanTracks.filter(t => isTrackDownloaded(t)).length;
+                const isAlbumFullyDownloaded =
+                  albumCleanTracks.length > 0 && albumDownloadedCount === albumCleanTracks.length;
 
                 return (
                   <div
@@ -1078,11 +1264,43 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         </div>
                       )}
 
+                      {/* Top-left Downloaded Status Badge */}
+                      {isAlbumFullyDownloaded ? (
+                        <div
+                          className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-emerald-500/90 text-black text-[10px] font-mono font-bold flex items-center gap-1 shadow-md z-10"
+                          title={language === 'vi' ? 'Toàn bộ bài hát trong album đã được tải xuống' : 'All tracks downloaded'}
+                        >
+                          <CheckCircle2 className="w-3 h-3 stroke-[2.5]" />
+                          <span>{language === 'vi' ? 'Đã tải' : 'Downloaded'}</span>
+                        </div>
+                      ) : albumDownloadedCount > 0 ? (
+                        <div
+                          className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/80 text-emerald-400 border border-emerald-500/40 text-[9.5px] font-mono font-bold flex items-center gap-1 shadow-md z-10"
+                          title={language === 'vi' ? `Đã tải ${albumDownloadedCount}/${albumCleanTracks.length} bài hát` : `Downloaded ${albumDownloadedCount}/${albumCleanTracks.length}`}
+                        >
+                          <CheckCircle2 className="w-2.5 h-2.5" />
+                          <span>{albumDownloadedCount}/{albumCleanTracks.length}</span>
+                        </div>
+                      ) : null}
+
+                      {/* Top-right Delete Album Button (opens confirmation pop-up) */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAlbumToDelete(album);
+                        }}
+                        className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/75 hover:bg-red-500 text-slate-300 hover:text-white border border-white/10 hover:border-red-400 flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10"
+                        title={language === 'vi' ? 'Xóa album này' : 'Delete this album'}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+
                       <div 
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (album.tracks.length > 0) {
-                            onPlayAlbum({ ...album, tracks: deduplicateTracks(album.tracks) });
+                          if (albumCleanTracks.length > 0) {
+                            onPlayAlbum({ ...album, tracks: albumCleanTracks });
                           } else {
                             setSelectedAlbumId(album.id);
                           }
@@ -1107,12 +1325,19 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         >
                           <Square className="w-3.5 h-3.5 fill-current" />
                         </div>
+                      ) : isAlbumFullyDownloaded ? (
+                        <div
+                          className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shadow-lg"
+                          title={language === 'vi' ? 'Album đã được tải xuống máy' : 'Album downloaded'}
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </div>
                       ) : (
-                        onDownloadAlbum && album.tracks.some(t => t.source !== 'local' && !t.is_downloaded) && (
+                        onDownloadAlbum && albumCleanTracks.some(t => !isTrackDownloaded(t)) && (
                           <div
                             onClick={(e) => {
                               e.stopPropagation();
-                              onDownloadAlbum({ ...album, tracks: deduplicateTracks(album.tracks) });
+                              onDownloadAlbum({ ...album, tracks: albumCleanTracks });
                             }}
                             className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-[#101018]/90 hover:bg-[#1a1a24] text-white border border-[#2a2a38] flex items-center justify-center shadow-lg opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all cursor-pointer"
                             title={language === 'vi' ? 'Tải xuống album này' : 'Download this album'}
@@ -1126,9 +1351,19 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     <p className="text-xs font-bold text-white truncate transition-colors">
                       {album.title}
                     </p>
-                    <p className="text-[11px] text-[#777] font-mono mt-0.5">
-                      {getTranslation(language, 'album.trackCount', { count: album.tracks.length })}
-                    </p>
+                    <div className="flex items-center justify-between gap-1 mt-0.5">
+                      <p className="text-[11px] text-[#777] font-mono">
+                        {getTranslation(language, 'album.trackCount', { count: albumCleanTracks.length })}
+                      </p>
+                      {isAlbumFullyDownloaded && (
+                        <span
+                          className="text-emerald-400 flex items-center gap-0.5 text-[10px] font-mono font-bold"
+                          title={language === 'vi' ? 'Đã tải xuống toàn bộ album' : 'Album downloaded'}
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                        </span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
