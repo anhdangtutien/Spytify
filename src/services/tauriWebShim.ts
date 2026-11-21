@@ -815,13 +815,36 @@ async function resolveYouTubeAudioStreamWeb(
   } catch {}
 
   try {
-    const audiusTracks = await searchAudiusWeb(`${title || ''} ${artist || ''}`.trim());
-    const tWord = (title || '').trim().toLowerCase().split(' ')[0];
+    const rawT = (title || '')
+      .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
+      .replace(/official\s*(music\s*video|mv|audio|video|lyric\s*video)/gi, '')
+      .trim();
+    const rawA = (artist || '')
+      .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
+      .split('&')[0]
+      .split('feat.')[0]
+      .split('ft.')[0]
+      .trim();
+
+    // 1. Try search Audius with clean Title + Artist
+    let audiusTracks = await searchAudiusWeb(`${rawT} ${rawA}`.trim());
+    if (audiusTracks.length === 0 && rawT.length >= 3) {
+      // 2. Try search Audius with clean Title only
+      audiusTracks = await searchAudiusWeb(rawT);
+    }
+
+    const tLower = rawT.toLowerCase();
+    const tWord = tLower.split(' ')[0];
+    const aLower = rawA.toLowerCase();
+
     const matched = audiusTracks.find(at => {
       const atTitle = (at.title || '').toLowerCase();
       const atArtist = (at.artist || '').toLowerCase();
-      return (tWord && atTitle.includes(tWord)) || (artistLow && atArtist.includes(artistLow));
+      const hasTitle = (tLower && atTitle.includes(tLower)) || (tWord && tWord.length >= 3 && atTitle.includes(tWord));
+      const hasArtist = aLower && (atArtist.includes(aLower) || atTitle.includes(aLower));
+      return (hasTitle && (hasArtist || !aLower)) || (hasArtist && atTitle.length > 2);
     });
+
     if (matched && matched.url_or_id.startsWith('http')) {
       return {
         stream_url: matched.url_or_id,

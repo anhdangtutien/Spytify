@@ -3088,7 +3088,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     const currentSrcId = channel === 1 ? ytIframeSrc1Ref.current : ytIframeSrc2Ref.current;
-    if (!currentSrcId) {
+    const isWeb = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
+
+    if (!currentSrcId || (isWeb && currentSrcId !== videoId)) {
       if (channel === 1) {
         ytIframeSrc1Ref.current = videoId;
         setYtIframeSrc1(videoId);
@@ -3096,14 +3098,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         ytIframeSrc2Ref.current = videoId;
         setYtIframeSrc2(videoId);
       }
-    } else {
-      // Keep the existing YouTube iframe mounted so browser autoplay permission stays intact
-      const target = channel === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
-      if (target?.contentWindow) {
-        target.contentWindow.postMessage(
-          JSON.stringify({ event: 'listening', id: channel, channel: 'widget' }), '*'
-        );
-      }
+    }
+
+    // Always signal the target iframe if already mounted and listening
+    const target = channel === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
+    if (target?.contentWindow) {
+      target.contentWindow.postMessage(
+        JSON.stringify({ event: 'listening', id: channel, channel: 'widget' }), '*'
+      );
       sendYtCmd('loadVideoById', [videoId, 0], channel);
       if (volPct <= 0) {
         sendYtCmd('mute', [], channel);
@@ -3795,7 +3797,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         isPlayingRef.current = true;
         setIsPlaying(true);
         loadOrMountYtChannel(videoId, 1, curVol * 100);
-        showNotification(`▶ YouTube Hi-Fi: ${track.title}`);
+        if (isWebShim) {
+          showNotification(`▶ YouTube: ${track.title} (Chạm khung video để nghe)`);
+        } else {
+          showNotification(`▶ YouTube Hi-Fi: ${track.title}`);
+        }
 
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
         ytUnavailableRetryTimerRef.current = setTimeout(() => {
@@ -5264,8 +5270,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           {Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode) && (
             <div className="absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/85 via-black/40 to-transparent z-50 flex items-center justify-between px-3 pointer-events-auto">
               <span className="text-[11px] font-semibold text-white/95 truncate max-w-[80%] drop-shadow-sm font-sans flex items-center gap-1.5">
-                <Tv className="w-3.5 h-3.5 text-cyan-400" />
+                <Tv className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span className="truncate">{currentTrack?.title || 'YouTube MV'}</span>
+                <span className="text-[10px] text-amber-300 font-normal shrink-0 ml-1">· Chạm để phát</span>
               </span>
               <button
                 onClick={() => setShowYoutubeVideo(false)}
@@ -5308,8 +5315,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           {Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode) && (
             <div className="absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/85 via-black/40 to-transparent z-50 flex items-center justify-between px-3 pointer-events-auto">
               <span className="text-[11px] font-semibold text-white/95 truncate max-w-[80%] drop-shadow-sm font-sans flex items-center gap-1.5">
-                <Tv className="w-3.5 h-3.5 text-cyan-400" />
+                <Tv className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 <span className="truncate">{currentTrack?.title || 'YouTube MV'}</span>
+                <span className="text-[10px] text-amber-300 font-normal shrink-0 ml-1">· Chạm để phát</span>
               </span>
               <button
                 onClick={() => setShowYoutubeVideo(false)}
