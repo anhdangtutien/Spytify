@@ -39,6 +39,17 @@ fn get_close_to_tray() -> bool {
     CLOSE_TO_TRAY.load(Ordering::SeqCst)
 }
 
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    if !IS_EXITING.swap(true, Ordering::SeqCst) {
+        let app_handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            app_handle.exit(0);
+        });
+    }
+}
+
 #[cfg(target_os = "windows")]
 mod win_mem {
     #[repr(C)]
@@ -1895,6 +1906,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_close_to_tray,
             get_close_to_tray,
+            exit_app,
             scan_music_folder,
             play_track,
             pause_track,

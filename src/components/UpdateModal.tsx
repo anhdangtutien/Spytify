@@ -10,6 +10,7 @@ interface UpdateModalProps {
   updateInfo: UpdateInfo | null;
   onClose: () => void;
   accentColor?: string;
+  isMandatory?: boolean;
 }
 
 interface ProgressData {
@@ -23,6 +24,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   updateInfo,
   onClose,
   accentColor = '#FF2A55',
+  isMandatory = false,
 }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState<ProgressData>({
@@ -73,9 +75,15 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     if (isDownloading) return;
     setErrorText(null);
     setIsDownloading(true);
-    setStatusText('Đang kết nối tới máy chủ GitHub...');
+    setStatusText('Đang kết nối tới máy chủ cập nhật...');
 
     try {
+      if (updateInfo.patchId) {
+        localStorage.setItem('spytify_applied_patch_id', updateInfo.patchId);
+      }
+      if (updateInfo.publishedAt) {
+        localStorage.setItem('spytify_applied_patch_time', updateInfo.publishedAt);
+      }
       await invoke('download_and_install_update', {
         downloadUrl: updateInfo.downloadUrl,
       });
@@ -116,7 +124,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
       <div className="w-full max-w-md bg-[#0a0a0f] border border-[#222230] rounded-2xl p-6 shadow-2xl relative text-white">
         {/* Close Button */}
-        {!isDownloading && (
+        {!isDownloading && !isMandatory && (
           <button
             onClick={handleDismiss}
             className="absolute top-4 right-4 p-1.5 rounded-full text-[#666] hover:text-white hover:bg-[#181822] transition-colors cursor-pointer"
@@ -142,17 +150,29 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               <span
                 className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border"
                 style={{
-                  backgroundColor: `${accentColor}20`,
-                  color: accentColor,
-                  borderColor: `${accentColor}40`,
+                  backgroundColor: updateInfo.isHotfix
+                    ? 'rgba(245, 158, 11, 0.2)'
+                    : isMandatory
+                    ? 'rgba(239, 68, 68, 0.2)'
+                    : `${accentColor}20`,
+                  color: updateInfo.isHotfix
+                    ? '#fbbf24'
+                    : isMandatory
+                    ? '#f87171'
+                    : accentColor,
+                  borderColor: updateInfo.isHotfix
+                    ? 'rgba(245, 158, 11, 0.4)'
+                    : isMandatory
+                    ? 'rgba(239, 68, 68, 0.4)'
+                    : `${accentColor}40`,
                 }}
               >
-                Bản mới
+                {updateInfo.isHotfix ? 'Bản vá lỗi (Hotfix)' : isMandatory ? 'Bắt buộc cập nhật' : 'Bản mới'}
               </span>
               <span className="text-xs font-mono text-[#888]">{updateInfo.version}</span>
             </div>
             <h3 className="text-base font-black tracking-tight mt-1 text-white">
-              {updateInfo.name || 'Đã có bản cập nhật Spytify mới'}
+              {updateInfo.name || (updateInfo.isHotfix ? `Bản vá lỗi cho Spytify ${updateInfo.version}` : 'Đã có bản cập nhật Spytify mới')}
             </h3>
             {formattedDate && (
               <p className="text-[11px] text-[#777] font-mono flex items-center gap-1.5 mt-0.5">
@@ -229,7 +249,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 }}
               >
                 <ArrowDownCircle className="w-4 h-4" />
-                <span>Cập nhật tự động ngay trên App</span>
+                <span>{updateInfo.isHotfix ? 'Cập nhật bản vá tự động ngay' : 'Cập nhật tự động ngay trên App'}</span>
               </button>
 
               <div className="flex items-center gap-2 pt-1">
@@ -260,7 +280,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
           )}
         </div>
 
-        {!isDownloading && (
+        {!isDownloading && !isMandatory && (
           <div className="text-center mt-3">
             <button
               onClick={handleDismiss}
@@ -268,6 +288,13 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             >
               Để sau (Nhắc tôi ở bản build kế tiếp)
             </button>
+          </div>
+        )}
+        {!isDownloading && isMandatory && (
+          <div className="text-center mt-3">
+            <p className="text-[10px] text-rose-400 font-mono">
+              Bản cập nhật này bắt buộc để đảm bảo an toàn và tính năng đồng bộ.
+            </p>
           </div>
         )}
       </div>

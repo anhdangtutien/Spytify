@@ -20,7 +20,7 @@ import {
   cloudResetUserPassword
 } from '../services/supabase';
 import { generateTotpSecret, getOtpAuthUrl, getQrCodeImageUrl, verifyTotp } from '../services/totp';
-import { checkGitHubUpdate, CURRENT_VERSION, UpdateInfo } from '../services/updater';
+import { checkStartupUpdatePolicy, CURRENT_VERSION, UpdateInfo } from '../services/updater';
 import { openWebsite, getWebsiteUrl, setWebsiteUrl, DEFAULT_WEBSITE_URL } from '../services/website';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from '../locales/i18n';
 
@@ -226,17 +226,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setIsCheckingUpdate(true);
     setUpdateStatusMsg(null);
     try {
-      const res = await checkGitHubUpdate(true);
+      const res = await checkStartupUpdatePolicy(true);
       if (res && res.hasUpdate && res.info) {
         if (onOpenUpdateModal) {
           onOpenUpdateModal(res.info);
         }
-      } else if (res && res.error) {
-        setUpdateStatusMsg(getTranslation(language, 'settings.updateError', { error: res.error }));
-        setTimeout(() => setUpdateStatusMsg(null), 6000);
       } else {
-        const ver = res?.info?.version || `v${CURRENT_VERSION}`;
-        setUpdateStatusMsg(getTranslation(language, 'settings.latestVersion', { version: ver }));
+        setUpdateStatusMsg(getTranslation(language, 'settings.latestVersion', { version: `v${CURRENT_VERSION}` }));
         setTimeout(() => setUpdateStatusMsg(null), 4000);
       }
     } catch (e: any) {

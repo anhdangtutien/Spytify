@@ -20,7 +20,7 @@ import { EqualizerModal } from './components/EqualizerModal';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph } from './services/equalizer';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
-import { checkGitHubUpdate, UpdateInfo, CURRENT_VERSION } from './services/updater';
+import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSION, compareSemver } from './services/updater';
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
@@ -110,6 +110,7 @@ export default function App() {
   // Software Update & Close-to-Tray State
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [isMandatoryUpdate, setIsMandatoryUpdate] = useState(false);
 
   // Audio Equalizer (EQ) State
   const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
@@ -134,22 +135,71 @@ export default function App() {
       console.warn('Failed to initialize close to tray:', err);
     });
 
-    // Check for updates 3.5s after launch (non-blocking)
-    const timer = setTimeout(async () => {
+    // Check for updates immediately on launch
+    let isCancelled = false;
+    const performStartupUpdateCheck = async () => {
       try {
-        const res = await checkGitHubUpdate(false);
-        if (res.hasUpdate && res.info) {
-          setUpdateInfo(res.info);
+        const policy = await checkStartupUpdatePolicy(false);
+        if (isCancelled || !policy) return;
+
+        if (policy.isMandatory) {
+          console.log('[Updater] Mandatory update detected:', policy.info.version);
+          setIsMandatoryUpdate(true);
+          setUpdateInfo(policy.info);
+          setIsUpdateModalOpen(true);
+        } else if (policy.hasUpdate) {
+          setIsMandatoryUpdate(false);
+          setUpdateInfo(policy.info);
           setIsUpdateModalOpen(true);
         }
       } catch (e) {
-        console.warn('Startup update check failed:', e);
+        console.warn('Startup update policy check failed:', e);
       }
-    }, 3500);
+    };
+    performStartupUpdateCheck();
+
+    // Listen to real-time remote config updates from Spytify Dashboard
+    const handleRemoteConfigUpdated = (e: any) => {
+      const config = e.detail;
+      if (!config || !config.version) return;
+      const semverDiff = compareSemver(config.version, CURRENT_VERSION);
+      const isNewer = semverDiff > 0;
+      const isSameVersion = semverDiff === 0;
+
+      // Check for hotfix on same version
+      const appliedPatchId = localStorage.getItem('spytify_applied_patch_id');
+      const isHotfix = isSameVersion && Boolean(config.patchId && config.patchId !== appliedPatchId);
+
+      const isBelowMin = config.minSupportedVersion
+        ? compareSemver(CURRENT_VERSION, config.minSupportedVersion) < 0
+        : false;
+      const isForce = !!config.forceUpdate && (isNewer || isHotfix);
+
+      if (isNewer || isHotfix || isBelowMin) {
+        console.log('[Updater] Real-time release/hotfix update received from Dashboard:', config.version, isHotfix ? '(Hotfix)' : '');
+        const info: UpdateInfo = {
+          version: config.version.startsWith('v') ? config.version : `v${config.version}`,
+          name: isHotfix
+            ? `Spytify ${config.version} (Bản vá lỗi mới)`
+            : `Spytify ${config.version}`,
+          publishedAt: config.updatedAt || new Date().toISOString(),
+          notes: config.releaseNotes || (isHotfix ? 'Bản vá sửa chữa các lỗi phát sinh cho phiên bản hiện tại.' : 'Bản cập nhật mới từ hệ thống Spytify.'),
+          downloadUrl: config.downloadUrl || 'https://github.com/anhdangtutien/Spytify/releases/latest',
+          releaseUrl: config.releaseUrl || 'https://github.com/anhdangtutien/Spytify/releases',
+          patchId: config.patchId,
+          isHotfix,
+        };
+        setIsMandatoryUpdate(isBelowMin || isForce);
+        setUpdateInfo(info);
+        setIsUpdateModalOpen(true);
+      }
+    };
+    window.addEventListener('spytify:remote-config-updated', handleRemoteConfigUpdated);
 
     return () => {
-      clearTimeout(timer);
+      isCancelled = true;
       window.removeEventListener('spytify:remote-broadcast', handleBroadcastEvent);
+      window.removeEventListener('spytify:remote-config-updated', handleRemoteConfigUpdated);
     };
   }, []);
 
@@ -4243,7 +4293,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               isOpen={isUpdateModalOpen}
               updateInfo={updateInfo}
               accentColor={accentColor}
-              onClose={() => setIsUpdateModalOpen(false)}
+              isMandatory={isMandatoryUpdate}
+              onClose={() => {
+                if (!isMandatoryUpdate) {
+                  setIsUpdateModalOpen(false);
+                }
+              }}
             />
           )}
 

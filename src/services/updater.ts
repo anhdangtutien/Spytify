@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { fetchLatestRemoteConfig, getLatestRemoteConfig } from './remoteConfigListener';
 
 export interface UpdateInfo {
   version: string;
@@ -7,11 +8,20 @@ export interface UpdateInfo {
   notes: string;
   downloadUrl: string;
   releaseUrl: string;
+  patchId?: string;
+  isHotfix?: boolean;
+}
+
+export interface UpdatePolicyResult {
+  hasUpdate: boolean;
+  isMandatory: boolean;
+  info: UpdateInfo;
+  source: 'remote_config' | 'github';
 }
 
 // Baseline build timestamp for the current installed client
-export const CURRENT_BUILD_DATE = '2026-11-21T09:18:00Z';
-export const CURRENT_VERSION = '1.1.3';
+export const CURRENT_BUILD_DATE = '2026-11-21T13:45:00Z';
+export const CURRENT_VERSION = '1.1.4';
 
 export function compareSemver(v1: string, v2: string): number {
   const parse = (v: string) =>
@@ -135,8 +145,110 @@ export function dismissUpdate(infoOrTime: string | UpdateInfo) {
     if (infoOrTime.version) {
       localStorage.setItem('spytify_dismissed_update_version', infoOrTime.version);
     }
+    if (infoOrTime.patchId) {
+      localStorage.setItem('spytify_dismissed_patch_id', infoOrTime.patchId);
+    }
     if (infoOrTime.publishedAt) {
       localStorage.setItem('spytify_dismissed_update_time', infoOrTime.publishedAt);
     }
+  }
+}
+
+/**
+ * Unified check combining Supabase Remote Config and GitHub Releases
+ * Evaluates whether an update is available:
+ * - Newer version (SemVer > CURRENT_VERSION)
+ * - Hotfix patch on the SAME version (SemVer == CURRENT_VERSION with newer patchId or build timestamp)
+ * - Mandatory update policy
+ */
+export async function checkStartupUpdatePolicy(force = false): Promise<UpdatePolicyResult | null> {
+  try {
+    const [remoteCfg, ghResult] = await Promise.allSettled([
+      fetchLatestRemoteConfig(),
+      checkGitHubUpdate(true),
+    ]);
+
+    const cfg = remoteCfg.status === 'fulfilled' ? remoteCfg.value : getLatestRemoteConfig();
+    const gh = ghResult.status === 'fulfilled' ? ghResult.value : null;
+
+    const ghInfo = gh?.info;
+    const targetVersion = cfg?.version || ghInfo?.version;
+
+    if (!targetVersion) return null;
+
+    const semverDiff = compareSemver(targetVersion, CURRENT_VERSION);
+    const isNewerThanCurrent = semverDiff > 0;
+    const isSameVersion = semverDiff === 0;
+
+    // Hotfix check for SAME version (e.g. current is 1.1.4 and admin publishes a hotfix for 1.1.4)
+    const appliedPatchId = localStorage.getItem('spytify_applied_patch_id');
+    const appliedPatchTime = localStorage.getItem('spytify_applied_patch_time');
+    const remotePatchTime = cfg?.updatedAt || ghInfo?.publishedAt || '';
+    const hasNewerTimestamp = remotePatchTime && remotePatchTime > CURRENT_BUILD_DATE;
+    const hasUnappliedPatchId = Boolean(cfg?.patchId && cfg.patchId !== appliedPatchId);
+
+    const isHotfix = Boolean(
+      isSameVersion && (
+        Boolean(cfg?.isHotfix && hasUnappliedPatchId) ||
+        hasUnappliedPatchId ||
+        Boolean(hasNewerTimestamp && (!appliedPatchTime || remotePatchTime > appliedPatchTime))
+      )
+    );
+
+    const isBelowMin = cfg?.minSupportedVersion
+      ? compareSemver(CURRENT_VERSION, cfg.minSupportedVersion) < 0
+      : false;
+    const isForceLocked = Boolean(cfg?.forceUpdate && (isNewerThanCurrent || isHotfix));
+    const isMandatory = Boolean(isBelowMin || isForceLocked);
+
+    // If not a newer version, not a hotfix, and not below minimum, no update needed
+    if (!isNewerThanCurrent && !isHotfix && !isBelowMin) {
+      return null;
+    }
+
+    if (!isMandatory && !force) {
+      const dismissedVer = localStorage.getItem('spytify_dismissed_update_version');
+      const dismissedPatch = localStorage.getItem('spytify_dismissed_patch_id');
+      if (
+        dismissedVer &&
+        dismissedVer === targetVersion &&
+        (!isHotfix || (cfg?.patchId && dismissedPatch === cfg.patchId))
+      ) {
+        return null;
+      }
+    }
+
+    const effectivePatchId = cfg?.patchId || (isHotfix ? `patch_${remotePatchTime}` : undefined);
+
+    const info: UpdateInfo = {
+      version: targetVersion.startsWith('v') ? targetVersion : `v${targetVersion}`,
+      name: isHotfix
+        ? `Spytify ${targetVersion} (Bản vá lỗi mới)`
+        : (ghInfo?.name || `Spytify ${targetVersion}`),
+      publishedAt: remotePatchTime || new Date().toISOString(),
+      notes:
+        cfg?.releaseNotes ||
+        ghInfo?.notes ||
+        (isHotfix
+          ? 'Bản vá sửa chữa các lỗi phát sinh gần đây và tối ưu độ ổn định cho phiên bản hiện tại.'
+          : 'Bản cập nhật tối ưu hóa hiệu năng, cải tiến giao diện người dùng và bảo mật hệ thống.'),
+      downloadUrl:
+        cfg?.downloadUrl ||
+        ghInfo?.downloadUrl ||
+        'https://github.com/anhdangtutien/Spytify/releases/latest',
+      releaseUrl: cfg?.releaseUrl || ghInfo?.releaseUrl || 'https://github.com/anhdangtutien/Spytify/releases',
+      patchId: effectivePatchId,
+      isHotfix,
+    };
+
+    return {
+      hasUpdate: true,
+      isMandatory,
+      info,
+      source: cfg?.version ? 'remote_config' : 'github',
+    };
+  } catch (err) {
+    console.warn('[Updater] Failed to check startup update policy:', err);
+    return null;
   }
 }
