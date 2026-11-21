@@ -7,6 +7,12 @@ import {
 import { Track, User, RecommendationResult, TrainingReport, SearchResult, ArtistMix } from '../types';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 import { getContrastTextColor, optimizeThumbnailUrl, handleImageError } from '../utils/trackUtils';
+import { 
+  DEFAULT_FEATURED_ARTISTS, 
+  POPULAR_ARTIST_AVATARS, 
+  getOrResolveArtistAvatar, 
+  fetchArtistPortraitOnline 
+} from '../utils/artistAvatars';
 
 interface AiMixViewProps {
   currentUser: User | null;
@@ -28,28 +34,7 @@ interface AiMixViewProps {
   onPlayArtistMix?: (mix: ArtistMix, trackOrIndex: SearchResult | number) => void;
 }
 
-const DEFAULT_FEATURED_ARTISTS = [
-  { artist: 'Sơn Tùng M-TP', count: 24, cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Bruno Mars', count: 19, cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Billie Eilish', count: 16, cover: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Vũ.', count: 14, cover: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Taylor Swift', count: 18, cover: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'HIEUTHUHAI', count: 12, cover: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'ROSÉ', count: 15, cover: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'YOASOBI', count: 11, cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'NewJeans', count: 14, cover: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'The Weeknd', count: 17, cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Đen', count: 13, cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Sabrina Carpenter', count: 15, cover: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Eve', count: 10, cover: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'DAOKO', count: 12, cover: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Lady Gaga', count: 13, cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Kenshi Yonezu', count: 11, cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Charlie Puth', count: 12, cover: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Fujii Kaze', count: 10, cover: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'Creepy Nuts', count: 9, cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80' },
-  { artist: 'BLACKPINK', count: 14, cover: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80' },
-];
+// Default featured artists are imported from ../utils/artistAvatars
 
 const DEFAULT_GENRES = [
   // ─── MOOD & LIFESTYLE VIBE PLAYLISTS ───
@@ -336,12 +321,23 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
       const sorted = Object.entries(counts)
         .sort((a, b) => b[1].count - a[1].count)
         .slice(0, 20)
-        .map(([artist, data]) => ({ artist, count: data.count, cover: data.sampleCover }));
+        .map(([artist, data]) => {
+          const avatar = getOrResolveArtistAvatar(artist, data.sampleCover);
+          return { artist, count: data.count, cover: avatar };
+        });
 
       if (sorted.length > 0) {
         setUserHistoryArtists(sorted);
+        // Dynamically fetch verified Deezer portraits for artists
+        sorted.forEach(item => {
+          fetchArtistPortraitOnline(item.artist).then(pic => {
+            if (pic) {
+              setUserHistoryArtists(prev => prev.map(a => a.artist === item.artist ? { ...a, cover: pic } : a));
+            }
+          });
+        });
       } else {
-        setUserHistoryArtists(DEFAULT_FEATURED_ARTISTS);
+        setUserHistoryArtists(DEFAULT_FEATURED_ARTISTS.map(a => ({ artist: a.artist, count: a.count, cover: a.avatar })));
       }
     });
   }, [currentUser?.id]);
@@ -751,7 +747,9 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                       src={optimizeThumbnailUrl(item.cover)}
                       alt={item.artist}
                       referrerPolicy="no-referrer"
-                      onError={(e) => handleImageError(e)}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = getOrResolveArtistAvatar(item.artist);
+                      }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                   ) : (

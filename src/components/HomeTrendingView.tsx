@@ -9,6 +9,13 @@ import {
 import { SearchResult, Track, User, ArtistMix, UserAlbum } from '../types';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, ModernHomeIcon } from './Icons';
 import { getContrastTextColor, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle } from '../utils/trackUtils';
+import { 
+  POPULAR_ARTIST_AVATARS, 
+  DEFAULT_FEATURED_ARTISTS, 
+  RecentArtistItem, 
+  getOrResolveArtistAvatar, 
+  fetchArtistPortraitOnline 
+} from '../utils/artistAvatars';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 
 interface HomeTrendingViewProps {
@@ -860,254 +867,7 @@ const CURATED_BY_CATEGORY: Record<string, SearchResult[]> = {
   ],
 };
 
-const POPULAR_ARTIST_AVATARS: Record<string, string> = {
-  'sơn tùng m-tp': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
-  'sơn tùng': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
-  'son tung m-tp': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
-  'm-tp': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
-  'vũ.': 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
-  'vũ': 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
-  'vu': 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
-  'đen': 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
-  'đen vâu': 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
-  'den': 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
-  'hieuthuhai': 'https://cdn-images.dzcdn.net/images/artist/731891d7627e78e25ea9e507d3fd8333/500x500-000000-80-0-0.jpg',
-  'bruno mars': 'https://cdn-images.dzcdn.net/images/artist/90f0b5b11df4f87ee878f38569b5995b/500x500-000000-80-0-0.jpg',
-  'taylor swift': 'https://cdn-images.dzcdn.net/images/artist/cc2495870fe1a792ad0cdb05501ad5ec/500x500-000000-80-0-0.jpg',
-  'billie eilish': 'https://cdn-images.dzcdn.net/images/artist/8eab1a9a644889aabaca1e193e05f984/500x500-000000-80-0-0.jpg',
-  'rosé': 'https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0ec280/500x500-000000-80-0-0.jpg',
-  'rose': 'https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0ec280/500x500-000000-80-0-0.jpg',
-  'joji': 'https://cdn-images.dzcdn.net/images/artist/3bdd07e6653666b8885b59c522ab3deb/500x500-000000-80-0-0.jpg',
-  'calvin harris': 'https://cdn-images.dzcdn.net/images/artist/a53031d02dc2f8a8eb15d117c015d5eb/500x500-000000-80-0-0.jpg',
-  'ellie goulding': 'https://cdn-images.dzcdn.net/images/artist/e3611824a11b28e07bc5a363c629dcb4/500x500-000000-80-0-0.jpg',
-  'daoko': 'https://cdn-images.dzcdn.net/images/artist/07e141eb3098626902c170ddd9fded25/500x500-000000-80-0-0.jpg',
-  'hiroyuki sawano': 'https://cdn-images.dzcdn.net/images/artist/84f4713f8e03d7f379301adea0489da4/500x500-000000-80-0-0.jpg',
-  'sawano hiroyuki': 'https://cdn-images.dzcdn.net/images/artist/84f4713f8e03d7f379301adea0489da4/500x500-000000-80-0-0.jpg',
-  'lady gaga': 'https://cdn-images.dzcdn.net/images/artist/721d8fab84b315502de422b8d0901509/500x500-000000-80-0-0.jpg',
-  'sabrina carpenter': 'https://cdn-images.dzcdn.net/images/artist/4a9cdc7737e2a0e59b4917b47884b859/500x500-000000-80-0-0.jpg',
-  'newjeans': 'https://cdn-images.dzcdn.net/images/artist/0866c2c1d7d00879f5db46ddc1250db8/500x500-000000-80-0-0.jpg',
-  'blackpink': 'https://cdn-images.dzcdn.net/images/artist/89675729453893a91be35bde691050ff/500x500-000000-80-0-0.jpg',
-  'the weeknd': 'https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/500x500-000000-80-0-0.jpg',
-  'yoasobi': 'https://cdn-images.dzcdn.net/images/artist/2cbfaf626a591e162bfcc2b4b0214217/500x500-000000-80-0-0.jpg',
-  'creepy nuts': 'https://cdn-images.dzcdn.net/images/artist/b7f4334dd626befb590e9349bca72c99/500x500-000000-80-0-0.jpg',
-  'charlie puth': 'https://cdn-images.dzcdn.net/images/artist/c355b366638e0c5f20f4b265f0f12646/500x500-000000-80-0-0.jpg',
-  'justin bieber': 'https://cdn-images.dzcdn.net/images/artist/fe097f693cebf1f882e3da79e99e3bf9/500x500-000000-80-0-0.jpg',
-  'ariana grande': 'https://cdn-images.dzcdn.net/images/artist/721d8fab84b315502de422b8d0901509/500x500-000000-80-0-0.jpg',
-  'drake': 'https://cdn-images.dzcdn.net/images/artist/eb0ed5b21d1ea5af021fc074ded0e91f/500x500-000000-80-0-0.jpg',
-  'adele': 'https://cdn-images.dzcdn.net/images/artist/67a8bd3b465446fc8098631c85d3c8a2/500x500-000000-80-0-0.jpg',
-  'eminem': 'https://cdn-images.dzcdn.net/images/artist/7fa738468c9a73ff98c1e1b78d622b81/500x500-000000-80-0-0.jpg',
-  'ed sheeran': 'https://cdn-images.dzcdn.net/images/artist/d6bb84390641d8ae9118228d9544e53d/500x500-000000-80-0-0.jpg',
-  'ado': 'https://cdn-images.dzcdn.net/images/artist/858e14d0f8ee062253851aaf3b31daef/500x500-000000-80-0-0.jpg',
-  'kenshi yonezu': 'https://cdn-images.dzcdn.net/images/artist/36668c9f416b041169df04110a0812f0/500x500-000000-80-0-0.jpg',
-  'olivia rodrigo': 'https://cdn-images.dzcdn.net/images/artist/2c9e480317183c037eaebcd7ba96daf4/500x500-000000-80-0-0.jpg',
-  'dua lipa': 'https://cdn-images.dzcdn.net/images/artist/877872aaf75694f11d53c318700ab2b5/500x500-000000-80-0-0.jpg',
-  'soobin hoàng sơn': 'https://cdn-images.dzcdn.net/images/artist/1ec4a87462f2e96ac18bc9b8dac67564/500x500-000000-80-0-0.jpg',
-  'soobin': 'https://cdn-images.dzcdn.net/images/artist/1ec4a87462f2e96ac18bc9b8dac67564/500x500-000000-80-0-0.jpg',
-  'mono': 'https://cdn-images.dzcdn.net/images/artist/4a65d2bb04b583957a3c463c11d6744e/500x500-000000-80-0-0.jpg',
-  'wren evans': 'https://cdn-images.dzcdn.net/images/artist/ee2f42bb7a077ee88b189f4edf422b3e/500x500-000000-80-0-0.jpg',
-  'grey d': 'https://cdn-images.dzcdn.net/images/artist/17a36e7031efb7d45546d1d152d2cad4/500x500-000000-80-0-0.jpg',
-  'tlinh': 'https://cdn-images.dzcdn.net/images/artist/395e24e799b806e4b42e5b913f949fdc/500x500-000000-80-0-0.jpg',
-  'mck': 'https://cdn-images.dzcdn.net/images/artist/7d02cd9134d5d35dc89ae9becc327089/500x500-000000-80-0-0.jpg',
-  'low g': 'https://cdn-images.dzcdn.net/images/artist/8e41c01c6de212b06c8e952772a08ed9/500x500-000000-80-0-0.jpg',
-  'amee': 'https://cdn-images.dzcdn.net/images/artist/0bfd1ba5423a94ccb48d2069d528fbb0/500x500-000000-80-0-0.jpg',
-  'hoàng thùy linh': 'https://cdn-images.dzcdn.net/images/artist/ada412ca9a4796d6a7584567b871779a/500x500-000000-80-0-0.jpg',
-  'đức phúc': 'https://cdn-images.dzcdn.net/images/artist/aa64c2ebcf1f0a8c969043d9bb5509c4/500x500-000000-80-0-0.jpg',
-  'erik': 'https://cdn-images.dzcdn.net/images/artist/58b32b41a250bdbee252a877df414c7f/500x500-000000-80-0-0.jpg',
-  'eve': 'https://cdn-images.dzcdn.net/images/artist/5825a1c6545774d1d3484ec3703b7e37/500x500-000000-80-0-0.jpg',
-  'fujii kaze': 'https://cdn-images.dzcdn.net/images/artist/16cbd84f0e0300725b734980f42112b6/500x500-000000-80-0-0.jpg',
-};
-
-const getOrResolveArtistAvatar = (artistName: string, trackCover?: string): string => {
-  const norm = artistName.trim().toLowerCase();
-  if (POPULAR_ARTIST_AVATARS[norm]) return POPULAR_ARTIST_AVATARS[norm];
-  
-  for (const [k, v] of Object.entries(POPULAR_ARTIST_AVATARS)) {
-    if (norm.includes(k) || k.includes(norm)) return v;
-  }
-  
-  try {
-    const cached = localStorage.getItem(`spytify_artist_avatar_${norm}`);
-    if (cached) return cached;
-  } catch {}
-
-  if (trackCover && trackCover.startsWith('http') && !trackCover.includes('photo-1511671782779')) {
-    return trackCover;
-  }
-
-  return 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80';
-};
-
-interface RecentArtistItem {
-  artist: string;
-  count: number;
-  avatar: string;
-  topTrackTitle?: string;
-  sampleVideoId?: string;
-}
-
-const DEFAULT_FEATURED_ARTISTS: RecentArtistItem[] = [
-  {
-    artist: 'Sơn Tùng M-TP',
-    count: 24,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Đừng Làm Trái Tim Anh Đau',
-    sampleVideoId: 'abPmZCZZrFA',
-  },
-  {
-    artist: 'Bruno Mars',
-    count: 19,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/90f0b5b11df4f87ee878f38569b5995b/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Die With A Smile / APT.',
-    sampleVideoId: 'kPa7bsKwL-8',
-  },
-  {
-    artist: 'Billie Eilish',
-    count: 16,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/8eab1a9a644889aabaca1e193e05f984/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Birds of a Feather',
-    sampleVideoId: 'd5gf9dXHevw',
-  },
-  {
-    artist: 'Vũ.',
-    count: 14,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Bước Qua Mùa Cô Đơn',
-    sampleVideoId: 'YQHsXMglC9A',
-  },
-  {
-    artist: 'Taylor Swift',
-    count: 18,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/cc2495870fe1a792ad0cdb05501ad5ec/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Cruel Summer',
-    sampleVideoId: 'ic8j13piAhQ',
-  },
-  {
-    artist: 'HIEUTHUHAI',
-    count: 12,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/731891d7627e78e25ea9e507d3fd8333/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Không Thể Say / NOLOVE',
-    sampleVideoId: 'u4k4iG1u7lE',
-  },
-  {
-    artist: 'ROSÉ',
-    count: 15,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0ec280/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'APT. (feat. Bruno Mars)',
-    sampleVideoId: 'ekr2nIex040',
-  },
-  {
-    artist: 'Joji',
-    count: 14,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/3bdd07e6653666b8885b59c522ab3deb/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Glimpse of Us / SLOW DANCING IN THE DARK',
-    sampleVideoId: 'FvOpPeKSf_4',
-  },
-  {
-    artist: 'YOASOBI',
-    count: 11,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/2cbfaf626a591e162bfcc2b4b0214217/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Idol (アイドル)',
-    sampleVideoId: 'ZRtdQ81jPUQ',
-  },
-  {
-    artist: 'NewJeans',
-    count: 14,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/0866c2c1d7d00879f5db46ddc1250db8/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Super Shy / Hype Boy',
-    sampleVideoId: 'ArmDp-zijuc',
-  },
-  {
-    artist: 'The Weeknd',
-    count: 17,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Blinding Lights / Timeless',
-    sampleVideoId: '4NRXx6U8ABQ',
-  },
-  {
-    artist: 'Đen',
-    count: 13,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Nấu Ăn Cho Em',
-    sampleVideoId: 'L8eRzOYhLuw',
-  },
-  {
-    artist: 'Sabrina Carpenter',
-    count: 15,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/4a9cdc7737e2a0e59b4917b47884b859/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Espresso / Taste',
-    sampleVideoId: 'eVli-tstM5E',
-  },
-  {
-    artist: 'Calvin Harris',
-    count: 12,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/a53031d02dc2f8a8eb15d117c015d5eb/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Summer / One Kiss',
-    sampleVideoId: 'ebXbLfLACGM',
-  },
-  {
-    artist: 'Ellie Goulding',
-    count: 11,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/e3611824a11b28e07bc5a363c629dcb4/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Love Me Like You Do / Lights',
-    sampleVideoId: 'AJtDXIazrMo',
-  },
-  {
-    artist: 'DAOKO',
-    count: 12,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/07e141eb3098626902c170ddd9fded25/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Uchiage Hanabi (打上花火)',
-    sampleVideoId: '-tKVN2mAKRI',
-  },
-  {
-    artist: 'Hiroyuki Sawano',
-    count: 10,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/84f4713f8e03d7f379301adea0489da4/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Attack on Titan OST / Vogel im Käfig',
-    sampleVideoId: 'w3UR7nsTLlQ',
-  },
-  {
-    artist: 'Lady Gaga',
-    count: 13,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/721d8fab84b315502de422b8d0901509/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Die With A Smile / Poker Face',
-    sampleVideoId: 'kPa7bsKwL-8',
-  },
-  {
-    artist: 'Kenshi Yonezu',
-    count: 11,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/36668c9f416b041169df04110a0812f0/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Lemon / Kick Back',
-    sampleVideoId: 'SX_ViT4Ra7k',
-  },
-  {
-    artist: 'Charlie Puth',
-    count: 12,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/c355b366638e0c5f20f4b265f0f12646/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Attention / Left and Right',
-    sampleVideoId: 'nfs8NYg7yQM',
-  },
-  {
-    artist: 'Fujii Kaze',
-    count: 10,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/16cbd84f0e0300725b734980f42112b6/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Shinunoga E-Wa (死ぬのがいいわ)',
-    sampleVideoId: 'dFzVjUgtpRg',
-  },
-  {
-    artist: 'Creepy Nuts',
-    count: 9,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/b7f4334dd626befb590e9349bca72c99/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Bling-Bang-Bang-Born',
-    sampleVideoId: 'mLW35ymz1gk',
-  },
-  {
-    artist: 'BLACKPINK',
-    count: 14,
-    avatar: 'https://cdn-images.dzcdn.net/images/artist/89675729453893a91be35bde691050ff/500x500-000000-80-0-0.jpg',
-    topTrackTitle: 'Pink Venom / How You Like That',
-    sampleVideoId: 'gQlMMD8auMs',
-  },
-];
+// Curated artist avatars and default recommendations are imported from ../utils/artistAvatars
 
 interface ThemedCollection {
   id: string;
@@ -1353,23 +1113,13 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
       if (userList.length > 0) {
         setRecentArtists(userList);
 
-        // Dynamically fetch portraits from Deezer for artists without a custom portrait
+        // Dynamically fetch verified portraits from Deezer for artists without a custom portrait
         userList.forEach(item => {
-          const norm = item.artist.trim().toLowerCase();
-          if (!POPULAR_ARTIST_AVATARS[norm]) {
-            fetch(`https://api.deezer.com/search/artist?q=${encodeURIComponent(item.artist)}&limit=1`)
-              .then(res => res.json())
-              .then(data => {
-                const pic = data?.data?.[0]?.picture_big;
-                if (pic) {
-                  try {
-                    localStorage.setItem(`spytify_artist_avatar_${norm}`, pic);
-                  } catch {}
-                  setRecentArtists(prev => prev.map(a => a.artist === item.artist ? { ...a, avatar: pic } : a));
-                }
-              })
-              .catch(() => {});
-          }
+          fetchArtistPortraitOnline(item.artist).then(pic => {
+            if (pic) {
+              setRecentArtists(prev => prev.map(a => a.artist === item.artist ? { ...a, avatar: pic } : a));
+            }
+          });
         });
       } else {
         setRecentArtists(DEFAULT_FEATURED_ARTISTS);
@@ -1696,7 +1446,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       alt={artist.artist}
                       referrerPolicy="no-referrer"
                       onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = POPULAR_ARTIST_AVATARS[artist.artist.toLowerCase()] || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80';
+                        (e.currentTarget as HTMLImageElement).src = getOrResolveArtistAvatar(artist.artist);
                       }}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-110"
                     />
@@ -1830,7 +1580,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       alt={artistItem.artist}
                       referrerPolicy="no-referrer"
                       onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = POPULAR_ARTIST_AVATARS[artistItem.artist.toLowerCase()] || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80';
+                        (e.currentTarget as HTMLImageElement).src = getOrResolveArtistAvatar(artistItem.artist);
                       }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
