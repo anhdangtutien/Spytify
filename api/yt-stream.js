@@ -4,11 +4,12 @@
 let cachedVisitorData = '';
 let cachedVisitorAt = 0;
 
-async function getVisitorData(query = 'Sơn Tùng') {
+async function getVisitorData(query = 'Sơn Tùng M-TP') {
   const now = Date.now();
   if (cachedVisitorData && now - cachedVisitorAt < 10 * 60 * 1000) {
     return cachedVisitorData;
   }
+  const cleanQ = (query && query.trim().length >= 2) ? query.trim() : 'Sơn Tùng M-TP';
   try {
     const res = await fetch('https://music.youtube.com/youtubei/v1/search?prettyPrint=false', {
       method: 'POST',
@@ -26,7 +27,7 @@ async function getVisitorData(query = 'Sơn Tùng') {
             gl: 'VN',
           },
         },
-        query,
+        query: cleanQ,
         params: 'EgWKAQIIAWoKEAkQBRAKEAMQBA==',
       }),
     });
@@ -50,6 +51,7 @@ async function resolveAudioStream(videoId, visitorData) {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
         'X-Youtube-Client-Name': '101',
         'X-Youtube-Client-Version': '1.02',
+        'Origin': 'https://www.youtube.com',
         ...(visitorData ? { 'X-Goog-Visitor-Id': visitorData } : {}),
       },
       body: JSON.stringify({
@@ -59,6 +61,7 @@ async function resolveAudioStream(videoId, visitorData) {
             clientVersion: '1.02',
             deviceMake: 'Apple',
             deviceModel: 'RealityDevice17,1',
+            userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
             osName: 'visionOS',
             osVersion: '26.5.23O471',
             hl: 'en',
@@ -129,7 +132,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const visitor = await getVisitorData(`${title} ${artist}`.trim() || videoId);
+  const visitor = await getVisitorData(`${title} ${artist}`.trim() || 'Sơn Tùng M-TP');
   const streamInfo = await resolveAudioStream(videoId, visitor);
 
   if (!streamInfo || !streamInfo.url) {
