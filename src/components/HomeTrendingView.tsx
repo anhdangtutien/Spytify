@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
   Flame, Play, Disc, Sparkles, TrendingUp, Music, 
@@ -861,23 +861,80 @@ const CURATED_BY_CATEGORY: Record<string, SearchResult[]> = {
 };
 
 const POPULAR_ARTIST_AVATARS: Record<string, string> = {
-  'sơn tùng m-tp': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
-  'sơn tùng': 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
-  'vũ.': 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
-  'vũ': 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
-  'đen': 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
-  'đen vâu': 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
-  'hieuthuhai': 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400&auto=format&fit=crop&q=80',
-  'bruno mars': 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
-  'taylor swift': 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80',
-  'billie eilish': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80',
-  'lady gaga': 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
-  'sabrina carpenter': 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&auto=format&fit=crop&q=80',
-  'newjeans': 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=400&auto=format&fit=crop&q=80',
-  'blackpink': 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
-  'rosé': 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
-  'yoasobi': 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80',
-  'creepy nuts': 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80',
+  'sơn tùng m-tp': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
+  'sơn tùng': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
+  'son tung m-tp': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
+  'm-tp': 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
+  'vũ.': 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
+  'vũ': 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
+  'vu': 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
+  'đen': 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
+  'đen vâu': 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
+  'den': 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
+  'hieuthuhai': 'https://cdn-images.dzcdn.net/images/artist/731891d7627e78e25ea9e507d3fd8333/500x500-000000-80-0-0.jpg',
+  'bruno mars': 'https://cdn-images.dzcdn.net/images/artist/90f0b5b11df4f87ee878f38569b5995b/500x500-000000-80-0-0.jpg',
+  'taylor swift': 'https://cdn-images.dzcdn.net/images/artist/cc2495870fe1a792ad0cdb05501ad5ec/500x500-000000-80-0-0.jpg',
+  'billie eilish': 'https://cdn-images.dzcdn.net/images/artist/8eab1a9a644889aabaca1e193e05f984/500x500-000000-80-0-0.jpg',
+  'rosé': 'https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0ec280/500x500-000000-80-0-0.jpg',
+  'rose': 'https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0ec280/500x500-000000-80-0-0.jpg',
+  'joji': 'https://cdn-images.dzcdn.net/images/artist/3bdd07e6653666b8885b59c522ab3deb/500x500-000000-80-0-0.jpg',
+  'calvin harris': 'https://cdn-images.dzcdn.net/images/artist/a53031d02dc2f8a8eb15d117c015d5eb/500x500-000000-80-0-0.jpg',
+  'ellie goulding': 'https://cdn-images.dzcdn.net/images/artist/e3611824a11b28e07bc5a363c629dcb4/500x500-000000-80-0-0.jpg',
+  'daoko': 'https://cdn-images.dzcdn.net/images/artist/07e141eb3098626902c170ddd9fded25/500x500-000000-80-0-0.jpg',
+  'hiroyuki sawano': 'https://cdn-images.dzcdn.net/images/artist/84f4713f8e03d7f379301adea0489da4/500x500-000000-80-0-0.jpg',
+  'sawano hiroyuki': 'https://cdn-images.dzcdn.net/images/artist/84f4713f8e03d7f379301adea0489da4/500x500-000000-80-0-0.jpg',
+  'lady gaga': 'https://cdn-images.dzcdn.net/images/artist/721d8fab84b315502de422b8d0901509/500x500-000000-80-0-0.jpg',
+  'sabrina carpenter': 'https://cdn-images.dzcdn.net/images/artist/4a9cdc7737e2a0e59b4917b47884b859/500x500-000000-80-0-0.jpg',
+  'newjeans': 'https://cdn-images.dzcdn.net/images/artist/0866c2c1d7d00879f5db46ddc1250db8/500x500-000000-80-0-0.jpg',
+  'blackpink': 'https://cdn-images.dzcdn.net/images/artist/89675729453893a91be35bde691050ff/500x500-000000-80-0-0.jpg',
+  'the weeknd': 'https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/500x500-000000-80-0-0.jpg',
+  'yoasobi': 'https://cdn-images.dzcdn.net/images/artist/2cbfaf626a591e162bfcc2b4b0214217/500x500-000000-80-0-0.jpg',
+  'creepy nuts': 'https://cdn-images.dzcdn.net/images/artist/b7f4334dd626befb590e9349bca72c99/500x500-000000-80-0-0.jpg',
+  'charlie puth': 'https://cdn-images.dzcdn.net/images/artist/c355b366638e0c5f20f4b265f0f12646/500x500-000000-80-0-0.jpg',
+  'justin bieber': 'https://cdn-images.dzcdn.net/images/artist/fe097f693cebf1f882e3da79e99e3bf9/500x500-000000-80-0-0.jpg',
+  'ariana grande': 'https://cdn-images.dzcdn.net/images/artist/721d8fab84b315502de422b8d0901509/500x500-000000-80-0-0.jpg',
+  'drake': 'https://cdn-images.dzcdn.net/images/artist/eb0ed5b21d1ea5af021fc074ded0e91f/500x500-000000-80-0-0.jpg',
+  'adele': 'https://cdn-images.dzcdn.net/images/artist/67a8bd3b465446fc8098631c85d3c8a2/500x500-000000-80-0-0.jpg',
+  'eminem': 'https://cdn-images.dzcdn.net/images/artist/7fa738468c9a73ff98c1e1b78d622b81/500x500-000000-80-0-0.jpg',
+  'ed sheeran': 'https://cdn-images.dzcdn.net/images/artist/d6bb84390641d8ae9118228d9544e53d/500x500-000000-80-0-0.jpg',
+  'ado': 'https://cdn-images.dzcdn.net/images/artist/858e14d0f8ee062253851aaf3b31daef/500x500-000000-80-0-0.jpg',
+  'kenshi yonezu': 'https://cdn-images.dzcdn.net/images/artist/36668c9f416b041169df04110a0812f0/500x500-000000-80-0-0.jpg',
+  'olivia rodrigo': 'https://cdn-images.dzcdn.net/images/artist/2c9e480317183c037eaebcd7ba96daf4/500x500-000000-80-0-0.jpg',
+  'dua lipa': 'https://cdn-images.dzcdn.net/images/artist/877872aaf75694f11d53c318700ab2b5/500x500-000000-80-0-0.jpg',
+  'soobin hoàng sơn': 'https://cdn-images.dzcdn.net/images/artist/1ec4a87462f2e96ac18bc9b8dac67564/500x500-000000-80-0-0.jpg',
+  'soobin': 'https://cdn-images.dzcdn.net/images/artist/1ec4a87462f2e96ac18bc9b8dac67564/500x500-000000-80-0-0.jpg',
+  'mono': 'https://cdn-images.dzcdn.net/images/artist/4a65d2bb04b583957a3c463c11d6744e/500x500-000000-80-0-0.jpg',
+  'wren evans': 'https://cdn-images.dzcdn.net/images/artist/ee2f42bb7a077ee88b189f4edf422b3e/500x500-000000-80-0-0.jpg',
+  'grey d': 'https://cdn-images.dzcdn.net/images/artist/17a36e7031efb7d45546d1d152d2cad4/500x500-000000-80-0-0.jpg',
+  'tlinh': 'https://cdn-images.dzcdn.net/images/artist/395e24e799b806e4b42e5b913f949fdc/500x500-000000-80-0-0.jpg',
+  'mck': 'https://cdn-images.dzcdn.net/images/artist/7d02cd9134d5d35dc89ae9becc327089/500x500-000000-80-0-0.jpg',
+  'low g': 'https://cdn-images.dzcdn.net/images/artist/8e41c01c6de212b06c8e952772a08ed9/500x500-000000-80-0-0.jpg',
+  'amee': 'https://cdn-images.dzcdn.net/images/artist/0bfd1ba5423a94ccb48d2069d528fbb0/500x500-000000-80-0-0.jpg',
+  'hoàng thùy linh': 'https://cdn-images.dzcdn.net/images/artist/ada412ca9a4796d6a7584567b871779a/500x500-000000-80-0-0.jpg',
+  'đức phúc': 'https://cdn-images.dzcdn.net/images/artist/aa64c2ebcf1f0a8c969043d9bb5509c4/500x500-000000-80-0-0.jpg',
+  'erik': 'https://cdn-images.dzcdn.net/images/artist/58b32b41a250bdbee252a877df414c7f/500x500-000000-80-0-0.jpg',
+  'eve': 'https://cdn-images.dzcdn.net/images/artist/5825a1c6545774d1d3484ec3703b7e37/500x500-000000-80-0-0.jpg',
+  'fujii kaze': 'https://cdn-images.dzcdn.net/images/artist/16cbd84f0e0300725b734980f42112b6/500x500-000000-80-0-0.jpg',
+};
+
+const getOrResolveArtistAvatar = (artistName: string, trackCover?: string): string => {
+  const norm = artistName.trim().toLowerCase();
+  if (POPULAR_ARTIST_AVATARS[norm]) return POPULAR_ARTIST_AVATARS[norm];
+  
+  for (const [k, v] of Object.entries(POPULAR_ARTIST_AVATARS)) {
+    if (norm.includes(k) || k.includes(norm)) return v;
+  }
+  
+  try {
+    const cached = localStorage.getItem(`spytify_artist_avatar_${norm}`);
+    if (cached) return cached;
+  } catch {}
+
+  if (trackCover && trackCover.startsWith('http') && !trackCover.includes('photo-1511671782779')) {
+    return trackCover;
+  }
+
+  return 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80';
 };
 
 interface RecentArtistItem {
@@ -892,140 +949,161 @@ const DEFAULT_FEATURED_ARTISTS: RecentArtistItem[] = [
   {
     artist: 'Sơn Tùng M-TP',
     count: 24,
-    avatar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Đừng Làm Trái Tim Anh Đau',
     sampleVideoId: 'abPmZCZZrFA',
   },
   {
     artist: 'Bruno Mars',
     count: 19,
-    avatar: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/90f0b5b11df4f87ee878f38569b5995b/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Die With A Smile / APT.',
     sampleVideoId: 'kPa7bsKwL-8',
   },
   {
     artist: 'Billie Eilish',
     count: 16,
-    avatar: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/8eab1a9a644889aabaca1e193e05f984/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Birds of a Feather',
     sampleVideoId: 'd5gf9dXHevw',
   },
   {
     artist: 'Vũ.',
     count: 14,
-    avatar: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/3b39de9719ace79996aa2a893a1d42c7/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Bước Qua Mùa Cô Đơn',
     sampleVideoId: 'YQHsXMglC9A',
   },
   {
     artist: 'Taylor Swift',
     count: 18,
-    avatar: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/cc2495870fe1a792ad0cdb05501ad5ec/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Cruel Summer',
     sampleVideoId: 'ic8j13piAhQ',
   },
   {
     artist: 'HIEUTHUHAI',
     count: 12,
-    avatar: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/731891d7627e78e25ea9e507d3fd8333/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Không Thể Say / NOLOVE',
     sampleVideoId: 'u4k4iG1u7lE',
   },
   {
     artist: 'ROSÉ',
     count: 15,
-    avatar: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/eefd9b0fc6d1cb51405e29009c0ec280/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'APT. (feat. Bruno Mars)',
     sampleVideoId: 'ekr2nIex040',
   },
   {
+    artist: 'Joji',
+    count: 14,
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/3bdd07e6653666b8885b59c522ab3deb/500x500-000000-80-0-0.jpg',
+    topTrackTitle: 'Glimpse of Us / SLOW DANCING IN THE DARK',
+    sampleVideoId: 'FvOpPeKSf_4',
+  },
+  {
     artist: 'YOASOBI',
     count: 11,
-    avatar: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/2cbfaf626a591e162bfcc2b4b0214217/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Idol (アイドル)',
     sampleVideoId: 'ZRtdQ81jPUQ',
   },
   {
     artist: 'NewJeans',
     count: 14,
-    avatar: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/0866c2c1d7d00879f5db46ddc1250db8/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Super Shy / Hype Boy',
     sampleVideoId: 'ArmDp-zijuc',
   },
   {
     artist: 'The Weeknd',
     count: 17,
-    avatar: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/581693b4724a7fcfa754455101e13a44/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Blinding Lights / Timeless',
     sampleVideoId: '4NRXx6U8ABQ',
   },
   {
     artist: 'Đen',
     count: 13,
-    avatar: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/ff44b36e05cc117f302e5966746cfe25/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Nấu Ăn Cho Em',
     sampleVideoId: 'L8eRzOYhLuw',
   },
   {
     artist: 'Sabrina Carpenter',
     count: 15,
-    avatar: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/4a9cdc7737e2a0e59b4917b47884b859/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Espresso / Taste',
     sampleVideoId: 'eVli-tstM5E',
   },
   {
-    artist: 'Eve',
-    count: 10,
-    avatar: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&auto=format&fit=crop&q=80',
-    topTrackTitle: 'Kaikai Kitan (廻廻奇譚)',
-    sampleVideoId: '1tk1pqwrOys',
+    artist: 'Calvin Harris',
+    count: 12,
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/a53031d02dc2f8a8eb15d117c015d5eb/500x500-000000-80-0-0.jpg',
+    topTrackTitle: 'Summer / One Kiss',
+    sampleVideoId: 'ebXbLfLACGM',
+  },
+  {
+    artist: 'Ellie Goulding',
+    count: 11,
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/e3611824a11b28e07bc5a363c629dcb4/500x500-000000-80-0-0.jpg',
+    topTrackTitle: 'Love Me Like You Do / Lights',
+    sampleVideoId: 'AJtDXIazrMo',
   },
   {
     artist: 'DAOKO',
     count: 12,
-    avatar: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/07e141eb3098626902c170ddd9fded25/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Uchiage Hanabi (打上花火)',
     sampleVideoId: '-tKVN2mAKRI',
   },
   {
+    artist: 'Hiroyuki Sawano',
+    count: 10,
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/84f4713f8e03d7f379301adea0489da4/500x500-000000-80-0-0.jpg',
+    topTrackTitle: 'Attack on Titan OST / Vogel im Käfig',
+    sampleVideoId: 'w3UR7nsTLlQ',
+  },
+  {
     artist: 'Lady Gaga',
     count: 13,
-    avatar: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/721d8fab84b315502de422b8d0901509/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Die With A Smile / Poker Face',
     sampleVideoId: 'kPa7bsKwL-8',
   },
   {
     artist: 'Kenshi Yonezu',
     count: 11,
-    avatar: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/36668c9f416b041169df04110a0812f0/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Lemon / Kick Back',
     sampleVideoId: 'SX_ViT4Ra7k',
   },
   {
     artist: 'Charlie Puth',
     count: 12,
-    avatar: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/c355b366638e0c5f20f4b265f0f12646/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Attention / Left and Right',
     sampleVideoId: 'nfs8NYg7yQM',
   },
   {
     artist: 'Fujii Kaze',
     count: 10,
-    avatar: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/16cbd84f0e0300725b734980f42112b6/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Shinunoga E-Wa (死ぬのがいいわ)',
     sampleVideoId: 'dFzVjUgtpRg',
   },
   {
     artist: 'Creepy Nuts',
     count: 9,
-    avatar: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/b7f4334dd626befb590e9349bca72c99/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Bling-Bang-Bang-Born',
     sampleVideoId: 'mLW35ymz1gk',
   },
   {
     artist: 'BLACKPINK',
     count: 14,
-    avatar: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?w=400&auto=format&fit=crop&q=80',
+    avatar: 'https://cdn-images.dzcdn.net/images/artist/89675729453893a91be35bde691050ff/500x500-000000-80-0-0.jpg',
     topTrackTitle: 'Pink Venom / How You Like That',
     sampleVideoId: 'gQlMMD8auMs',
   },
@@ -1130,12 +1208,47 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   // Nghệ sĩ hay nghe của tài khoản hiện tại
   const [recentArtists, setRecentArtists] = useState<RecentArtistItem[]>(DEFAULT_FEATURED_ARTISTS);
 
+  // Hero Billboard Showcase State (màn hình lớn tự động chuyển fade dần các nghệ sĩ hay nghe)
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [isHeroPaused, setIsHeroPaused] = useState(false);
+
+  const heroArtists = useMemo(() => {
+    return recentArtists.slice(0, 8);
+  }, [recentArtists]);
+
+  // Tự động chuyển slide cross-fade sau mỗi 6 giây (tạm dừng khi hover)
+  useEffect(() => {
+    if (heroArtists.length <= 1 || isHeroPaused) return;
+    const timer = setInterval(() => {
+      setHeroIndex(prev => (prev + 1) % heroArtists.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [heroArtists.length, isHeroPaused]);
+
   // Artist Album Mix (Powered by Rust Backend)
   const [activeArtistMix, setActiveArtistMix] = useState<ArtistMix | null>(null);
   const [loadingArtistMix, setLoadingArtistMix] = useState(false);
   const [loadingArtistName, setLoadingArtistName] = useState<string>('');
   const mixTracklistRef = useRef<HTMLDivElement | null>(null);
   const recentArtistsScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-slideshow cho danh sách đề xuất nghệ sĩ hay nghe (tự động trượt và tạm dừng khi hover)
+  const [isArtistSliderPaused, setIsArtistSliderPaused] = useState(false);
+
+  useEffect(() => {
+    if (isArtistSliderPaused || recentArtists.length <= 4) return;
+    const interval = setInterval(() => {
+      const el = recentArtistsScrollRef.current;
+      if (!el) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (el.scrollLeft >= maxScroll - 15) {
+        el.scrollTo({ left: 0, behavior: 'smooth' });
+      } else {
+        el.scrollBy({ left: 160, behavior: 'smooth' });
+      }
+    }, 3200);
+    return () => clearInterval(interval);
+  }, [isArtistSliderPaused, recentArtists.length]);
 
   const scrollRecentArtists = (direction: 'left' | 'right') => {
     if (recentArtistsScrollRef.current) {
@@ -1225,13 +1338,13 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
 
       const userList = Object.entries(counts)
         .sort((a, b) => b[1].count - a[1].count)
-        .slice(0, 20)
+        .slice(0, 24)
         .map(([artist, data]) => {
-          const fallbackCover = POPULAR_ARTIST_AVATARS[artist.toLowerCase()] || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80';
+          const avatar = getOrResolveArtistAvatar(artist, data.cover);
           return {
             artist,
             count: data.count,
-            avatar: data.cover || fallbackCover,
+            avatar,
             topTrackTitle: data.topTitle,
             sampleVideoId: data.id,
           };
@@ -1239,6 +1352,25 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
 
       if (userList.length > 0) {
         setRecentArtists(userList);
+
+        // Dynamically fetch portraits from Deezer for artists without a custom portrait
+        userList.forEach(item => {
+          const norm = item.artist.trim().toLowerCase();
+          if (!POPULAR_ARTIST_AVATARS[norm]) {
+            fetch(`https://api.deezer.com/search/artist?q=${encodeURIComponent(item.artist)}&limit=1`)
+              .then(res => res.json())
+              .then(data => {
+                const pic = data?.data?.[0]?.picture_big;
+                if (pic) {
+                  try {
+                    localStorage.setItem(`spytify_artist_avatar_${norm}`, pic);
+                  } catch {}
+                  setRecentArtists(prev => prev.map(a => a.artist === item.artist ? { ...a, avatar: pic } : a));
+                }
+              })
+              .catch(() => {});
+          }
+        });
       } else {
         setRecentArtists(DEFAULT_FEATURED_ARTISTS);
       }
@@ -1460,6 +1592,177 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
         </div>
       </div>
 
+      {/* ─── HERO SHOWCASE BILLBOARD: CHUYỂN FADE DẦN CÁC NGHỆ SĨ HAY NGHE ──── */}
+      {heroArtists.length > 0 && (
+        <div 
+          className="relative w-full h-[240px] sm:h-[280px] md:h-[310px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#09090e] group select-none"
+          onMouseEnter={() => setIsHeroPaused(true)}
+          onMouseLeave={() => setIsHeroPaused(false)}
+        >
+          {heroArtists.map((artist, idx) => {
+            const isActive = idx === heroIndex;
+            const isLoadingThis = loadingArtistMix && loadingArtistName === artist.artist;
+            return (
+              <div
+                key={artist.artist + idx}
+                className={`absolute inset-0 transition-opacity duration-1000 ease-in-out flex items-center justify-between p-6 sm:p-8 md:p-10 ${
+                  isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
+                }`}
+              >
+                {/* Background Blurred Ambient Image */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <img
+                    src={artist.avatar}
+                    alt={artist.artist}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover scale-110 filter blur-3xl opacity-35 transition-transform duration-1000 ease-out"
+                  />
+                  {/* Gradient Overlays for contrast */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#09090e] via-[#09090e]/85 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#09090e] via-transparent to-[#09090e]/40" />
+                  <div 
+                    className="absolute -top-24 -left-24 w-96 h-96 rounded-full blur-[100px] opacity-25 pointer-events-none"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                </div>
+
+                {/* Left Column: Information & Actions */}
+                <div className="relative z-10 max-w-xl flex flex-col justify-center space-y-3 sm:space-y-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      className="text-[10px] sm:text-xs font-bold uppercase tracking-widest font-mono px-2.5 py-1 rounded-full border flex items-center gap-1.5 shadow-sm"
+                      style={{
+                        color: accentColor,
+                        backgroundColor: `${accentColor}20`,
+                        borderColor: `${accentColor}40`,
+                      }}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{language === 'vi' ? 'Nghệ sĩ bạn hay nghe' : 'Top Listened Artist'}</span>
+                    </span>
+                    <span className="text-[10px] sm:text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/10">
+                      #{idx + 1}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h2 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight drop-shadow-xl line-clamp-1">
+                      {artist.artist}
+                    </h2>
+                    <div className="flex items-center gap-3 mt-1.5 text-xs sm:text-sm text-zinc-300 font-medium">
+                      <span className="flex items-center gap-1.5 text-zinc-300">
+                        <Headphones className="w-3.5 h-3.5 text-zinc-400" />
+                        <strong className="text-white">{artist.count}</strong> {language === 'vi' ? 'lượt nghe gần đây' : 'recent plays'}
+                      </span>
+                      {artist.topTrackTitle && (
+                        <>
+                          <span className="text-zinc-600">•</span>
+                          <span className="text-zinc-400 line-clamp-1 italic">
+                            {artist.topTrackTitle}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenArtistMix(artist)}
+                      className="px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                      style={{
+                        backgroundColor: accentColor,
+                        color: getContrastTextColor(accentColor),
+                      }}
+                    >
+                      {isLoadingThis ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Play className="w-4 h-4 fill-current ml-0.5" />
+                      )}
+                      <span>{language === 'vi' ? 'Phát Album Mix' : 'Play Artist Mix'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Column: Hero Artist Card Showcase */}
+                <div className="relative z-10 hidden sm:flex items-center justify-center pr-2">
+                  <div 
+                    onClick={() => handleOpenArtistMix(artist)}
+                    className="relative w-40 h-40 sm:w-48 sm:h-48 md:w-56 md:h-56 rounded-3xl overflow-hidden shadow-2xl border-2 border-white/15 ring-4 ring-black/40 group/card cursor-pointer hover:border-white/30 transition-all duration-300 hover:scale-105"
+                  >
+                    <img
+                      src={artist.avatar}
+                      alt={artist.artist}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = POPULAR_ARTIST_AVATARS[artist.artist.toLowerCase()] || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80';
+                      }}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity flex items-end justify-center pb-3">
+                      <span className="text-xs font-bold text-white px-3 py-1 rounded-full bg-white/20 backdrop-blur-md">
+                        {language === 'vi' ? 'Mở Album Mix' : 'Open Mix'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Billboard Navigation Controls */}
+          {heroArtists.length > 1 && (
+            <div className="absolute right-4 bottom-4 z-20 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2 py-1.5 rounded-2xl border border-white/10 shadow-lg">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setHeroIndex(prev => (prev - 1 + heroArtists.length) % heroArtists.length);
+                }}
+                className="w-7 h-7 rounded-xl bg-white/5 hover:bg-white/15 text-zinc-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                title={language === 'vi' ? 'Nghệ sĩ trước' : 'Previous artist'}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              
+              {/* Mini Indicators */}
+              <div className="flex items-center gap-1 px-1">
+                {heroArtists.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHeroIndex(i);
+                    }}
+                    className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                      i === heroIndex ? 'w-5' : 'w-1.5 bg-white/30 hover:bg-white/60'
+                    }`}
+                    style={{
+                      backgroundColor: i === heroIndex ? accentColor : undefined,
+                    }}
+                    title={`Artist #${i + 1}`}
+                  />
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setHeroIndex(prev => (prev + 1) % heroArtists.length);
+                }}
+                className="w-7 h-7 rounded-xl bg-white/5 hover:bg-white/15 text-zinc-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                title={language === 'vi' ? 'Nghệ sĩ tiếp theo' : 'Next artist'}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── NGHỆ SĨ BẠN HAY NGHE GẦN ĐÂY (Cuộn ngang 1 hàng duy nhất) ──────────────────── */}
       {recentArtists.length > 0 && (
         <div className="space-y-3.5">
@@ -1471,6 +1774,17 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
               </h2>
             </div>
             <div className="flex items-center gap-3">
+              <div 
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono transition-colors"
+                title={language === 'vi' ? 'Tự động trượt danh sách nghệ sĩ đề xuất (tạm dừng khi rê chuột)' : 'Auto-scrolling suggested artists (pauses on hover)'}
+              >
+                <span 
+                  className={`w-1.5 h-1.5 rounded-full ${isArtistSliderPaused ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`} 
+                />
+                <span className={isArtistSliderPaused ? 'text-amber-300' : 'text-zinc-300'}>
+                  {isArtistSliderPaused ? (language === 'vi' ? 'Tạm dừng' : 'Paused') : 'Auto Slideshow'}
+                </span>
+              </div>
               <span className="text-xs text-[#777] font-mono">
                 {currentUser?.username ? `@${currentUser.username}` : getTranslation(language, 'home.tasteRecommendations')}
               </span>
@@ -1497,6 +1811,8 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
 
           <div
             ref={recentArtistsScrollRef}
+            onMouseEnter={() => setIsArtistSliderPaused(true)}
+            onMouseLeave={() => setIsArtistSliderPaused(false)}
             className="flex items-stretch gap-3 overflow-x-auto hover-scrollbar scroll-smooth py-1"
           >
             {recentArtists.map((artistItem, idx) => {
@@ -1514,7 +1830,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       alt={artistItem.artist}
                       referrerPolicy="no-referrer"
                       onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80';
+                        (e.currentTarget as HTMLImageElement).src = POPULAR_ARTIST_AVATARS[artistItem.artist.toLowerCase()] || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80';
                       }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
@@ -1557,104 +1873,6 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
           </div>
         </div>
       )}
-
-      {/* ─── HERO SPOTLIGHT (BILLBOARD HOT #1 / FEATURED TRACK) ──────────────── */}
-      {loading ? (
-        <div className="relative rounded-2xl overflow-hidden bg-[#0d0d12] border border-[#1c1c24] p-6 lg:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl animate-pulse">
-          <div className="z-10 max-w-xl space-y-4 w-full">
-            <div className="w-36 h-5 bg-white/10 rounded-full" />
-            <div className="w-3/4 h-8 bg-white/10 rounded-xl" />
-            <div className="w-1/2 h-4 bg-white/10 rounded-md" />
-            <div className="w-32 h-9 bg-white/10 rounded-xl mt-3" />
-          </div>
-          <div className="w-44 h-44 lg:w-52 lg:h-52 rounded-2xl bg-white/10 flex-shrink-0" />
-        </div>
-      ) : featured ? (
-        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-[#0d0d12] via-[#09090c] to-black border border-[#1c1c24] p-6 lg:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
-          <div className="z-10 max-w-xl space-y-3">
-            <div className="flex items-center gap-2">
-              <span 
-                className="px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider font-mono flex items-center gap-1.5"
-                style={{
-                  backgroundColor: `${accentColor}20`,
-                  color: accentColor,
-                  borderColor: `${accentColor}50`,
-                }}
-              >
-                <Crown className="w-3 h-3" style={{ color: accentColor }} />
-                {getTranslation(language, 'trending.globalRank')}
-              </span>
-              <span className="text-xs text-[#8e8e9f] font-mono">Top Trending Stream</span>
-            </div>
-
-            <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight leading-tight">
-              {sanitizeTrackTitle(featured.title)}
-            </h1>
-
-            <p className="text-sm font-medium text-[#a0a0b2]">
-              {featured.artist} • <span className="text-white font-mono">{featured.album || 'Billboard Spotlight'}</span>
-            </p>
-
-            <div className="pt-2 flex items-center gap-3">
-              <button
-                onClick={() => onPlaySearchResult(featured, trendingTracks)}
-                style={{
-                  backgroundColor: accentColor,
-                  color: getContrastTextColor(accentColor),
-                  boxShadow: `0 0 16px ${accentColor}40`
-                }}
-                className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 hover:scale-105 active:scale-95"
-              >
-                <Play className="w-4 h-4 fill-current ml-0.5" />
-                <span>{getTranslation(language, 'trending.playNow')}</span>
-              </button>
-              {(!featured.duration_secs || featured.duration_secs <= 0) ? (
-                <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                  LIVE 24/7
-                </span>
-              ) : (
-                <span className="text-xs font-mono text-[#777]">{formatTime(featured.duration_secs)}</span>
-              )}
-            </div>
-          </div>
-
-          {/* Featured Cover Art */}
-          <div
-            onClick={() => onPlaySearchResult(featured, trendingTracks)}
-            className="relative w-44 h-44 lg:w-52 lg:h-52 rounded-2xl overflow-hidden border border-[#2a2a35] flex-shrink-0 cursor-pointer shadow-xl group"
-          >
-            {featured.thumbnail ? (
-              <img
-                src={optimizeThumbnailUrl(featured.thumbnail, featured.url_or_id)}
-                alt={featured.title}
-                referrerPolicy="no-referrer"
-                onError={(e) => handleImageError(e, featured.url_or_id)}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-            ) : (
-              <div className="w-full h-full bg-[#121218] flex items-center justify-center text-white">
-                <Disc className="w-12 h-12" />
-              </div>
-            )}
-            <div className="absolute top-2 right-2">
-              {getSourceBadge(featured.source)}
-            </div>
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <div 
-                className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform"
-                style={{
-                  backgroundColor: accentColor,
-                  color: getContrastTextColor(accentColor),
-                  boxShadow: `0 0 16px ${accentColor}60`,
-                }}
-              >
-                <Play className="w-5 h-5 fill-current ml-0.5" />
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {/* ─── CATEGORY FILTER PILLS ────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1741,135 +1959,294 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
         </div>
       )}
 
-      {/* ─── TOP 10 LEADERBOARD CHART ─────────────────────────────────────── */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-[#161620] pb-2">
-          <h2 className="text-sm font-bold text-white flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" style={{ color: accentColor }} />
-            {getTranslation(language, 'trending.title')}
-          </h2>
-          <span className="text-xs text-[#777] font-mono">{getTranslation(language, 'trending.top10')}</span>
+      {/* ─── REDESIGNED TRENDING TOP 10 SHOWCASE ─────────────────────────── */}
+      <div className="space-y-4 pt-1">
+        {/* Section Header */}
+        <div className="flex items-center justify-between border-b border-[#161620] pb-2.5">
+          <div className="flex items-center gap-2.5">
+            <div 
+              className="w-7 h-7 rounded-lg flex items-center justify-center shadow-md"
+              style={{
+                backgroundColor: `${accentColor}20`,
+                color: accentColor,
+              }}
+            >
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+                <span>{getTranslation(language, 'trending.title')}</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/10 font-bold">
+                  TOP 10
+                </span>
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {top10.length > 0 && !loading && (
+              <button
+                type="button"
+                onClick={() => onPlaySearchResult(top10[0], top10)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-md hover:scale-105 active:scale-95"
+                style={{
+                  backgroundColor: accentColor,
+                  color: getContrastTextColor(accentColor),
+                }}
+                title={language === 'vi' ? 'Phát toàn bộ danh sách Top 10' : 'Play all Top 10 tracks'}
+              >
+                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                <span>{language === 'vi' ? 'Phát Top 10' : 'Play Top 10'}</span>
+              </button>
+            )}
+            <span className="text-xs text-[#777] font-mono hidden sm:inline">
+              {getTranslation(language, 'trending.top10')}
+            </span>
+          </div>
         </div>
 
+        {/* Content Showcase */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {Array.from({ length: 10 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="p-3 rounded-xl bg-[#09090c] border border-[#161620] flex items-center justify-between gap-3 animate-pulse"
-              >
-                <div className="flex items-center gap-3 overflow-hidden flex-1">
-                  <div className="w-7 h-7 rounded-lg bg-white/10 flex-shrink-0" />
-                  <div className="w-11 h-11 rounded-lg bg-white/10 flex-shrink-0" />
-                  <div className="overflow-hidden flex-1 space-y-1.5">
-                    <div className="w-3/4 h-3.5 bg-white/10 rounded" />
+          <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+            {/* Champion Skeleton */}
+            <div className="w-full lg:w-[350px] xl:w-[380px] h-72 rounded-2xl bg-[#0d0d12] border border-[#1c1c24] p-5 flex flex-col justify-between animate-pulse flex-shrink-0">
+              <div className="w-32 h-6 bg-white/10 rounded-full" />
+              <div className="w-44 h-44 bg-white/10 rounded-2xl mx-auto" />
+              <div className="space-y-2">
+                <div className="w-3/4 h-4 bg-white/10 rounded" />
+                <div className="w-1/2 h-3 bg-white/5 rounded" />
+              </div>
+            </div>
+            {/* List Skeleton */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 content-start">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="p-3 rounded-xl bg-[#09090c] border border-[#161620] flex items-center gap-3 animate-pulse">
+                  <div className="w-7 h-7 rounded-lg bg-white/10" />
+                  <div className="w-10 h-10 rounded-lg bg-white/10" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="w-3/4 h-3 bg-white/10 rounded" />
                     <div className="w-1/2 h-2.5 bg-white/5 rounded" />
                   </div>
                 </div>
-                <div className="w-14 h-4 bg-white/10 rounded flex-shrink-0" />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {top10.map((item, idx) => {
-              const rank = idx + 1;
-              const isRank1 = rank === 1;
-              const isRank2 = rank === 2;
-              const isRank3 = rank === 3;
+        ) : top10.length === 0 ? null : (
+          <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+            {/* ─── LEFT: CHAMPION RANK #1 SPOTLIGHT CARD ─── */}
+            {(() => {
+              const rank1 = top10[0];
               const isCurrent = currentTrack && (
-                item.url_or_id === currentTrack.id ||
-                item.url_or_id === currentTrack.path_or_url ||
-                item.title.trim().toLowerCase() === currentTrack.title.trim().toLowerCase()
+                rank1.url_or_id === currentTrack.id ||
+                rank1.url_or_id === currentTrack.path_or_url ||
+                rank1.title.trim().toLowerCase() === currentTrack.title.trim().toLowerCase()
               );
 
               return (
                 <div
-                  key={idx}
-                  onClick={() => onPlaySearchResult(item, top10)}
+                  onClick={() => onPlaySearchResult(rank1, top10)}
+                  className="relative w-full lg:w-[350px] xl:w-[380px] rounded-2xl overflow-hidden border border-white/10 p-5 flex flex-col justify-between group cursor-pointer shadow-xl transition-all duration-300 hover:border-white/30 hover:shadow-2xl flex-shrink-0"
                   style={{
+                    background: 'linear-gradient(145deg, rgba(16,16,24,0.95) 0%, rgba(9,9,14,0.98) 100%)',
                     borderColor: isCurrent ? accentColor : undefined,
-                    backgroundColor: isCurrent ? `${accentColor}18` : undefined,
-                    boxShadow: isCurrent ? `0 0 14px ${accentColor}30` : undefined,
+                    boxShadow: isCurrent ? `0 0 24px ${accentColor}35` : undefined,
                   }}
-                  className={`card-hover-accent p-3 rounded-xl bg-[#09090c] hover:bg-[#121218] border transition-all flex items-center justify-between gap-3 group cursor-pointer shadow-sm ${
-                    isCurrent ? '' : 'border-[#161620]'
-                  }`}
                 >
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    {/* Rank Badge */}
-                    <div
-                      style={isRank1 ? {
-                        backgroundColor: accentColor,
-                        color: getContrastTextColor(accentColor),
-                        boxShadow: `0 0 10px ${accentColor}50`,
-                      } : undefined}
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs font-mono flex-shrink-0 ${
-                        isRank1
-                          ? ''
-                          : isRank2
-                          ? 'bg-white text-black'
-                          : isRank3
-                          ? 'bg-[#252530] text-white'
-                          : 'bg-[#14141a] text-[#777]'
-                      }`}
+                  {/* Ambient Bloom */}
+                  <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <img
+                      src={optimizeThumbnailUrl(rank1.thumbnail || undefined, rank1.url_or_id)}
+                      alt=""
+                      aria-hidden="true"
+                      className="w-full h-full object-cover filter blur-3xl opacity-30 scale-125"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#09090d] via-[#09090d]/80 to-transparent" />
+                  </div>
+
+                  {/* Top Header inside Card */}
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div 
+                      className="px-2.5 py-1 rounded-full border flex items-center gap-1.5 text-[10px] font-mono font-black uppercase tracking-wider shadow-lg"
+                      style={{
+                        backgroundColor: '#fbbf2420',
+                        borderColor: '#fbbf2450',
+                        color: '#fbbf24',
+                      }}
                     >
-                      {rank}
+                      <Crown className="w-3.5 h-3.5 fill-current" />
+                      <span>{language === 'vi' ? 'QUÁN QUÂN #1' : 'GLOBAL #1'}</span>
                     </div>
 
-                    {/* Thumbnail with hover play */}
-                    <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-[#14141c] border border-[#222]">
-                      {item.thumbnail ? (
+                    <div className="flex items-center gap-1.5">
+                      {getSourceBadge(rank1.source)}
+                      {(!rank1.duration_secs || rank1.duration_secs <= 0) ? (
+                        <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                          LIVE
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-mono text-zinc-400 font-medium">
+                          {formatTime(rank1.duration_secs)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Middle: Artwork with Vinyl Disc feel */}
+                  <div className="relative z-10 my-4 flex items-center justify-center">
+                    <div className="relative w-44 h-44 sm:w-48 sm:h-48 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/15 group-hover:scale-105 transition-transform duration-500">
+                      {rank1.thumbnail ? (
                         <img
-                          src={optimizeThumbnailUrl(item.thumbnail, item.url_or_id)}
-                          alt={item.title}
+                          src={optimizeThumbnailUrl(rank1.thumbnail || undefined, rank1.url_or_id)}
+                          alt={rank1.title}
                           referrerPolicy="no-referrer"
-                          onError={(e) => handleImageError(e, item.url_or_id)}
-                          loading="lazy"
-                          decoding="async"
+                          onError={(e) => handleImageError(e, rank1.url_or_id)}
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[#555]">
-                          <Music className="w-4 h-4" />
+                        <div className="w-full h-full bg-[#14141c] flex items-center justify-center text-white">
+                          <Disc className="w-12 h-12" />
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Play className="w-4 h-4 fill-current text-white" />
-                      </div>
-                    </div>
 
-                    {/* Song Info */}
-                    <div className="overflow-hidden">
-                      <p 
-                        className="card-title-accent text-xs font-bold text-white truncate transition-colors" 
-                        style={{ color: isCurrent ? accentColor : undefined }}
-                      >
-                        {sanitizeTrackTitle(item.title)}
-                      </p>
-                      <p className="text-[11px] text-[#8e8e9f] truncate font-mono mt-0.5">
-                        {item.artist}
-                      </p>
+                      {/* Play Button Overlay */}
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center shadow-2xl transform scale-90 group-hover:scale-100 transition-all"
+                          style={{
+                            backgroundColor: accentColor,
+                            color: getContrastTextColor(accentColor),
+                            boxShadow: `0 0 20px ${accentColor}80`,
+                          }}
+                        >
+                          <Play className="w-5 h-5 fill-current ml-0.5" />
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Right metadata */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {(!item.duration_secs || item.duration_secs <= 0) ? (
-                      <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                        LIVE
-                      </span>
-                    ) : (
-                      <>
-                        {getSourceBadge(item.source)}
-                        <span className="text-[11px] font-mono text-[#666]">{formatTime(item.duration_secs)}</span>
-                      </>
-                    )}
+                  {/* Bottom: Info and CTA */}
+                  <div className="relative z-10 space-y-2.5">
+                    <div>
+                      <h3 
+                        className="text-base sm:text-lg font-black text-white line-clamp-1 group-hover:text-cyan-300 transition-colors drop-shadow"
+                        style={{ color: isCurrent ? accentColor : undefined }}
+                      >
+                        {sanitizeTrackTitle(rank1.title)}
+                      </h3>
+                      <p className="text-xs text-zinc-300 line-clamp-1 font-medium mt-0.5">
+                        {rank1.artist} {rank1.album ? `• ${rank1.album}` : ''}
+                      </p>
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPlaySearchResult(rank1, top10);
+                        }}
+                        className="flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md hover:scale-[1.02] active:scale-95 cursor-pointer"
+                        style={{
+                          backgroundColor: accentColor,
+                          color: getContrastTextColor(accentColor),
+                        }}
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                        <span>{language === 'vi' ? 'Phát Quán Quân' : 'Play #1 Track'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
-            })}
+            })()}
+
+            {/* ─── RIGHT: RUNNER-UPS (RANKS 2 TO 10) ─── */}
+            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 content-start">
+              {top10.slice(1).map((item, idx) => {
+                const rank = idx + 2;
+                const isRank2 = rank === 2;
+                const isRank3 = rank === 3;
+                const isCurrent = currentTrack && (
+                  item.url_or_id === currentTrack.id ||
+                  item.url_or_id === currentTrack.path_or_url ||
+                  item.title.trim().toLowerCase() === currentTrack.title.trim().toLowerCase()
+                );
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => onPlaySearchResult(item, top10)}
+                    style={{
+                      borderColor: isCurrent ? accentColor : undefined,
+                      backgroundColor: isCurrent ? `${accentColor}18` : undefined,
+                      boxShadow: isCurrent ? `0 0 14px ${accentColor}30` : undefined,
+                    }}
+                    className={`p-2.5 rounded-xl bg-[#09090d] hover:bg-[#13131c] border transition-all flex items-center justify-between gap-2.5 group cursor-pointer shadow-sm ${
+                      isCurrent ? '' : 'border-[#171722] hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 overflow-hidden flex-1 min-w-0">
+                      {/* Rank Numeral */}
+                      <span 
+                        className={`w-6 text-center font-mono font-black text-xs flex-shrink-0 ${
+                          isRank2
+                            ? 'text-slate-200'
+                            : isRank3
+                            ? 'text-amber-400'
+                            : 'text-zinc-600 group-hover:text-zinc-400'
+                        }`}
+                      >
+                        {rank < 10 ? `0${rank}` : rank}
+                      </span>
+
+                      {/* Thumbnail */}
+                      <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-[#14141c] border border-white/10">
+                        {item.thumbnail ? (
+                          <img
+                            src={optimizeThumbnailUrl(item.thumbnail || undefined, item.url_or_id)}
+                            alt={item.title}
+                            referrerPolicy="no-referrer"
+                            onError={(e) => handleImageError(e, item.url_or_id)}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[#555]">
+                            <Music className="w-4 h-4" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Play className="w-3.5 h-3.5 fill-current text-white ml-0.5" />
+                        </div>
+                      </div>
+
+                      {/* Song Title & Artist */}
+                      <div className="overflow-hidden min-w-0 flex-1">
+                        <p 
+                          className="text-xs font-bold text-white truncate transition-colors group-hover:text-cyan-200" 
+                          style={{ color: isCurrent ? accentColor : undefined }}
+                        >
+                          {sanitizeTrackTitle(item.title)}
+                        </p>
+                        <p className="text-[11px] text-zinc-400 truncate font-mono mt-0.5">
+                          {item.artist}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Metadata Right */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {getSourceBadge(item.source)}
+                      <span className="text-[11px] font-mono text-zinc-500">
+                        {item.duration_secs && item.duration_secs > 0 ? formatTime(item.duration_secs) : 'LIVE'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

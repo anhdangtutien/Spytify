@@ -10,8 +10,8 @@ export interface UpdateInfo {
 }
 
 // Baseline build timestamp for the current installed client
-export const CURRENT_BUILD_DATE = '2026-11-20T22:40:00Z';
-export const CURRENT_VERSION = '1.1.2';
+export const CURRENT_BUILD_DATE = '2026-11-21T09:18:00Z';
+export const CURRENT_VERSION = '1.1.3';
 
 export function compareSemver(v1: string, v2: string): number {
   const parse = (v: string) =>

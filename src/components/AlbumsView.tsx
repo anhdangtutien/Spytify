@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Plus, Disc, Play, Trash2, Music, ArrowLeft, Clock3, FolderPlus, 
-  Sparkles, Layers, Check, X, Pencil, Image as ImageIcon, GripVertical, Download, Loader2
+  Sparkles, Layers, Check, X, Pencil, Image as ImageIcon, GripVertical, Download, Loader2, Square
 } from 'lucide-react';
 import { Track, UserAlbum } from '../types';
 import { TrackTable } from './TrackTable';
@@ -25,6 +25,8 @@ interface AlbumsViewProps {
   language?: LanguageCode;
   availableTracks?: Track[];
   onDownloadAlbum?: (album: UserAlbum) => void;
+  onCancelDownloadAlbum?: (albumId: string) => void;
+  downloadingAlbumId?: string | null;
   onDownloadTrack?: (track: Track) => void;
   downloadingTrackIds?: Set<string>;
 }
@@ -46,6 +48,8 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
   language = 'vi',
   availableTracks = [],
   onDownloadAlbum,
+  onCancelDownloadAlbum,
+  downloadingAlbumId,
   onDownloadTrack,
   downloadingTrackIds,
 }) => {
@@ -720,23 +724,34 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   <span>{language === 'vi' ? 'Thêm bài hát' : 'Add Tracks'}</span>
                 </button>
                 {onDownloadAlbum && (
-                  <button
-                    onClick={() => onDownloadAlbum({ ...selectedAlbum, tracks: cleanAlbumTracks })}
-                    disabled={cleanAlbumTracks.length === 0 || (downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)))}
-                    className="px-4 py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold disabled:opacity-40"
-                    title={language === 'vi' ? 'Tải xuống toàn bộ bài hát trong album về máy' : 'Download all tracks in this album to local disk'}
-                  >
-                    {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)) ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accentColor }} />
-                    ) : (
-                      <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                    )}
-                    <span>
-                      {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id))
-                        ? (language === 'vi' ? 'Đang tải album...' : 'Downloading...')
-                        : (language === 'vi' ? 'Tải xuống Album' : 'Download Album')}
-                    </span>
-                  </button>
+                  downloadingAlbumId === selectedAlbum.id ? (
+                    <button
+                      onClick={() => onCancelDownloadAlbum?.(selectedAlbum.id)}
+                      className="px-4 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-sm hover:shadow-rose-500/20 active:scale-95"
+                      title={language === 'vi' ? 'Dừng tải album này ngay lập tức' : 'Stop downloading album'}
+                    >
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                      <span>{language === 'vi' ? 'Dừng tải album' : 'Stop Download'}</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onDownloadAlbum({ ...selectedAlbum, tracks: cleanAlbumTracks })}
+                      disabled={cleanAlbumTracks.length === 0 || (downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)))}
+                      className="px-4 py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold disabled:opacity-40"
+                      title={language === 'vi' ? 'Tải xuống toàn bộ bài hát trong album về máy' : 'Download all tracks in this album to local disk'}
+                    >
+                      {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)) ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accentColor }} />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                      )}
+                      <span>
+                        {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id))
+                          ? (language === 'vi' ? 'Đang tải album...' : 'Downloading...')
+                          : (language === 'vi' ? 'Tải xuống Album' : 'Download Album')}
+                      </span>
+                    </button>
+                  )
                 )}
                 <button
                   onClick={() => {
@@ -1081,17 +1096,30 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         <Play className="w-4 h-4 fill-current ml-0.5" />
                       </div>
 
-                      {onDownloadAlbum && album.tracks.some(t => t.source !== 'local' && !t.is_downloaded) && (
+                      {downloadingAlbumId === album.id ? (
                         <div
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDownloadAlbum({ ...album, tracks: deduplicateTracks(album.tracks) });
+                            onCancelDownloadAlbum?.(album.id);
                           }}
-                          className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-[#101018]/90 hover:bg-[#1a1a24] text-white border border-[#2a2a38] flex items-center justify-center shadow-lg opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all cursor-pointer"
-                          title={language === 'vi' ? 'Tải xuống album này' : 'Download this album'}
+                          className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 flex items-center justify-center shadow-lg transition-all cursor-pointer animate-pulse z-10"
+                          title={language === 'vi' ? 'Dừng tải album này' : 'Stop downloading this album'}
                         >
-                          <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                          <Square className="w-3.5 h-3.5 fill-current" />
                         </div>
+                      ) : (
+                        onDownloadAlbum && album.tracks.some(t => t.source !== 'local' && !t.is_downloaded) && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDownloadAlbum({ ...album, tracks: deduplicateTracks(album.tracks) });
+                            }}
+                            className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-[#101018]/90 hover:bg-[#1a1a24] text-white border border-[#2a2a38] flex items-center justify-center shadow-lg opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all cursor-pointer"
+                            title={language === 'vi' ? 'Tải xuống album này' : 'Download this album'}
+                          >
+                            <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                          </div>
+                        )
                       )}
                     </div>
 

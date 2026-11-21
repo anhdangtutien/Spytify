@@ -104,6 +104,8 @@ export default function App() {
     return localStorage.getItem('spytify_local_folder') || '';
   });
   const [downloadingTrackIds, setDownloadingTrackIds] = useState<Set<string>>(new Set());
+  const [downloadingAlbumId, setDownloadingAlbumId] = useState<string | null>(null);
+  const cancelledAlbumIdsRef = useRef<Set<string>>(new Set());
 
   // Software Update & Close-to-Tray State
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -3711,11 +3713,44 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       showNotification(language === 'vi' ? 'Toàn bộ bài hát trong album này đã được tải về máy!' : 'All songs in this album are already downloaded!');
       return;
     }
+
+    cancelledAlbumIdsRef.current.delete(album.id);
+    setDownloadingAlbumId(album.id);
+
     showNotification(`⏳ ${language === 'vi' ? `Bắt đầu tải ${tracksToDownload.length} bài hát trong album "${album.title}"...` : `Starting download of ${tracksToDownload.length} tracks in album "${album.title}"...`}`);
-    for (const track of tracksToDownload) {
-      await handleDownloadTrack(track);
+
+    let downloadedCount = 0;
+    let wasCancelled = false;
+
+    try {
+      for (const track of tracksToDownload) {
+        if (cancelledAlbumIdsRef.current.has(album.id)) {
+          wasCancelled = true;
+          break;
+        }
+        await handleDownloadTrack(track);
+        downloadedCount++;
+        if (cancelledAlbumIdsRef.current.has(album.id)) {
+          wasCancelled = true;
+          break;
+        }
+      }
+    } finally {
+      cancelledAlbumIdsRef.current.delete(album.id);
+      setDownloadingAlbumId(prev => (prev === album.id ? null : prev));
     }
-    showNotification(`✅ ${language === 'vi' ? `Hoàn tất tải xuống toàn bộ album "${album.title}"!` : `Successfully downloaded album "${album.title}"!`}`);
+
+    if (wasCancelled) {
+      showNotification(`🛑 ${language === 'vi' ? `Đã dừng tải album "${album.title}" (${downloadedCount}/${tracksToDownload.length} bài).` : `Stopped downloading album "${album.title}" (${downloadedCount}/${tracksToDownload.length} tracks).`}`);
+    } else {
+      showNotification(`✅ ${language === 'vi' ? `Hoàn tất tải xuống toàn bộ album "${album.title}"!` : `Successfully downloaded album "${album.title}"!`}`);
+    }
+  };
+
+  const handleCancelDownloadAlbum = (albumId: string) => {
+    cancelledAlbumIdsRef.current.add(albumId);
+    setDownloadingAlbumId(prev => (prev === albumId ? null : prev));
+    showNotification(language === 'vi' ? '🛑 Đang hủy hàng đợi tải album...' : '🛑 Stopping album download queue...');
   };
 
   const handleChangeDownloadFolder = async () => {
@@ -4672,6 +4707,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 language={language}
                 availableTracks={tracks.filter(t => t.source === 'local')}
                 onDownloadAlbum={handleDownloadAlbum}
+                onCancelDownloadAlbum={handleCancelDownloadAlbum}
+                downloadingAlbumId={downloadingAlbumId}
                 onDownloadTrack={handleDownloadTrack}
                 downloadingTrackIds={downloadingTrackIds}
               />
