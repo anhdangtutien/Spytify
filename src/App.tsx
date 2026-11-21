@@ -29,6 +29,7 @@ import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun,
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
 import { initRemoteConfigSync, RemoteBroadcastNotification } from './services/remoteConfigListener';
+import { getOfflineAudioBlobUrl } from './services/tauriWebShim';
 import spytifyLogo from './assets/spytify-logo.png';
 
 function createSilentKeepAliveWavUri(): string {
@@ -3231,6 +3232,59 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     // Desktop only: if this track was downloaded to local disk, switch to offline local track for instant Hi-Fi playback!
     let track = rawTrack;
+    let resolvedOfflineBlobUrl: string | null = null;
+
+    if (isWebShim) {
+      const candidateIds: string[] = [];
+      const addCandidate = (id?: string | null) => {
+        if (id && !candidateIds.includes(id)) candidateIds.push(id);
+      };
+      if (rawTrack.path_or_url?.startsWith('indexeddb://')) {
+        addCandidate(rawTrack.path_or_url.slice('indexeddb://'.length));
+      }
+      addCandidate(rawTrack.id);
+      if (rawTrack.id && !rawTrack.id.startsWith('local_')) {
+        addCandidate(`local_${rawTrack.id}`);
+      } else if (rawTrack.id?.startsWith('local_')) {
+        addCandidate(rawTrack.id.slice('local_'.length));
+      }
+      const normT = (rawTrack.title || '').trim().toLowerCase();
+      const normA = (rawTrack.artist || '').trim().toLowerCase();
+      const matchedLocalTrack = tracksRef.current.find(
+        t =>
+          t.source === 'local' &&
+          (t.id === rawTrack.id ||
+            t.id === `local_${rawTrack.id}` ||
+            (normT &&
+              t.title.trim().toLowerCase() === normT &&
+              (!normA || t.artist.trim().toLowerCase() === normA)))
+      );
+      if (matchedLocalTrack) {
+        if (matchedLocalTrack.path_or_url?.startsWith('indexeddb://')) {
+          addCandidate(matchedLocalTrack.path_or_url.slice('indexeddb://'.length));
+        }
+        addCandidate(matchedLocalTrack.id);
+      }
+
+      for (const cid of candidateIds) {
+        const blobUrl = await getOfflineAudioBlobUrl(cid);
+        if (blobUrl) {
+          resolvedOfflineBlobUrl = blobUrl;
+          break;
+        }
+      }
+
+      if (resolvedOfflineBlobUrl) {
+        track = {
+          ...rawTrack,
+          source: 'local',
+          path_or_url: resolvedOfflineBlobUrl,
+          cover_art: rawTrack.cover_art || matchedLocalTrack?.cover_art || null,
+          is_downloaded: true,
+        };
+      }
+    }
+
     if (!isWebShim && track.source !== 'local') {
       const localMatch = tracks.find(t => 
         t.source === 'local' && t.path_or_url && (
@@ -3249,17 +3303,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     // Web PWA: không đọc được file ổ cứng local trong Album đồng bộ -> tự động chuyển sang phát trực tuyến online
-    if (isWebShim) {
+    if (isWebShim && !resolvedOfflineBlobUrl) {
       const rawPath = (track.path_or_url || '').trim();
+      const isValidDirectLocalStream =
+        track.source === 'local' &&
+        (rawPath.startsWith('blob:') ||
+          (rawPath.startsWith('https://') && !rawPath.includes('googlevideo.com')));
+      const isIndexedDbMissing = rawPath.startsWith('indexeddb://');
       const isMachineFilePath =
         !rawPath ||
+        isIndexedDbMissing ||
         (!rawPath.startsWith('http://') &&
           !rawPath.startsWith('https://') &&
+          !rawPath.startsWith('blob:') &&
           (/[a-zA-Z]:[\\/]/.test(rawPath) ||
             rawPath.startsWith('/') ||
             /\.(mp3|flac|wav|m4a|ogg|aac|opus|wma)$/i.test(rawPath)));
 
-      if (track.source === 'local' || isMachineFilePath) {
+      if (!isValidDirectLocalStream && (track.source === 'local' || isMachineFilePath)) {
         const idYtMatch = `${track.id} ${rawPath}`.match(/(?:youtube_|yt_)([A-Za-z0-9_-]{11})(?:$|[^A-Za-z0-9_-])/);
         const directYtId = /^[A-Za-z0-9_-]{11}$/.test(rawPath) ? rawPath : null;
         const extractedVid = idYtMatch?.[1] || directYtId;
@@ -4263,7 +4324,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleDownloadTrack = async (track: Track) => {
-    if (track.source === 'local') {
+    const isWeb = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
+    const alreadyInWebOffline =
+      isWeb &&
+      tracks.some(
+        lt =>
+          lt.source === 'local' &&
+          (lt.path_or_url?.startsWith('indexeddb://') || lt.path_or_url?.startsWith('blob:')) &&
+          (lt.id === track.id ||
+            lt.id === `local_${track.id}` ||
+            (lt.title.trim().toLowerCase() === track.title.trim().toLowerCase() &&
+              lt.artist.trim().toLowerCase() === track.artist.trim().toLowerCase()))
+      );
+    if ((!isWeb && track.source === 'local') || alreadyInWebOffline) {
       showNotification(getTranslation(language, 'download.alreadyLocal'));
       return;
     }
@@ -4363,14 +4436,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleDownloadAlbum = async (album: UserAlbum) => {
     const cleanTracks = deduplicateTracks(album.tracks || []);
-    const localPool = tracks.filter(t => t.source === 'local' || t.is_downloaded);
+    const isWeb = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
+    const localPool = tracks.filter(t => t.source === 'local' || (!isWeb && t.is_downloaded));
     const isAlreadyLocal = (t: Track) => {
-      if (t.source === 'local' || t.is_downloaded) return true;
+      if (!isWeb && (t.source === 'local' || t.is_downloaded)) return true;
       const nTitle = t.title.trim().toLowerCase();
       const nArtist = t.artist.trim().toLowerCase();
       return localPool.some(
         lt =>
           lt.id === t.id ||
+          lt.id === `local_${t.id}` ||
           (lt.path_or_url && lt.path_or_url === t.path_or_url) ||
           (lt.title.trim().toLowerCase() === nTitle && lt.artist.trim().toLowerCase() === nArtist)
       );

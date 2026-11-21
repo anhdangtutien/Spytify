@@ -1075,11 +1075,11 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
         return (
         <div 
           onClick={() => setActiveArtistMix(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-3xl sm:max-w-4xl max-h-[88vh] bg-[#0c0c14] border border-cyan-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col space-y-4 relative overflow-hidden animate-in zoom-in-95 duration-200"
+            className="w-full max-w-3xl sm:max-w-4xl max-h-[90dvh] sm:max-h-[88vh] bg-[#0c0c14] border border-cyan-500/30 rounded-2xl sm:rounded-3xl p-3.5 sm:p-6 md:p-7 shadow-2xl flex flex-col space-y-3 sm:space-y-4 relative overflow-hidden animate-in zoom-in-95 duration-200"
           >
             {/* Ambient backlight */}
             <div 
@@ -1095,45 +1095,45 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                 e.stopPropagation();
                 setActiveArtistMix(null);
               }}
-              className="absolute top-4 right-4 sm:top-5 sm:right-5 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all cursor-pointer z-50 shadow-md active:scale-90"
+              className="absolute top-3 right-3 sm:top-5 sm:right-5 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-all cursor-pointer z-50 shadow-md active:scale-90"
               title={getTranslation(language, 'home.close')}
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             {/* Album Mix Header */}
-            <div className="flex flex-col sm:flex-row items-center sm:items-end gap-5 pt-1 relative z-10">
-              <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-2xl overflow-hidden bg-[#181824] border-2 border-white/10 shadow-2xl flex-shrink-0 group relative">
+            <div className="flex flex-row items-center sm:items-end gap-3 sm:gap-5 pt-0.5 pr-9 sm:pr-10 relative z-10">
+              <div className="w-16 h-16 sm:w-36 sm:h-36 rounded-xl sm:rounded-2xl overflow-hidden bg-[#181824] border-2 border-white/10 shadow-2xl flex-shrink-0 group relative">
                 <img
                   src={activeArtistMix.cover_art || 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&auto=format&fit=crop&q=80'}
                   alt={activeArtistMix.artist}
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-cyan-500 text-black font-black text-[9px] uppercase tracking-wider font-mono">
+                <span className="hidden sm:inline-block absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-cyan-500 text-black font-black text-[9px] uppercase tracking-wider font-mono">
                   ALBUM MIX
                 </span>
               </div>
 
-              <div className="flex-1 text-center sm:text-left min-w-0 space-y-2">
-                <span className="text-[10px] font-mono uppercase font-bold text-cyan-400 tracking-widest px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30">
+              <div className="flex-1 text-left min-w-0 space-y-1 sm:space-y-2">
+                <span className="inline-block text-[9px] sm:text-[10px] font-mono uppercase font-bold text-cyan-400 tracking-wider sm:tracking-widest px-1.5 sm:px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-500/30 max-w-full truncate">
                   {getTranslation(language, 'home.artistMix', { artist: activeArtistMix.artist })}
                 </span>
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight truncate">
+                <h2 className="text-base sm:text-2xl font-black text-white tracking-tight truncate">
                   {activeArtistMix.title}
                 </h2>
-                <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
+                <p className="hidden sm:line-clamp-2 text-xs text-zinc-400 leading-relaxed">
                   {activeArtistMix.description}
                 </p>
-                <div className="flex items-center justify-center sm:justify-start gap-3 text-xs text-zinc-400 font-mono pt-1">
-                  <span className="text-white font-bold">{activeArtistMix.artist}</span>
+                <div className="flex flex-wrap items-center justify-start gap-x-2 gap-y-0.5 sm:gap-3 text-[11px] sm:text-xs text-zinc-400 font-mono pt-0.5">
+                  <span className="text-white font-bold truncate max-w-[140px] sm:max-w-none">{activeArtistMix.artist}</span>
                   <span>•</span>
                   <span>{activeArtistMix.track_count} {getTranslation(language, 'home.tracks')}</span>
                   {isArtistMixSaved && (
                     <>
                       <span>•</span>
-                      <span className="text-cyan-400 flex items-center gap-1 text-[11px] font-semibold">
-                        <FolderCheck className="w-3.5 h-3.5" />
+                      <span className="text-cyan-400 flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold">
+                        <FolderCheck className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                         <span>{getTranslation(language, 'home.inAlbums')}</span>
                       </span>
                     </>
@@ -1143,7 +1143,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
             </div>
 
             {/* Action Buttons: Play All, Shuffle, Add to Album */}
-            <div className="flex items-center gap-2.5 pt-1 border-t border-white/5 relative z-10 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-2.5 pt-2 sm:pt-1 border-t border-white/5 relative z-10 flex-wrap">
               <button
                 type="button"
                 onClick={() => {
@@ -1153,13 +1153,13 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                     onPlaySearchResult(activeArtistMix.tracks[0], activeArtistMix.tracks);
                   }
                 }}
-                className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg transition-all hover:scale-105 active:scale-95"
+                className="px-3.5 py-2 sm:px-5 sm:py-2.5 rounded-xl font-bold text-[11px] sm:text-xs uppercase tracking-wider flex items-center gap-1.5 sm:gap-2 cursor-pointer shadow-lg transition-all hover:scale-105 active:scale-95"
                 style={{
                   backgroundColor: accentColor,
                   color: getContrastTextColor(accentColor),
                 }}
               >
-                <Play className="w-4 h-4 fill-current ml-0.5" />
+                <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current ml-0.5" />
                 <span>{getTranslation(language, 'home.playAllMix')}</span>
               </button>
 
@@ -1176,7 +1176,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                     }
                   }
                 }}
-                className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-xs transition-colors cursor-pointer border border-white/10 flex items-center gap-2"
+                className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-[11px] sm:text-xs transition-colors cursor-pointer border border-white/10 flex items-center gap-1.5 sm:gap-2"
               >
                 <Shuffle className="w-3.5 h-3.5" />
                 <span>{getTranslation(language, 'home.shuffle')}</span>
@@ -1191,7 +1191,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                       onSaveArtistMixAsAlbum(activeArtistMix);
                     }
                   }}
-                  className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all cursor-pointer border flex items-center gap-2 active:scale-95 shadow-md ${
+                  className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl font-semibold text-[11px] sm:text-xs transition-all cursor-pointer border flex items-center gap-1.5 sm:gap-2 active:scale-95 shadow-md ${
                     isArtistMixSaved
                       ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/30'
                       : 'bg-white/5 hover:bg-white/10 text-white border-white/10 hover:border-cyan-500/30'
@@ -1220,7 +1220,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                     setActiveArtistMix(null);
                     onNavigateToAlbums();
                   }}
-                  className="px-3 py-2.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-400 border border-cyan-500/30 font-semibold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                  className="px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-400 border border-cyan-500/30 font-semibold text-[11px] sm:text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
                   title="Mở thư mục Album để nghe hoặc chỉnh sửa"
                 >
                   <Library className="w-3.5 h-3.5" />
@@ -1230,7 +1230,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
             </div>
 
             {/* Tracklist List View */}
-            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 max-h-[52vh] no-scrollbar relative z-10">
+            <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 pr-0.5 sm:pr-1 no-scrollbar relative z-10">
               {activeArtistMix.tracks.map((track, idx) => {
                 const isThisPlaying = currentTrack?.path_or_url === track.url_or_id || currentTrack?.title === track.title;
                 const isFav = favorites?.has(track.url_or_id);
@@ -1244,15 +1244,15 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                         onPlaySearchResult(track, activeArtistMix.tracks);
                       }
                     }}
-                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 group transition-all cursor-pointer ${
+                    className={`p-2 sm:p-2.5 rounded-xl border flex items-center justify-between gap-2 sm:gap-3 group transition-all cursor-pointer overflow-hidden ${
                       isThisPlaying
                         ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300'
                         : 'bg-[#101018] hover:bg-[#181824] border-white/5 hover:border-white/15 text-zinc-300'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                       {/* Track Index / Play status */}
-                      <span className="w-6 text-center text-xs font-mono font-bold text-zinc-500 group-hover:text-cyan-400">
+                      <span className="w-5 sm:w-6 text-center text-[11px] sm:text-xs font-mono font-bold text-zinc-500 group-hover:text-cyan-400 flex-shrink-0">
                         {isThisPlaying && isPlaying ? (
                           <div className="flex items-end justify-center gap-0.5 h-3.5">
                             <span className="w-0.5 h-full bg-cyan-400 animate-pulse" />
@@ -1265,7 +1265,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                       </span>
 
                       {/* Track Thumbnail */}
-                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0 border border-white/10 relative">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg overflow-hidden bg-zinc-800 flex-shrink-0 border border-white/10 relative">
                         <img
                           src={track.thumbnail || activeArtistMix.cover_art || ''}
                           alt={track.title}
@@ -1289,7 +1289,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                     </div>
 
                     {/* Duration & Actions */}
-                    <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
                       {onToggleFavorite && (
                         <button
                           type="button"
@@ -1297,7 +1297,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                             e.stopPropagation();
                             onToggleFavorite(track.url_or_id);
                           }}
-                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                          className={`p-1 sm:p-1.5 rounded-lg transition-colors cursor-pointer ${
                             isFav ? 'text-rose-500 hover:text-rose-400' : 'text-zinc-500 hover:text-white'
                           }`}
                         >
@@ -1305,7 +1305,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                         </button>
                       )}
 
-                      <span className="text-[11px] font-mono text-zinc-400 w-10 text-right">
+                      <span className="text-[10px] sm:text-[11px] font-mono text-zinc-400 w-8 sm:w-10 text-right">
                         {Math.floor(track.duration_secs / 60)}:{(track.duration_secs % 60).toString().padStart(2, '0')}
                       </span>
                     </div>

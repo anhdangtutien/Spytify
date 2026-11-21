@@ -90,7 +90,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   isBackgroundPlayEnabled = true,
   onToggleBackgroundPlay,
 }) => {
-  const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState(0);
@@ -356,7 +355,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </button>
               )}
 
-              {!isWebShim && onDownload && (
+              {onDownload && (
                 <button
                   onClick={() => onDownload(currentTrack)}
                   disabled={isDownloading || currentTrack.source === 'local' || Boolean(currentTrack.is_downloaded)}
@@ -1357,15 +1356,39 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </span>
               </button>
             )}
-            {!isWebShim && onDownload && currentTrack && (
+            {onDownload && currentTrack && (
               <button
                 type="button"
                 onClick={() => onDownload(currentTrack)}
                 disabled={isDownloading || currentTrack.source === 'local' || Boolean(currentTrack.is_downloaded)}
-                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+                className={`flex flex-col items-center gap-1 p-2 rounded-xl cursor-pointer ${
+                  currentTrack.source === 'local' || currentTrack.is_downloaded
+                    ? 'text-emerald-400'
+                    : isDownloading
+                    ? 'text-white animate-pulse'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
               >
-                <Download className="w-4 h-4" />
-                <span className="text-[10px]">Download</span>
+                {isDownloading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" style={{ color: accentColor }} />
+                ) : currentTrack.source === 'local' || currentTrack.is_downloaded ? (
+                  <Check className="w-4 h-4" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                <span className="text-[10px]">
+                  {language === 'vi'
+                    ? currentTrack.source === 'local' || currentTrack.is_downloaded
+                      ? 'Đã tải'
+                      : isDownloading
+                      ? 'Đang tải...'
+                      : 'Tải về'
+                    : currentTrack.source === 'local' || currentTrack.is_downloaded
+                    ? 'Saved'
+                    : isDownloading
+                    ? 'Saving...'
+                    : 'Download'}
+                </span>
               </button>
             )}
             {onSetSleepTimer && (

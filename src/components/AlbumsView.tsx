@@ -80,6 +80,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
     const titleArtists = new Set<string>();
     const titles = new Set<string>();
     for (const t of availableTracks || []) {
+      if (isWebShim && t.source !== 'local') continue;
       if (t.id) ids.add(t.id);
       if (t.path_or_url) paths.add(t.path_or_url);
       const nt = (t.title || '').trim().toLowerCase();
@@ -90,12 +91,12 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
       }
     }
     return { ids, paths, titleArtists, titles };
-  }, [availableTracks]);
+  }, [availableTracks, isWebShim]);
 
   const isTrackDownloaded = (track: Track): boolean => {
-    if (isWebShim || !track) return false;
-    if (track.source === 'local' || track.is_downloaded) return true;
-    if (track.id && downloadedLookup.ids.has(track.id)) return true;
+    if (!track) return false;
+    if (!isWebShim && (track.source === 'local' || track.is_downloaded)) return true;
+    if (track.id && (downloadedLookup.ids.has(track.id) || downloadedLookup.ids.has(`local_${track.id}`))) return true;
     if (track.path_or_url && downloadedLookup.paths.has(track.path_or_url)) return true;
     const nt = (track.title || '').trim().toLowerCase();
     const na = (track.artist || '').trim().toLowerCase();
@@ -794,8 +795,8 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           </button>
 
           {/* Album Banner */}
-          <div className="p-6 rounded-2xl bg-gradient-to-r from-[#0d0d12] via-[#09090c] to-black border border-[#1c1c24] flex flex-col sm:flex-row items-center gap-6 shadow-xl">
-            <div className="w-36 h-36 rounded-2xl overflow-hidden bg-[#14141c] border border-[#262632] flex-shrink-0 flex items-center justify-center relative shadow-lg">
+          <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-[#0d0d12] via-[#09090c] to-black border border-[#1c1c24] flex flex-col sm:flex-row items-center gap-4 sm:gap-6 shadow-xl">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-2xl overflow-hidden bg-[#14141c] border border-[#262632] flex-shrink-0 flex items-center justify-center relative shadow-lg">
               {selectedAlbum.cover_art ? (
                 <img
                   src={optimizeThumbnailUrl(selectedAlbum.cover_art, selectedAlbum.id)}
@@ -817,7 +818,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
               )}
             </div>
 
-            <div className="flex-1 space-y-2 text-center sm:text-left">
+            <div className="flex-1 min-w-0 w-full space-y-2 text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
                 <span 
                   className="text-[10px] font-mono uppercase tracking-wider font-bold px-2.5 py-0.5 rounded border"
@@ -841,11 +842,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   </span>
                 ) : null}
               </div>
-              <h1 className="text-2xl font-black text-white tracking-tight">{selectedAlbum.title}</h1>
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight break-words">{selectedAlbum.title}</h1>
               {selectedAlbum.description && (
                 <p className="text-xs text-[#8e8e9f] max-w-xl">{selectedAlbum.description}</p>
               )}
-              <div className="text-xs text-[#666] font-mono flex items-center justify-center sm:justify-start gap-3 pt-1">
+              <div className="text-[11px] sm:text-xs text-[#666] font-mono flex flex-wrap items-center justify-center sm:justify-start gap-x-2.5 gap-y-1 sm:gap-3 pt-1">
                 <span>{getTranslation(language, 'album.trackCount', { count: cleanAlbumTracks.length })}</span>
                 <span>•</span>
                 <span>{formatTotalTime(cleanAlbumTracks)}</span>
@@ -853,7 +854,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                 <span>{getTranslation(language, 'album.createdAt')} {new Date(selectedAlbum.created_at).toLocaleDateString()}</span>
               </div>
 
-              <div className="pt-3 flex items-center justify-center sm:justify-start gap-3 flex-wrap">
+              <div className="pt-2.5 sm:pt-3 flex items-center justify-center sm:justify-start gap-2 sm:gap-3 flex-wrap">
                 <button
                   onClick={() => onPlayAlbum({ ...selectedAlbum, tracks: cleanAlbumTracks })}
                   disabled={cleanAlbumTracks.length === 0}
@@ -862,14 +863,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     color: getContrastTextColor(accentColor),
                     boxShadow: `0 0 16px ${accentColor}40`,
                   }}
-                  className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shadow-md disabled:opacity-40 hover:opacity-90"
+                  className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shadow-md disabled:opacity-40 hover:opacity-90"
                 >
                   <Play className="w-4 h-4 fill-current ml-0.5" />
                   <span>{getTranslation(language, 'album.playAll')}</span>
                 </button>
                 <button
                   onClick={() => handleOpenEditModal(selectedAlbum)}
-                  className="px-4 py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                  className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
                   title={getTranslation(language, 'album.editAlbum')}
                 >
                   <Pencil className="w-3.5 h-3.5" style={{ color: accentColor }} />
@@ -881,17 +882,17 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     setTrackSearchQuery('');
                     setIsAddTracksModalOpen(true);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+                  className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
                   title={language === 'vi' ? 'Thêm bài hát từ máy vào album này' : 'Add downloaded tracks to this album'}
                 >
                   <FolderPlus className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   <span>{language === 'vi' ? 'Thêm bài hát' : 'Add Tracks'}</span>
                 </button>
-                {!isWebShim && onDownloadAlbum && (
+                {onDownloadAlbum && (
                   downloadingAlbumId === selectedAlbum.id ? (
                     <button
                       onClick={() => onCancelDownloadAlbum?.(selectedAlbum.id)}
-                      className="px-4 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-sm hover:shadow-rose-500/20 active:scale-95"
+                      className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-semibold shadow-sm hover:shadow-rose-500/20 active:scale-95"
                       title={language === 'vi' ? 'Dừng tải album này ngay lập tức' : 'Stop downloading album'}
                     >
                       <Square className="w-3.5 h-3.5 fill-current" />
@@ -899,7 +900,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     </button>
                   ) : isSelectedAlbumFullyDownloaded ? (
                     <div
-                      className="px-4 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold"
+                      className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 text-xs font-semibold"
                       title={language === 'vi' ? 'Toàn bộ bài hát trong album đã được tải xuống máy' : 'All tracks in this album are downloaded'}
                     >
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -909,7 +910,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     <button
                       onClick={() => onDownloadAlbum({ ...selectedAlbum, tracks: cleanAlbumTracks })}
                       disabled={cleanAlbumTracks.length === 0 || (downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)))}
-                      className="px-4 py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold disabled:opacity-40"
+                      className="px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl bg-[#14141c] hover:bg-[#1f1f2c] text-white border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold disabled:opacity-40"
                       title={language === 'vi' ? 'Tải xuống toàn bộ bài hát trong album về máy' : 'Download all tracks in this album to local disk'}
                     >
                       {downloadingTrackIds && cleanAlbumTracks.some(t => downloadingTrackIds.has(t.id)) ? (
@@ -988,7 +989,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         backgroundColor: `${accentColor}14`,
                         boxShadow: `0 0 14px ${accentColor}25`
                       } : undefined}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 group transition-all select-none relative cursor-grab active:cursor-grabbing ${
+                      className={`p-2 sm:p-2.5 rounded-xl border flex items-center justify-between gap-1.5 sm:gap-2.5 group transition-all select-none relative cursor-grab active:cursor-grabbing overflow-hidden ${
                         draggedIndex === idx ? 'opacity-30 scale-[0.98] pointer-events-none' : ''
                       } ${
                         dragOverIndex === idx && albumDropPosition === 'above'
@@ -1050,10 +1051,10 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                             onPlayTrack(track, cleanAlbumTracks);
                           }
                         }}
-                        className="flex items-center gap-3 overflow-hidden flex-1 cursor-pointer"
+                        className="flex items-center gap-2 sm:gap-3 overflow-hidden min-w-0 flex-1 cursor-pointer"
                       >
                         {/* Col 1: Play state / Number / Equalizer Wave Animation */}
-                        <div className="w-5 flex items-center justify-center flex-shrink-0">
+                        <div className="w-4 sm:w-5 flex items-center justify-center flex-shrink-0">
                           {isCurrent && isPlaying ? (
                             <div className="flex items-end justify-center gap-[2.5px] h-3.5">
                               <span 
@@ -1080,7 +1081,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         </div>
 
                         {/* Thumbnail */}
-                        <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#161620] flex-shrink-0 relative">
+                        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg overflow-hidden bg-[#161620] flex-shrink-0 relative">
                           {track.cover_art ? (
                             <img
                               src={optimizeThumbnailUrl(track.cover_art, track.path_or_url || track.id)}
@@ -1110,29 +1111,34 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
 
                         {/* Title & Artist */}
                         <div className="overflow-hidden min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0">
                             <p 
-                              className="text-xs font-semibold truncate transition-colors"
+                              className="text-xs font-semibold truncate transition-colors min-w-0 flex-1"
                               style={{ color: isCurrent ? accentColor : 'white' }}
                             >
                               {track.title}
                             </p>
                             {isTrackDownloaded(track) && (
                               <span
-                                className="inline-flex items-center gap-0.5 text-[9px] font-mono font-bold text-emerald-400 px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 shrink-0"
+                                className="inline-flex items-center gap-0.5 text-[9px] font-mono font-bold text-emerald-400 px-1 py-0.5 sm:px-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 shrink-0"
                                 title={language === 'vi' ? 'Bài hát này đã được tải xuống máy' : 'Downloaded to device'}
                               >
                                 <CheckCircle2 className="w-2.5 h-2.5" />
-                                <span>{language === 'vi' ? 'Đã tải' : 'Downloaded'}</span>
+                                <span className="hidden sm:inline">{language === 'vi' ? 'Đã tải' : 'Downloaded'}</span>
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-[#8e8e9f] truncate">{track.artist}</p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-[11px] text-[#8e8e9f] truncate min-w-0">{track.artist}</p>
+                            <span className="sm:hidden text-[9px] text-[#666] font-mono uppercase shrink-0">
+                              • {track.source}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {!isWebShim && !isTrackDownloaded(track) && onDownloadTrack && (
+                      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                        {!isTrackDownloaded(track) && onDownloadTrack && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1140,7 +1146,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                             }}
                             disabled={downloadingTrackIds?.has(track.id)}
                             title={language === 'vi' ? 'Tải bài hát này về máy' : 'Download track'}
-                            className="p-1.5 text-[#666] hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-40"
+                            className="p-1.5 text-[#777] hover:text-white rounded-lg hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-40"
                           >
                             {downloadingTrackIds?.has(track.id) ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: accentColor }} />
@@ -1151,14 +1157,14 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         )}
                         {isTrackDownloaded(track) && (
                           <span
-                            className="flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25"
+                            className="hidden md:flex items-center gap-1 text-[9px] font-mono font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/25"
                             title={language === 'vi' ? 'Đã tải xuống máy (Offline Lossless)' : 'Downloaded Offline'}
                           >
                             <CheckCircle2 className="w-3 h-3" />
                             <span>{language === 'vi' ? 'ĐÃ TẢI • LOSSLESS' : 'DOWNLOADED'}</span>
                           </span>
                         )}
-                        <span className="text-[10px] text-[#666] font-mono uppercase px-2 py-0.5 rounded bg-[#14141c]">
+                        <span className="hidden sm:inline-block text-[10px] text-[#666] font-mono uppercase px-2 py-0.5 rounded bg-[#14141c]">
                           {track.source}
                         </span>
                         <button
@@ -1315,7 +1321,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         <Play className="w-4 h-4 fill-current ml-0.5" />
                       </div>
 
-                      {!isWebShim && (downloadingAlbumId === album.id ? (
+                      {downloadingAlbumId === album.id ? (
                         <div
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1340,13 +1346,13 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                               e.stopPropagation();
                               onDownloadAlbum({ ...album, tracks: albumCleanTracks });
                             }}
-                            className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-[#101018]/90 hover:bg-[#1a1a24] text-white border border-[#2a2a38] flex items-center justify-center shadow-lg opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all cursor-pointer"
+                            className="absolute left-2 bottom-2 w-8 h-8 rounded-full bg-[#101018]/90 hover:bg-[#1a1a24] text-white border border-[#2a2a38] flex items-center justify-center shadow-lg opacity-100 sm:opacity-0 sm:translate-y-2 sm:group-hover:opacity-100 sm:group-hover:translate-y-0 transition-all cursor-pointer"
                             title={language === 'vi' ? 'Tải xuống album này' : 'Download this album'}
                           >
                             <Download className="w-3.5 h-3.5" style={{ color: accentColor }} />
                           </div>
                         )
-                      ))}
+                      )}
                     </div>
 
                     <p className="text-xs font-bold text-white truncate transition-colors">

@@ -27,6 +27,10 @@ const FAVS_PREFIX = 'spytify_web_favs_v1_';
 const HIST_PREFIX = 'spytify_web_hist_v1_';
 const CHAT_IMG_KEY = 'spytify_web_chat_images_v1';
 const SERVER_CHAT_PREFIX = 'spytify_web_srv_chat_v1_';
+const WEB_DOWNLOADED_TRACKS_KEY = 'spytify_web_downloaded_tracks_v1';
+const OFFLINE_AUDIO_DB_NAME = 'spytify_offline_audio_v1';
+const OFFLINE_AUDIO_STORE = 'audio_blobs';
+const offlineBlobUrlCache = new Map<string, string>();
 
 const readJson = <T,>(key: string, fallback: T): T => {
   try {
@@ -45,6 +49,162 @@ const writeJson = (key: string, value: unknown): void => {
     // Ignore storage quota errors in restricted webviews
   }
 };
+
+function openOfflineAudioDb(): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(OFFLINE_AUDIO_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(OFFLINE_AUDIO_STORE)) {
+          db.createObjectStore(OFFLINE_AUDIO_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function saveOfflineAudioBlob(id: string, blob: Blob): Promise<boolean> {
+  if (!id || !blob || blob.size === 0) return false;
+  const db = await openOfflineAudioDb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(OFFLINE_AUDIO_STORE, 'readwrite');
+      tx.objectStore(OFFLINE_AUDIO_STORE).put(blob, id);
+      tx.oncomplete = () => {
+        offlineBlobUrlCache.delete(id);
+        resolve(true);
+      };
+      tx.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Retrieve a cached or newly created blob: URL for an offline track stored in IndexedDB.
+ */
+export async function getOfflineAudioBlobUrl(id: string): Promise<string | null> {
+  if (!id) return null;
+  const cached = offlineBlobUrlCache.get(id);
+  if (cached) return cached;
+  const db = await openOfflineAudioDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(OFFLINE_AUDIO_STORE, 'readonly');
+      const req = tx.objectStore(OFFLINE_AUDIO_STORE).get(id);
+      req.onsuccess = () => {
+        const val = req.result;
+        if (val instanceof Blob && val.size > 0) {
+          const url = URL.createObjectURL(val);
+          offlineBlobUrlCache.set(id, url);
+          resolve(url);
+        } else {
+          resolve(null);
+        }
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function upsertWebDownloadedTrack(track: Track): void {
+  const existing = readJson<Track[]>(WEB_DOWNLOADED_TRACKS_KEY, []);
+  const normTitle = track.title.trim().toLowerCase();
+  const normArtist = track.artist.trim().toLowerCase();
+  const filtered = existing.filter(
+    t =>
+      t.id !== track.id &&
+      !(t.title.trim().toLowerCase() === normTitle && t.artist.trim().toLowerCase() === normArtist)
+  );
+  writeJson(WEB_DOWNLOADED_TRACKS_KEY, [track, ...filtered].slice(0, 500));
+}
+
+function sanitizeDownloadFilename(raw: string): string {
+  return (raw || 'spytify_track')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+}
+
+function extensionFromAudioBlob(blob: Blob): string {
+  const mime = (blob.type || '').toLowerCase();
+  if (mime.includes('mp4') || mime.includes('m4a') || mime.includes('aac')) return 'm4a';
+  if (mime.includes('webm')) return 'webm';
+  if (mime.includes('ogg')) return 'ogg';
+  if (mime.includes('flac')) return 'flac';
+  if (mime.includes('wav')) return 'wav';
+  return 'mp3';
+}
+
+function triggerBrowserAudioDownload(blob: Blob, filename: string): void {
+  if (typeof document === 'undefined') return;
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch {
+    // Ignore restricted download contexts
+  }
+}
+
+async function fetchAudioBlobWithTimeout(url: string, timeoutMs = 6000): Promise<Blob | null> {
+  if (!url || !url.startsWith('http')) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    if (!blob || blob.size <= 10_000) return null;
+    return blob;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function getAudioDurationFromBlob(blob: Blob, fallback = 200): Promise<number> {
+  if (typeof Audio === 'undefined') return Promise.resolve(fallback);
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio();
+    let settled = false;
+    const finish = (secs: number) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(secs > 0 && Number.isFinite(secs) ? Math.round(secs) : fallback);
+    };
+    const timer = setTimeout(() => finish(fallback), 2500);
+    audio.onloadedmetadata = () => {
+      clearTimeout(timer);
+      finish(audio.duration);
+    };
+    audio.onerror = () => {
+      clearTimeout(timer);
+      finish(fallback);
+    };
+    audio.src = url;
+  });
+}
 
 async function sha256Hex(input: string): Promise<string> {
   if (typeof crypto !== 'undefined' && crypto.subtle) {
@@ -394,6 +554,187 @@ async function searchYoutubeWeb(query: string, apiTimeoutMs = 1800): Promise<Sea
 
   const audius = await searchAudiusWeb(query);
   return audius.length > 0 ? audius : allCurated.slice(0, 10);
+}
+
+async function resolveAudiusStreamUrl(urlOrId: string): Promise<string> {
+  const raw = String(urlOrId || '').trim();
+  const host = await resolveAudiusHost(raw.includes('discoveryprovider.audius.co'));
+  const trackIdMatch = raw.match(/\/tracks\/([A-Za-z0-9_-]+)/);
+  if (trackIdMatch?.[1]) {
+    return `${host}/v1/tracks/${trackIdMatch[1]}/stream?app_name=Spytify`;
+  }
+  if (/^[A-Za-z0-9_-]{4,24}$/.test(raw)) {
+    return `${host}/v1/tracks/${raw}/stream?app_name=Spytify`;
+  }
+  return raw;
+}
+
+async function resolveYouTubeAudioStreamWeb(
+  videoIdInput: string,
+  title?: string,
+  artist?: string
+): Promise<{ stream_url: string | null; resolved_video_id: string; duration_secs: number }> {
+  const rawVid = extractYouTubeVideoId(videoIdInput) || videoIdInput.trim();
+  if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
+    const pipedPromises = PIPED_API_BASES.map(async (base) => {
+      const data = await fetchJsonWithTimeout(`${base}/streams/${rawVid}`, 1800);
+      const streams: any[] = Array.isArray(data?.audioStreams) ? data.audioStreams : [];
+      const valid = streams
+        .filter(s => typeof s?.url === 'string' && s.url.startsWith('http'))
+        .sort((a, b) => {
+          const aMp4 = String(a?.mimeType || '').includes('audio/mp4') ? 1 : 0;
+          const bMp4 = String(b?.mimeType || '').includes('audio/mp4') ? 1 : 0;
+          if (aMp4 !== bMp4) return bMp4 - aMp4;
+          return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
+        });
+      if (valid.length > 0) {
+        return {
+          stream_url: valid[0].url as string,
+          resolved_video_id: rawVid,
+          duration_secs: Number(data?.duration) || 200,
+        };
+      }
+      return null;
+    });
+
+    const invidiousPromises = INVIDIOUS_API_BASES.map(async (base) => {
+      const data = await fetchJsonWithTimeout(`${base}/api/v1/videos/${rawVid}`, 1800);
+      const formats: any[] = Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats : [];
+      const audioFormats = formats
+        .filter(f => typeof f?.type === 'string' && f.type.startsWith('audio/'))
+        .sort((a, b) => {
+          const aMp4 = String(a.type).includes('audio/mp4') ? 1 : 0;
+          const bMp4 = String(b.type).includes('audio/mp4') ? 1 : 0;
+          if (aMp4 !== bMp4) return bMp4 - aMp4;
+          return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
+        });
+      const bestFmt = audioFormats.find(f => typeof f?.url === 'string' && f.url.startsWith('http'));
+      const proxyUrl = bestFmt?.url || `${base}/latest_version?id=${rawVid}&itag=140&local=true`;
+      if (data?.title || bestFmt) {
+        return {
+          stream_url: String(proxyUrl),
+          resolved_video_id: rawVid,
+          duration_secs: Number(data?.lengthSeconds) || 200,
+        };
+      }
+      return null;
+    });
+
+    const streamRes = await raceFirstSuccess([...pipedPromises, ...invidiousPromises]);
+    if (streamRes) return streamRes;
+  }
+
+  // Search for a playable alternate videoId or Audius open stream for the same song
+  const titleLow = String(title || '').trim().toLowerCase();
+  const artistLow = String(artist || '').trim().toLowerCase();
+  const curatedAlt = getAllCuratedTracks().find(t => {
+    const vid = extractYouTubeVideoId(t.url_or_id || '');
+    if (!vid || vid === rawVid) return false;
+    const tMatch = titleLow && t.title.toLowerCase().includes(titleLow);
+    const aMatch = artistLow && t.artist.toLowerCase().includes(artistLow);
+    return Boolean(tMatch || (titleLow && aMatch && t.title.toLowerCase().split(' ')[0] === titleLow.split(' ')[0]));
+  });
+  if (curatedAlt) {
+    return {
+      stream_url: null,
+      resolved_video_id: curatedAlt.url_or_id,
+      duration_secs: curatedAlt.duration_secs || 200,
+    };
+  }
+
+  try {
+    const searchAlt = await searchYoutubeWeb(`${title || ''} ${artist || ''} official audio`, 1500);
+    const ytCandidate = searchAlt.find(t => {
+      const vid = extractYouTubeVideoId(t.url_or_id || '');
+      return Boolean(vid && vid !== rawVid);
+    });
+    if (ytCandidate) {
+      return {
+        stream_url: null,
+        resolved_video_id: ytCandidate.url_or_id,
+        duration_secs: ytCandidate.duration_secs || 200,
+      };
+    }
+    const audiusAlt = searchAlt.find(t => t.source === 'audius' && String(t.url_or_id || '').startsWith('http'));
+    if (audiusAlt) {
+      return {
+        stream_url: audiusAlt.url_or_id,
+        resolved_video_id: rawVid,
+        duration_secs: audiusAlt.duration_secs || 200,
+      };
+    }
+  } catch {}
+
+  try {
+    const audiusTracks = await searchAudiusWeb(`${title || ''} ${artist || ''}`.trim());
+    if (audiusTracks.length > 0 && audiusTracks[0].url_or_id.startsWith('http')) {
+      return {
+        stream_url: audiusTracks[0].url_or_id,
+        resolved_video_id: rawVid,
+        duration_secs: audiusTracks[0].duration_secs || 200,
+      };
+    }
+  } catch {}
+
+  return { stream_url: null, resolved_video_id: rawVid, duration_secs: 200 };
+}
+
+async function resolveDownloadCandidates(track: Track): Promise<string[]> {
+  const candidates: string[] = [];
+  const addUrl = (url?: string | null) => {
+    if (url && url.startsWith('http') && !candidates.includes(url)) {
+      candidates.push(url);
+    }
+  };
+
+  if (track.source === 'audius') {
+    const resolved = await resolveAudiusStreamUrl(track.path_or_url || track.id);
+    addUrl(resolved);
+  } else if (
+    track.path_or_url?.startsWith('http') &&
+    !extractYouTubeVideoId(track.path_or_url) &&
+    track.source !== 'soundcloud'
+  ) {
+    addUrl(track.path_or_url);
+  }
+
+  let vid = extractYouTubeVideoId(track.path_or_url || '') || extractYouTubeVideoId(track.id || '');
+  if (!vid && track.source !== 'audius') {
+    try {
+      const searchHits = await searchYoutubeWeb(`${track.title} ${track.artist}`.trim(), 1800);
+      const hit = searchHits.find(h => h.source === 'youtube' && extractYouTubeVideoId(h.url_or_id || ''));
+      if (hit) {
+        vid = extractYouTubeVideoId(hit.url_or_id);
+      } else {
+        const audiusHit = searchHits.find(h => h.source === 'audius' && h.url_or_id.startsWith('http'));
+        if (audiusHit) addUrl(audiusHit.url_or_id);
+      }
+    } catch {}
+  }
+
+  if (vid) {
+    let resolved = await resolveYouTubeAudioStreamWeb(vid, track.title, track.artist);
+    if (!resolved.stream_url && resolved.resolved_video_id && resolved.resolved_video_id !== vid) {
+      const nextVid = extractYouTubeVideoId(resolved.resolved_video_id) || resolved.resolved_video_id;
+      resolved = await resolveYouTubeAudioStreamWeb(nextVid, track.title, track.artist);
+      vid = extractYouTubeVideoId(resolved.resolved_video_id) || vid;
+    }
+    addUrl(resolved.stream_url);
+    if (vid && /^[A-Za-z0-9_-]{11}$/.test(vid)) {
+      for (const base of INVIDIOUS_API_BASES) {
+        addUrl(`${base}/latest_version?id=${vid}&itag=140&local=true`);
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    try {
+      const audiusFallback = await searchAudiusWeb(`${track.title} ${track.artist}`.trim());
+      if (audiusFallback.length > 0) addUrl(audiusFallback[0].url_or_id);
+    } catch {}
+  }
+
+  return candidates;
 }
 
 async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Promise<any> {
@@ -837,122 +1178,15 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
     }
 
     case 'resolve_audius_stream': {
-      const raw = String(args.urlOrId || '').trim();
-      const host = await resolveAudiusHost(raw.includes('discoveryprovider.audius.co'));
-      const trackIdMatch = raw.match(/\/tracks\/([A-Za-z0-9_-]+)/);
-      if (trackIdMatch?.[1]) {
-        return `${host}/v1/tracks/${trackIdMatch[1]}/stream?app_name=Spytify`;
-      }
-      if (/^[A-Za-z0-9_-]{4,24}$/.test(raw)) {
-        return `${host}/v1/tracks/${raw}/stream?app_name=Spytify`;
-      }
-      return raw;
+      return resolveAudiusStreamUrl(String(args.urlOrId || ''));
     }
 
     case 'resolve_youtube_music_stream': {
-      const rawVid = extractYouTubeVideoId(String(args.videoId || '')) || String(args.videoId || '').trim();
-      if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
-        const pipedPromises = PIPED_API_BASES.map(async (base) => {
-          const data = await fetchJsonWithTimeout(`${base}/streams/${rawVid}`, 1800);
-          const streams: any[] = Array.isArray(data?.audioStreams) ? data.audioStreams : [];
-          const valid = streams
-            .filter(s => typeof s?.url === 'string' && s.url.startsWith('http'))
-            .sort((a, b) => {
-              const aMp4 = String(a?.mimeType || '').includes('audio/mp4') ? 1 : 0;
-              const bMp4 = String(b?.mimeType || '').includes('audio/mp4') ? 1 : 0;
-              if (aMp4 !== bMp4) return bMp4 - aMp4;
-              return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
-            });
-          if (valid.length > 0) {
-            return {
-              stream_url: valid[0].url as string,
-              resolved_video_id: rawVid,
-              duration_secs: Number(data?.duration) || 200,
-            };
-          }
-          return null;
-        });
-
-        const invidiousPromises = INVIDIOUS_API_BASES.map(async (base) => {
-          const data = await fetchJsonWithTimeout(`${base}/api/v1/videos/${rawVid}`, 1800);
-          const formats: any[] = Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats : [];
-          const audioFormats = formats
-            .filter(f => typeof f?.type === 'string' && f.type.startsWith('audio/'))
-            .sort((a, b) => {
-              const aMp4 = String(a.type).includes('audio/mp4') ? 1 : 0;
-              const bMp4 = String(b.type).includes('audio/mp4') ? 1 : 0;
-              if (aMp4 !== bMp4) return bMp4 - aMp4;
-              return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
-            });
-          const bestFmt = audioFormats.find(f => typeof f?.url === 'string' && f.url.startsWith('http'));
-          const proxyUrl = bestFmt?.url || `${base}/latest_version?id=${rawVid}&itag=140&local=true`;
-          if (data?.title || bestFmt) {
-            return {
-              stream_url: String(proxyUrl),
-              resolved_video_id: rawVid,
-              duration_secs: Number(data?.lengthSeconds) || 200,
-            };
-          }
-          return null;
-        });
-
-        const streamRes = await raceFirstSuccess([...pipedPromises, ...invidiousPromises]);
-        if (streamRes) return streamRes;
-      }
-
-      // Search for a playable alternate videoId or Audius open stream for the same song
-      const titleLow = String(args.title || '').trim().toLowerCase();
-      const artistLow = String(args.artist || '').trim().toLowerCase();
-      const curatedAlt = getAllCuratedTracks().find(t => {
-        const vid = extractYouTubeVideoId(t.url_or_id || '');
-        if (!vid || vid === rawVid) return false;
-        const tMatch = titleLow && t.title.toLowerCase().includes(titleLow);
-        const aMatch = artistLow && t.artist.toLowerCase().includes(artistLow);
-        return Boolean(tMatch || (titleLow && aMatch && t.title.toLowerCase().split(' ')[0] === titleLow.split(' ')[0]));
-      });
-      if (curatedAlt) {
-        return {
-          stream_url: null,
-          resolved_video_id: curatedAlt.url_or_id,
-          duration_secs: curatedAlt.duration_secs || 200,
-        };
-      }
-
-      try {
-        const searchAlt = await searchYoutubeWeb(`${args.title || ''} ${args.artist || ''} official audio`, 1500);
-        const ytCandidate = searchAlt.find(t => {
-          const vid = extractYouTubeVideoId(t.url_or_id || '');
-          return Boolean(vid && vid !== rawVid);
-        });
-        if (ytCandidate) {
-          return {
-            stream_url: null,
-            resolved_video_id: ytCandidate.url_or_id,
-            duration_secs: ytCandidate.duration_secs || 200,
-          };
-        }
-        const audiusAlt = searchAlt.find(t => t.source === 'audius' && String(t.url_or_id || '').startsWith('http'));
-        if (audiusAlt) {
-          return {
-            stream_url: audiusAlt.url_or_id,
-            resolved_video_id: rawVid,
-            duration_secs: audiusAlt.duration_secs || 200,
-          };
-        }
-      } catch {}
-
-      try {
-        const audiusTracks = await searchAudiusWeb(`${args.title || ''} ${args.artist || ''}`.trim());
-        if (audiusTracks.length > 0 && audiusTracks[0].url_or_id.startsWith('http')) {
-          return {
-            stream_url: audiusTracks[0].url_or_id,
-            resolved_video_id: rawVid,
-            duration_secs: audiusTracks[0].duration_secs || 200,
-          };
-        }
-      } catch {}
-
-      return { stream_url: null, resolved_video_id: rawVid, duration_secs: 200 };
+      return resolveYouTubeAudioStreamWeb(
+        String(args.videoId || ''),
+        args.title ? String(args.title) : undefined,
+        args.artist ? String(args.artist) : undefined
+      );
     }
 
     // ── Sorting, Filtering & AI Engine ──
@@ -1049,13 +1283,50 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
       return Boolean(args.enabled);
 
     case 'scan_music_folder':
-      return [];
+      return readJson<Track[]>(WEB_DOWNLOADED_TRACKS_KEY, []);
 
     case 'get_default_download_directory':
       return 'Downloads/Spytify';
 
-    case 'download_track':
-      throw 'Trình duyệt di động không hỗ trợ lưu file trực tiếp vào ổ cứng. Hãy phát trực tuyến hoặc dùng bản Máy tính.';
+    case 'download_track': {
+      const track = args.track as Track | undefined;
+      if (!track || !track.title) {
+        throw 'Thông tin bài hát không hợp lệ.';
+      }
+      const savedId = track.id.startsWith('local_') ? track.id : `local_${track.id}`;
+      const candidateUrls = await resolveDownloadCandidates(track);
+
+      let audioBlob: Blob | null = null;
+      if (candidateUrls.length > 0) {
+        audioBlob = await fetchAudioBlobWithTimeout(candidateUrls[0], 6000);
+        if (!audioBlob && candidateUrls.length > 1) {
+          audioBlob = await raceFirstSuccess(
+            candidateUrls.slice(1, 4).map(u => fetchAudioBlobWithTimeout(u, 6000))
+          );
+        }
+      }
+
+      let storedPath = candidateUrls[0] || track.path_or_url;
+      if (audioBlob) {
+        const storedOk = await saveOfflineAudioBlob(savedId, audioBlob);
+        if (storedOk) {
+          storedPath = `indexeddb://${savedId}`;
+        }
+        const ext = extensionFromAudioBlob(audioBlob);
+        const fileName = `${sanitizeDownloadFilename(`${track.title} - ${track.artist}`)}.${ext}`;
+        triggerBrowserAudioDownload(audioBlob, fileName);
+      }
+
+      const savedTrack: Track = {
+        ...track,
+        id: savedId,
+        path_or_url: storedPath,
+        source: 'local',
+        is_downloaded: true,
+      };
+      upsertWebDownloadedTrack(savedTrack);
+      return savedTrack;
+    }
 
     case 'check_for_updates':
       // Let updater.ts fall through to its standard GitHub Web fetch
@@ -1091,8 +1362,66 @@ async function handleWebInvoke(cmd: string, args: Record<string, any> = {}): Pro
     case 'plugin:dialog|save':
       return args?.options?.defaultPath || 'spytify_backup.json';
 
-    case 'plugin:dialog|open':
-      return null;
+    case 'plugin:dialog|open': {
+      if (!args?.options?.directory || typeof document === 'undefined') {
+        return null;
+      }
+      return new Promise<string | null>((resolve) => {
+        let settled = false;
+        const finish = (val: string | null, input: HTMLInputElement) => {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('focus', onFocus);
+          input.remove();
+          resolve(val);
+        };
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'audio/*,.mp3,.m4a,.wav,.flac,.ogg,.aac,.opus';
+        input.multiple = true;
+        input.style.display = 'none';
+
+        const onFocus = () => {
+          setTimeout(() => {
+            if (!settled && (!input.files || input.files.length === 0)) {
+              finish(null, input);
+            }
+          }, 800);
+        };
+
+        input.addEventListener('cancel', () => finish(null, input));
+        input.onchange = async () => {
+          const files = Array.from(input.files || []);
+          if (files.length === 0) {
+            finish(null, input);
+            return;
+          }
+          for (const file of files) {
+            const baseName = file.name.replace(/\.[^.]+$/, '') || file.name;
+            const savedId = `local_file_${sanitizeDownloadFilename(baseName).toLowerCase()}_${file.size}`;
+            const duration_secs = await getAudioDurationFromBlob(file, 200);
+            const savedOk = await saveOfflineAudioBlob(savedId, file);
+            const pathUrl = savedOk ? `indexeddb://${savedId}` : URL.createObjectURL(file);
+            upsertWebDownloadedTrack({
+              id: savedId,
+              title: baseName,
+              artist: 'Local Audio',
+              album: 'Thiết bị của tôi',
+              duration_secs,
+              path_or_url: pathUrl,
+              cover_art: null,
+              source: 'local',
+              is_downloaded: true,
+            });
+          }
+          finish('web_offline_library', input);
+        };
+
+        document.body.appendChild(input);
+        window.addEventListener('focus', onFocus, { once: true });
+        input.click();
+      });
+    }
 
     case 'plugin:event|listen':
       return Math.floor(Math.random() * 1_000_000);

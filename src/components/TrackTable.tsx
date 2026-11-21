@@ -463,7 +463,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 borderLeftColor: isSelected ? accentColor : 'transparent',
                 backgroundColor: isSelected ? `${accentColor}18` : undefined,
               }}
-              className={`grid grid-cols-[32px_1fr_auto] sm:grid-cols-[36px_1fr_76px_96px] md:grid-cols-[40px_1fr_1fr_90px_110px] items-center px-2 sm:px-3 rounded-md transition-all group select-none relative ${
+              className={`grid grid-cols-[28px_minmax(0,1fr)_auto] sm:grid-cols-[36px_minmax(0,1fr)_76px_96px] md:grid-cols-[40px_1fr_1fr_90px_110px] items-center px-2 sm:px-3 rounded-md transition-all group select-none relative ${
                 canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
                 draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5 pointer-events-none' : ''
@@ -565,8 +565,8 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               </div>
 
               {/* Col 2: Title & Artist & Cover */}
-              <div className="flex items-center gap-3 overflow-hidden pr-3">
-                <div className="w-9 h-9 rounded bg-[#111] border border-[#1e1e24] flex-shrink-0 overflow-hidden relative">
+              <div className="flex items-center gap-2 sm:gap-3 overflow-hidden min-w-0 pr-1 sm:pr-3">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded bg-[#111] border border-[#1e1e24] flex-shrink-0 overflow-hidden relative">
                   {track.cover_art ? (
                     <img
                       src={optimizeThumbnailUrl(track.cover_art, track.path_or_url || track.id)}
@@ -616,7 +616,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               </div>
 
               {/* Col 5: Duration & Like & Add to Album */}
-              <div className="flex items-center justify-end gap-2 text-[11px] pr-1 font-mono text-[#666]">
+              <div className="flex items-center justify-end gap-0.5 sm:gap-2 text-[10px] sm:text-[11px] pr-0.5 sm:pr-1 font-mono text-[#666] flex-shrink-0">
                 {track.source !== 'local' && !track.is_downloaded && onDownloadTrack ? (
                   <button
                     onClick={(e) => {
@@ -632,7 +632,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                     className={`p-1 transition-colors cursor-pointer ${
                       downloadingTrackIds?.has(track.id)
                         ? 'text-[var(--accent-color, #ff2a55)] animate-pulse'
-                        : 'opacity-0 group-hover:opacity-100 text-[#666] hover:text-white'
+                        : 'opacity-80 sm:opacity-0 sm:group-hover:opacity-100 text-[#777] hover:text-white'
                     }`}
                   >
                     {downloadingTrackIds?.has(track.id) ? (
@@ -671,7 +671,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                   className={`p-1 transition-colors cursor-pointer ${
                     isFav
                       ? 'drop-shadow-sm'
-                      : 'opacity-0 group-hover:opacity-100 text-[#555] hover:text-white'
+                      : 'opacity-75 sm:opacity-0 sm:group-hover:opacity-100 text-[#666] hover:text-white'
                   }`}
                   style={isFav ? { color: accentColor } : undefined}
                 >
