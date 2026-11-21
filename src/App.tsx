@@ -25,8 +25,8 @@ import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser }
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
-import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './components/Icons';
+import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon } from 'lucide-react';
+import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
 import { initRemoteConfigSync, RemoteBroadcastNotification } from './services/remoteConfigListener';
 import spytifyLogo from './assets/spytify-logo.png';
@@ -77,6 +77,20 @@ export default function App() {
   const [isShuffle, setIsShuffle] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [isPlayerBarMinimized, setIsPlayerBarMinimized] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [showIosInstallBanner, setShowIosInstallBanner] = useState<boolean>(() => {
+    try {
+      if (typeof window === 'undefined' || (window as any).__TAURI_INTERNALS__ && !(window as any).__TAURI_WEB_SHIM__) {
+        return false;
+      }
+      const ua = navigator.userAgent || '';
+      const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isStandalone = (window.navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+      return isIos && !isStandalone && !localStorage.getItem('spytify_ios_pwa_dismissed');
+    } catch {
+      return false;
+    }
+  });
   const userManuallyMinimizedRef = useRef(false);
   const previousViewRef = useRef(currentView);
 
@@ -3646,6 +3660,28 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handlePrev = handleUserPrev;
   handleUserPrevRef.current = handleUserPrev;
+  const handleUserNextRef = useRef(handleUserNext);
+  handleUserNextRef.current = handleUserNext;
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
+    try {
+      const artworkUrl = currentTrack.cover_art
+        ? optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)
+        : spytifyLogo;
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: sanitizeTrackTitle(currentTrack.title),
+        artist: currentTrack.artist || 'Spytify',
+        album: currentTrack.album || 'Spytify Hi-Fi',
+        artwork: artworkUrl ? [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }] : [],
+      });
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+      navigator.mediaSession.setActionHandler('play', () => handleTogglePlayRef.current());
+      navigator.mediaSession.setActionHandler('pause', () => handleTogglePlayRef.current());
+      navigator.mediaSession.setActionHandler('previoustrack', () => handleUserPrevRef.current());
+      navigator.mediaSession.setActionHandler('nexttrack', () => handleUserNextRef.current());
+    } catch {}
+  }, [currentTrack, isPlaying]);
 
   const handleToggleFavorite = async (trackToFav?: Track) => {
     const target = trackToFav || currentTrack;
@@ -4029,7 +4065,32 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const localCount = tracks.filter(t => t.source === 'local').length;
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-black text-[#a0a0a0] overflow-hidden select-none font-sans">
+    <div className="flex flex-col h-[100dvh] w-screen bg-black text-[#a0a0a0] overflow-hidden select-none font-sans pt-[env(safe-area-inset-top,0px)]">
+      {/* iOS Safari Add-to-Home-Screen PWA Banner */}
+      {showIosInstallBanner && (
+        <div className="md:hidden px-3 py-2 bg-[#12121e] border-b border-white/10 flex items-center justify-between gap-2 text-[11px] z-50 flex-shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={spytifyLogo} alt="Spytify" className="w-6 h-6 rounded-lg flex-shrink-0" />
+            <p className="text-zinc-200 leading-tight truncate">
+              Cài App iPhone: bấm <strong>Chia sẻ (⬆️)</strong> ➔ <strong>Thêm vào MH chính</strong>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowIosInstallBanner(false);
+              try {
+                localStorage.setItem('spytify_ios_pwa_dismissed', '1');
+              } catch {}
+            }}
+            className="p-1 text-zinc-400 hover:text-white flex-shrink-0"
+            aria-label="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Spy Minimalist Discord-style Startup Screen */}
       {!isTrayMode && showSplash && (
         <SplashScreen
@@ -4540,24 +4601,61 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       )}
 
       {/* Main Layout (Persistently mounted to keep WebRTC, Screen Share, Audio & Radio Bots alive) */}
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          currentView={currentView}
-          onViewChange={setCurrentView}
-          onSelectFolder={handleSelectFolder}
-          localTrackCount={localCount}
-          favoritesCount={favorites.size}
-          albumCount={albums.length}
-          currentUser={currentUser}
-          onOpenAuth={() => setIsAuthModalOpen(true)}
-          accentColor={activeAccentColor}
-          themeMode={themeMode}
-          language={language}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={toggleSidebarCollapse}
-        />
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:flex h-full flex-shrink-0">
+          <Sidebar
+            currentView={currentView}
+            onViewChange={setCurrentView}
+            onSelectFolder={handleSelectFolder}
+            localTrackCount={localCount}
+            favoritesCount={favorites.size}
+            albumCount={albums.length}
+            currentUser={currentUser}
+            onOpenAuth={() => setIsAuthModalOpen(true)}
+            accentColor={activeAccentColor}
+            themeMode={themeMode}
+            language={language}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={toggleSidebarCollapse}
+          />
+        </div>
 
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#000000]">
+        {/* Mobile Sidebar Drawer */}
+        {isMobileSidebarOpen && (
+          <div
+            className="md:hidden fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          >
+            <div className="h-full flex pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]" onClick={(e) => e.stopPropagation()}>
+              <Sidebar
+                currentView={currentView}
+                onViewChange={(view) => {
+                  setCurrentView(view);
+                  setIsMobileSidebarOpen(false);
+                }}
+                onSelectFolder={() => {
+                  handleSelectFolder();
+                  setIsMobileSidebarOpen(false);
+                }}
+                localTrackCount={localCount}
+                favoritesCount={favorites.size}
+                albumCount={albums.length}
+                currentUser={currentUser}
+                onOpenAuth={() => {
+                  setIsAuthModalOpen(true);
+                  setIsMobileSidebarOpen(false);
+                }}
+                accentColor={activeAccentColor}
+                themeMode={themeMode}
+                language={language}
+                isCollapsed={false}
+              />
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 flex flex-col overflow-hidden bg-[#000000] min-w-0">
           {/* Admin Realtime Broadcast Banner */}
           {remoteBroadcast && !isBroadcastDismissed && (
             <div
@@ -4596,9 +4694,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
 
           {/* Header Bar — Minimalist */}
-          <header className="h-12 px-4 sm:px-6 flex items-center justify-between border-b border-[#141416] bg-black/95 z-50">
-            <div className="flex items-center gap-2.5 text-xs font-medium text-[#888]">
-              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#666]">
+          <header className="h-12 px-3 sm:px-6 flex items-center justify-between border-b border-[#141416] bg-black/95 z-40">
+            <div className="flex items-center gap-2 text-xs font-medium text-[#888]">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="md:hidden p-1.5 rounded-lg bg-[#12121a] hover:bg-[#1c1c28] text-zinc-200 border border-[#222230] flex items-center justify-center cursor-pointer"
+                aria-label="Menu"
+              >
+                <Menu className="w-4 h-4" />
+              </button>
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#666] truncate">
                 {currentView === 'community'
                   ? getTranslation(language, 'nav.community').toUpperCase()
                   : currentView === 'search'
@@ -4785,7 +4891,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           </div>
 
           {/* ─── Main Standard Views Container ─── */}
-          <div className={`flex-1 overflow-y-auto px-7 py-5 ${currentView !== 'community' ? '' : 'hidden'}`}>
+          <div className={`flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4 md:px-7 md:py-5 ${currentView !== 'community' ? '' : 'hidden'}`}>
             {showVisualizer && currentView !== 'profile' && currentView !== 'ai_mix' && currentView !== 'community' && (
               <AudioVisualizer 
                 isPlaying={isPlaying} 
@@ -5229,6 +5335,38 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onOpenEqualizer={() => setIsEqualizerOpen(true)}
         isEqualizerActive={isEqualizerActive}
       />
+
+      {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}
+      <nav
+        className={`md:hidden flex items-center justify-around border-t z-40 flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)] select-none ${
+          themeMode === 'light'
+            ? 'bg-white/95 border-slate-200 text-slate-500'
+            : 'bg-[#050508]/95 border-[#161620] text-[#777788]'
+        } backdrop-blur-xl`}
+      >
+        {[
+          { view: 'library' as ViewType, label: language === 'vi' ? 'Trang chủ' : 'Home', icon: <ModernHomeIcon className="w-4 h-4" active={currentView === 'library'} /> },
+          { view: 'search' as ViewType, label: language === 'vi' ? 'Tìm kiếm' : 'Search', icon: <Search className="w-4 h-4" /> },
+          { view: 'community' as ViewType, label: 'Spy Jam', icon: <SpyJamIcon className="w-4 h-4" /> },
+          { view: 'albums' as ViewType, label: 'Album', icon: <Layers className="w-4 h-4" /> },
+          { view: 'ai_mix' as ViewType, label: 'AI Mix', icon: <AudioLines className="w-4 h-4" /> },
+          { view: 'profile' as ViewType, label: language === 'vi' ? 'Hồ sơ' : 'Profile', icon: <UserIcon className="w-4 h-4" /> },
+        ].map((item) => {
+          const isActive = currentView === item.view;
+          return (
+            <button
+              key={item.view}
+              type="button"
+              onClick={() => setCurrentView(item.view)}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 px-1 text-[10px] font-semibold transition-colors cursor-pointer"
+              style={{ color: isActive ? activeAccentColor : undefined }}
+            >
+              <span>{item.icon}</span>
+              <span className="truncate max-w-[64px]">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }

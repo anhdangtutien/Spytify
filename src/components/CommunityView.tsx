@@ -10,7 +10,7 @@ import {
   Search, ShieldAlert, AlertCircle, Edit3, EyeOff, Lock, LogIn,
   Monitor, MonitorOff, Image as ImageIcon, Paperclip, Maximize2, Minimize2, Download, Tag, FileText,
   ListMusic, SkipForward, Square, AlertTriangle, LogOut,
-  Video, VideoOff, ChevronDown, ChevronUp, ChevronRight, Bell, BellOff, Move
+  Video, VideoOff, ChevronDown, ChevronUp, ChevronRight, Bell, BellOff, Move, Menu
 } from 'lucide-react';
 import { Track, User, CommunityServer, CommunityChannel, CommunityMessage, CommunityFileAttachment, StageSession, VoiceParticipant, CommunityUserProfile, CommunityServerTag, SearchResult, RequestBotTrack } from '../types';
 import {
@@ -1878,12 +1878,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   });
 
   // ──────── MEMBER LIST VISIBILITY (DISCORD STYLE) ────────
+  const [mobileNavDrawerOpen, setMobileNavDrawerOpen] = useState(false);
   const [isMemberListVisible, setIsMemberListVisible] = useState<boolean>(() => {
     try {
+      if (typeof window !== 'undefined' && window.innerWidth < 1024) return false;
       const saved = localStorage.getItem('spytify_member_list_visible');
       return saved !== null ? saved === 'true' : true;
     } catch {
-      return true;
+      return typeof window !== 'undefined' ? window.innerWidth >= 1024 : true;
     }
   });
 
@@ -8929,6 +8931,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   // Handle channel switch
   const handleSelectChannel = (channel: CommunityChannel, serverId = selectedServer.id) => {
     setSelectedChannel(channel);
+    setMobileNavDrawerOpen(false);
     const unreadCount = unreadChannelCounts[channel.id] || 0;
     setUnreadJumpTarget(unreadCount > 0
       ? {
@@ -10849,6 +10852,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   const handleOpenDirectMessage = (friend: CommunityUserProfile) => {
     setIsFriendsTabActive(true);
+    setMobileNavDrawerOpen(false);
     // Luôn ưu tiên thông tin mới nhất từ registeredUsers để đảm bảo avatar và profile mới nhất
     const latestProfile =
       registeredUsers.find(
@@ -11426,7 +11430,23 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   };
 
   return (
-    <div className={`flex-1 flex h-full select-none overflow-hidden font-sans ${isLight ? 'bg-[#f8fafc] text-[#0f172a]' : 'bg-[#07070a] text-white'}`}>
+    <div className={`flex-1 flex h-full select-none overflow-hidden font-sans relative ${isLight ? 'bg-[#f8fafc] text-[#0f172a]' : 'bg-[#07070a] text-white'}`}>
+      {/* Mobile Backdrop when Server/Channel Drawer is open */}
+      {mobileNavDrawerOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMobileNavDrawerOpen(false)}
+        />
+      )}
+
+      {/* Wrapper for Columns 1 & 2: Slide-over Drawer on < md, Persistent Columns on md+ */}
+      <div
+        className={`${
+          mobileNavDrawerOpen
+            ? 'fixed inset-y-0 left-0 z-50 flex shadow-2xl pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]'
+            : 'hidden md:flex'
+        } h-full flex-shrink-0`}
+      >
       {/* ──────────────── 1. DISCORD-STYLE SERVER RAIL (FAR LEFT) ──────────────── */}
       <div className={`w-16 flex flex-col items-center py-3 gap-2 flex-shrink-0 z-20 border-r ${isLight ? 'bg-[#f1f5f9] border-[#e2e8f0]' : 'bg-[#040407] border-[#14141c]'}`}>
         {/* Top: Discord Direct Messages / Friends Button */}
@@ -12758,16 +12778,27 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           )}
         </div>
       </div>
+      </div>
 
       {/* ──────────────── 3. MAIN CONTENT (CHAT / VOICE / STAGE OR FRIENDS HUB) ──────────────── */}
-      <div className={`flex-1 flex flex-col h-full overflow-hidden ${isLight ? 'bg-[#ffffff]' : 'bg-[#0a0a0f]'}`}>
+      <div className={`flex-1 flex flex-col h-full overflow-hidden min-w-0 ${isLight ? 'bg-[#ffffff]' : 'bg-[#0a0a0f]'}`}>
         {isFriendsTabActive ? (
           activeDmFriend ? (
             /* ──────── 3.0 GIAO DIỆN CHAT RIÊNG (DM 1-1) & CALL RIÊNG VỚI BẠN BÈ ──────── */
             <div className="flex-1 flex flex-col h-full overflow-hidden">
               {/* DM Header Bar */}
-              <div className={`h-14 px-5 border-b flex items-center justify-between flex-shrink-0 relative z-30 ${isLight ? 'bg-white/90 backdrop-blur border-[#e2e8f0]' : 'bg-black/60 backdrop-blur border-[#151520]'}`}>
-                <div className="flex items-center gap-3 truncate">
+              <div className={`h-14 px-3 sm:px-5 border-b flex items-center justify-between flex-shrink-0 relative z-30 ${isLight ? 'bg-white/90 backdrop-blur border-[#e2e8f0]' : 'bg-black/60 backdrop-blur border-[#151520]'}`}>
+                <div className="flex items-center gap-2 sm:gap-3 truncate">
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavDrawerOpen(true)}
+                    className={`md:hidden p-1.5 rounded-lg border cursor-pointer flex-shrink-0 ${
+                      isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#141420] border-[#262638] text-[#ccc]'
+                    }`}
+                    aria-label="Mở danh sách Server / Bạn bè"
+                  >
+                    <Menu className="w-4 h-4" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => setActiveDmFriend(null)}
@@ -13627,14 +13658,24 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           ) : (
             <>
               {/* Friends Hub Header */}
-              <div className={`h-12 px-5 border-b flex items-center justify-between flex-shrink-0 ${isLight ? 'bg-white/80 backdrop-blur border-[#e2e8f0]' : 'bg-black/50 backdrop-blur border-[#151520]'}`}>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 font-bold text-xs">
+              <div className={`h-12 px-3 sm:px-5 border-b flex items-center justify-between flex-shrink-0 gap-2 ${isLight ? 'bg-white/80 backdrop-blur border-[#e2e8f0]' : 'bg-black/50 backdrop-blur border-[#151520]'}`}>
+                <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar w-full">
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavDrawerOpen(true)}
+                    className={`md:hidden p-1.5 rounded-lg border cursor-pointer flex-shrink-0 ${
+                      isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#141420] border-[#262638] text-[#ccc]'
+                    }`}
+                    aria-label="Mở danh sách Server / Bạn bè"
+                  >
+                    <Menu className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center gap-2 font-bold text-xs flex-shrink-0">
                     <Users className="w-4 h-4" style={{ color: accentColor }} />
                     <span className={isLight ? 'text-slate-900' : 'text-white'}>Bạn Bè</span>
                   </div>
-                  <div className="h-4 w-[1px] bg-zinc-700/40" />
-                  <div className="flex items-center gap-1.5 text-xs">
+                  <div className="h-4 w-[1px] bg-zinc-700/40 flex-shrink-0" />
+                  <div className="flex items-center gap-1.5 text-xs flex-shrink-0">
                     <button
                       onClick={() => setFriendsTab('online')}
                       className={`px-2.5 py-1 rounded-lg font-medium transition-colors cursor-pointer ${
@@ -14169,7 +14210,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               {/* ──────── 3.2 CỘT "ĐANG HOẠT ĐỘNG" BÊN PHẢI (ACTIVE NOW THEO THIẾT KẾ DISCORD) ──────── */}
-              <div className={`w-80 border-l p-4 flex flex-col gap-3 overflow-y-auto flex-shrink-0 ${
+              <div className={`hidden lg:flex w-80 border-l p-4 flex-col gap-3 overflow-y-auto flex-shrink-0 ${
                 isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#09090f] border-[#181824]'
               }`}>
                 <h3 className={`text-sm font-bold tracking-tight uppercase font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
@@ -14292,8 +14333,18 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         ) : (
           <>
             {/* Channel Header Bar */}
-            <div className={`h-12 px-4 border-b flex items-center justify-between flex-shrink-0 ${isLight ? 'bg-[#ffffff]/80 backdrop-blur border-[#e2e8f0]' : 'bg-black/50 backdrop-blur border-[#151520]'}`}>
+            <div className={`h-12 px-3 sm:px-4 border-b flex items-center justify-between flex-shrink-0 ${isLight ? 'bg-[#ffffff]/80 backdrop-blur border-[#e2e8f0]' : 'bg-black/50 backdrop-blur border-[#151520]'}`}>
           <div className="flex items-center gap-2 truncate">
+            <button
+              type="button"
+              onClick={() => setMobileNavDrawerOpen(true)}
+              className={`md:hidden p-1.5 rounded-lg border cursor-pointer flex-shrink-0 ${
+                isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#141420] border-[#262638] text-[#ccc]'
+              }`}
+              aria-label="Mở danh sách Server & Kênh"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
             {isVoice ? (
               <Mic className="w-4 h-4 text-emerald-400" />
             ) : isStage ? (
@@ -15755,7 +15806,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#07070b] border-[#15151e]'
           } ${
             isMemberListVisible 
-              ? 'w-52 p-3 opacity-100 flex-shrink-0' 
+              ? 'fixed inset-y-0 right-0 z-40 md:static w-56 md:w-52 p-3 opacity-100 flex-shrink-0 shadow-2xl md:shadow-none pt-[env(safe-area-inset-top,0px)] md:pt-3 pb-[env(safe-area-inset-bottom,0px)] md:pb-3' 
               : 'w-0 p-0 border-l-0 opacity-0 overflow-hidden pointer-events-none'
           }`}
         >

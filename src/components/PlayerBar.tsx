@@ -93,6 +93,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const [customMinutesInput, setCustomMinutesInput] = useState('');
   const [isPrevHovered, setIsPrevHovered] = useState(false);
   const [isNextHovered, setIsNextHovered] = useState(false);
+  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
 
   const formatTimerRemaining = () => {
     if (sleepTimerMinutes === 0) return getTranslation(language, 'timer.endOfTrack');
@@ -246,6 +247,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   }
 
   return (
+    <>
     <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-50 relative transition-all duration-300 ease-in-out flex-shrink-0 ${
       isCompact ? 'h-[52px] px-2 sm:px-4 flex items-center justify-between' : 'h-22 px-3 sm:px-6 flex items-center justify-between'
     }`}>
@@ -285,41 +287,50 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* Left: Track Info — Spy Minimalist style */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 max-w-[160px] sm:max-w-[220px] md:max-w-[260px] xl:w-[26%] xl:max-w-[320px] z-10 shrink-0 overflow-hidden">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 sm:flex-none sm:max-w-[220px] md:max-w-[260px] xl:w-[26%] xl:max-w-[320px] z-10 overflow-hidden">
         {currentTrack ? (
           <>
-            <div className={`${isCompact ? 'w-8 h-8 rounded-md' : 'w-12 h-12 rounded-lg'} overflow-hidden bg-[#101014] flex-shrink-0 border border-[#202028] relative group shadow-sm transition-all`}>
-              {currentTrack.cover_art ? (
-                <img
-                  src={optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)}
-                  alt={currentTrack.title}
-                  referrerPolicy="no-referrer"
-                  onError={(e) => handleImageError(e, currentTrack.path_or_url || currentTrack.id)}
-                  loading="lazy"
-                  decoding="async"
-                  className="w-full h-full object-cover"
+            <div
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth < 640) {
+                  setIsMobileSheetOpen(true);
+                }
+              }}
+              className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 cursor-pointer sm:cursor-default"
+            >
+              <div className={`${isCompact ? 'w-8 h-8 rounded-md' : 'w-12 h-12 rounded-lg'} overflow-hidden bg-[#101014] flex-shrink-0 border border-[#202028] relative group shadow-sm transition-all`}>
+                {currentTrack.cover_art ? (
+                  <img
+                    src={optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)}
+                    alt={currentTrack.title}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => handleImageError(e, currentTrack.path_or_url || currentTrack.id)}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-[#101014] text-[#666]">
+                    <Music className={`${isCompact ? 'w-3.5 h-3.5' : 'w-5 h-5'} text-[var(--accent-color, #ff2a55)]/70`} />
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col justify-center overflow-hidden pr-1 flex-1 min-w-0">
+                <MarqueeText
+                  text={currentTrack.title}
+                  wrapperClassName="leading-none"
+                  className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight leading-none block`}
+                  style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}
                 />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-[#101014] text-[#666]">
-                  <Music className={`${isCompact ? 'w-3.5 h-3.5' : 'w-5 h-5'} text-[var(--accent-color, #ff2a55)]/70`} />
-                </div>
-              )}
+                <MarqueeText
+                  text={currentTrack.artist}
+                  wrapperClassName="leading-none -mt-0.5"
+                  className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} leading-none block`}
+                  style={{ color: themeMode === 'light' ? '#64748b' : '#8e8e9f' }}
+                />
+              </div>
             </div>
-            <div className="flex flex-col justify-center overflow-hidden pr-2 flex-1 min-w-0">
-              <MarqueeText
-                text={currentTrack.title}
-                wrapperClassName="leading-none"
-                className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight leading-none block`}
-                style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}
-              />
-              <MarqueeText
-                text={currentTrack.artist}
-                wrapperClassName="leading-none -mt-0.5"
-                className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} leading-none block`}
-                style={{ color: themeMode === 'light' ? '#64748b' : '#8e8e9f' }}
-              />
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
               <button
                 onClick={onToggleFavorite}
                 className={`p-1.5 rounded-full transition-colors cursor-pointer ${
@@ -334,7 +345,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 <button
                   onClick={onAddToAlbum}
                   title={getTranslation(language, 'player.addToAlbum')}
-                  className="p-1.5 rounded-full text-[#555] hover:text-[var(--accent-color, #ff2a55)] hover:bg-[#161620] transition-colors cursor-pointer"
+                  className="hidden sm:flex p-1.5 rounded-full text-[#555] hover:text-[var(--accent-color, #ff2a55)] hover:bg-[#161620] transition-colors cursor-pointer"
                 >
                   <FolderPlus className="w-4 h-4" />
                 </button>
@@ -351,7 +362,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                       ? getTranslation(language, 'download.downloading')
                       : getTranslation(language, 'download.downloadBtn')
                   }
-                  className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                  className={`hidden sm:flex p-1.5 rounded-full transition-all cursor-pointer ${
                     currentTrack.source === 'local' || currentTrack.is_downloaded
                       ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
                       : isDownloading
@@ -381,17 +392,17 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Center: Controls + Spy Seekbar — Left-aligned on small screens, Dead Center on xl+ */}
-      <div className={`flex items-center justify-center shrink-0 z-20 pointer-events-auto transition-all ml-2 sm:ml-4 xl:ml-0 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2 ${
+      <div className={`flex items-center justify-center shrink-0 z-20 pointer-events-auto transition-all ml-1 sm:ml-4 xl:ml-0 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2 ${
         isCompact 
-          ? 'gap-2 sm:gap-3.5 whitespace-nowrap' 
+          ? 'gap-1.5 sm:gap-3.5 whitespace-nowrap' 
           : 'flex-col gap-1.5 w-full max-w-[580px] px-2'
       }`}>
-        <div className={`flex items-center ${isCompact ? 'gap-3.5' : 'gap-6'}`}>
+        <div className={`flex items-center ${isCompact ? 'gap-2 sm:gap-3.5' : 'gap-6'}`}>
           <button
             onClick={onToggleShuffle}
             title={getTranslation(language, 'player.shuffle')}
             style={isShuffle ? { color: accentColor, filter: `drop-shadow(0 0 8px ${accentColor}80)` } : undefined}
-            className={`transition-colors cursor-pointer ${
+            className={`hidden sm:inline-flex transition-colors cursor-pointer ${
               isShuffle ? '' : 'text-[#666] hover:text-white'
             }`}
           >
@@ -400,7 +411,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
           {/* Prev Button with Previous Song Pop-up */}
           <div 
-            className="relative group/prev flex items-center"
+            className="hidden sm:flex relative group/prev items-center"
             onMouseEnter={() => setIsPrevHovered(true)}
             onMouseLeave={() => setIsPrevHovered(false)}
           >
@@ -585,7 +596,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             onClick={onToggleRepeat}
             title={repeatMode === 'all' ? getTranslation(language, 'player.repeatAll') : repeatMode === 'one' ? getTranslation(language, 'player.repeatOne') : getTranslation(language, 'player.repeatOff')}
             style={repeatMode !== 'off' ? { color: accentColor } : undefined}
-            className={`transition-colors cursor-pointer relative flex items-center justify-center ${
+            className={`hidden sm:flex transition-colors cursor-pointer relative items-center justify-center ${
               repeatMode !== 'off' ? '' : 'text-[#666] hover:text-white'
             }`}
           >
@@ -611,7 +622,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   ? '🎵 ' + getTranslation(language, 'player.modeRecommend')
                   : '⏹ ' + getTranslation(language, 'player.repeatOff')
               }
-              className={`px-2 py-1 rounded-lg transition-all cursor-pointer relative flex items-center gap-1.5 border font-mono text-[10px] font-bold ${
+              className={`hidden sm:flex px-2 py-1 rounded-lg transition-all cursor-pointer relative items-center gap-1.5 border font-mono text-[10px] font-bold ${
                 recommendMode === 'fresh'
                   ? 'shadow-sm'
                   : recommendMode === 'mix'
@@ -784,7 +795,19 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Right: Volume + Utils */}
-      <div className={`flex items-center justify-end shrink-0 ml-auto z-10 xl:w-[26%] xl:max-w-[360px] ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
+      <div className={`flex items-center justify-end shrink-0 ml-1 sm:ml-auto z-10 xl:w-[26%] xl:max-w-[360px] ${isCompact ? 'gap-1 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
+        {/* Mobile Expand Full-Screen Player Sheet Button */}
+        <button
+          type="button"
+          onClick={() => setIsMobileSheetOpen(true)}
+          title={getTranslation(language, 'player.openBar')}
+          className="sm:hidden p-1.5 rounded-lg text-[#888] hover:text-white hover:bg-[#161622] transition-colors cursor-pointer flex items-center justify-center shrink-0"
+        >
+          <ChevronUp className="w-4 h-4" />
+        </button>
+
+        {/* Desktop Utils Group */}
+        <div className={`hidden sm:flex items-center ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
         {/* Next Track Preview / Auto Suggestion Toggle */}
         {onToggleNextTrackPopupEnabled && (
           <button
@@ -1089,7 +1112,253 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             <ChevronDown className="w-4 h-4" />
           </button>
         )}
+        </div>
       </div>
     </footer>
+
+    {/* Mobile Full-Screen Now Playing Sheet */}
+    {isMobileSheetOpen && (
+      <div
+        className={`sm:hidden fixed inset-0 z-[90] flex flex-col justify-between p-5 pt-[calc(env(safe-area-inset-top,0px)+16px)] pb-[calc(env(safe-area-inset-bottom,0px)+20px)] overflow-y-auto ${
+          themeMode === 'light' ? 'bg-slate-50 text-slate-900' : 'bg-[#07080d] text-white'
+        }`}
+      >
+        {/* Sheet Header */}
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setIsMobileSheetOpen(false)}
+            className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 cursor-pointer"
+            aria-label="Close"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+          <div className="flex flex-col items-center">
+            <span className="text-[9px] font-mono font-bold uppercase tracking-widest" style={{ color: accentColor }}>
+              NOW PLAYING
+            </span>
+            <div className="mt-0.5">{currentTrack ? getSourceBadge(currentTrack.source) : null}</div>
+          </div>
+          {onOpenEqualizer ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileSheetOpen(false);
+                onOpenEqualizer();
+              }}
+              className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 cursor-pointer"
+              title="EQ"
+            >
+              <SlidersHorizontal className="w-4 h-4" style={isEqualizerActive ? { color: accentColor } : undefined} />
+            </button>
+          ) : (
+            <div className="w-9" />
+          )}
+        </div>
+
+        {/* Cover Art */}
+        <div className="my-auto py-4 flex items-center justify-center">
+          <div
+            className="w-64 h-64 max-w-[72vw] max-h-[72vw] rounded-3xl overflow-hidden border border-white/15 shadow-2xl bg-[#101018] flex items-center justify-center"
+            style={{ boxShadow: `0 20px 50px rgba(0,0,0,0.7), 0 0 30px ${accentColor}30` }}
+          >
+            {currentTrack?.cover_art ? (
+              <img
+                src={optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)}
+                alt={currentTrack.title}
+                referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e, currentTrack.path_or_url || currentTrack.id)}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <Music className="w-16 h-16 text-zinc-600" />
+            )}
+          </div>
+        </div>
+
+        {/* Title, Favorite & Actions */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-extrabold truncate">
+                {currentTrack ? currentTrack.title : getTranslation(language, 'player.noTrack')}
+              </h2>
+              <p className="text-xs text-zinc-400 truncate mt-0.5">
+                {currentTrack ? currentTrack.artist : 'Spytify Hi-Fi'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleFavorite}
+              className="p-2 rounded-full cursor-pointer flex-shrink-0"
+              style={isFavorite ? { color: accentColor } : undefined}
+            >
+              <Heart className={`w-6 h-6 ${isFavorite ? 'fill-current' : 'text-zinc-400'}`} />
+            </button>
+          </div>
+
+          {/* Seekbar */}
+          <div className="space-y-1.5">
+            {isLive ? (
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span>{formatTime(safeCurrentTime)}</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold" style={{ color: accentColor, backgroundColor: `${accentColor}20` }}>
+                  LIVE
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="relative flex items-center h-5">
+                  <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${progressPercent}%`, backgroundColor: accentColor }} />
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={safeDuration}
+                    step={0.25}
+                    value={displayTime}
+                    onTouchStart={(e) => {
+                      setIsDragging(true);
+                      setDragValue(Number((e.target as HTMLInputElement).value));
+                    }}
+                    onChange={(e) => setDragValue(Number(e.target.value))}
+                    onTouchEnd={(e) => {
+                      setIsDragging(false);
+                      onSeek(Number((e.target as HTMLInputElement).value));
+                    }}
+                    onMouseUp={(e) => {
+                      setIsDragging(false);
+                      onSeek(Number((e.target as HTMLInputElement).value));
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] font-mono text-zinc-400">
+                  <span>{formatTime(displayTime)}</span>
+                  <span>{formatTime(effectiveDuration)}</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Main Transport Controls */}
+          <div className="flex items-center justify-between px-2">
+            <button
+              type="button"
+              onClick={onToggleShuffle}
+              className={`p-2 cursor-pointer ${isShuffle ? '' : 'text-zinc-500'}`}
+              style={isShuffle ? { color: accentColor } : undefined}
+            >
+              <Shuffle className="w-5 h-5" />
+            </button>
+            <button type="button" onClick={onPrev} className="p-2 text-white cursor-pointer">
+              <SkipBack className="w-6 h-6 fill-current" />
+            </button>
+            <button
+              type="button"
+              onClick={onTogglePlay}
+              disabled={!currentTrack}
+              style={{
+                backgroundColor: currentTrack ? accentColor : '#27272a',
+                color: currentTrack ? getContrastTextColor(accentColor) : '#71717a',
+                boxShadow: currentTrack ? `0 0 24px ${accentColor}60` : 'none',
+              }}
+              className="w-16 h-16 rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform cursor-pointer"
+            >
+              {isPlaying ? <Pause className="w-7 h-7 fill-current" /> : <Play className="w-7 h-7 fill-current ml-0.5" />}
+            </button>
+            <button type="button" onClick={onNext} className="p-2 text-white cursor-pointer">
+              <SkipForward className="w-6 h-6 fill-current" />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleRepeat}
+              className={`p-2 relative cursor-pointer ${repeatMode !== 'off' ? '' : 'text-zinc-500'}`}
+              style={repeatMode !== 'off' ? { color: accentColor } : undefined}
+            >
+              <Repeat className="w-5 h-5" />
+              {repeatMode === 'one' && (
+                <span className="absolute top-1 right-1 text-[8px] font-black font-mono rounded-full px-1" style={{ backgroundColor: accentColor, color: getContrastTextColor(accentColor) }}>
+                  1
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Volume Slider */}
+          <div className="flex items-center gap-3 px-2">
+            <button type="button" onClick={handleMuteToggle} className="text-zinc-400 cursor-pointer">
+              {volume === 0 ? <VolumeX className="w-4 h-4" style={{ color: accentColor }} /> : <Volume2 className="w-4 h-4" />}
+            </button>
+            <div className="relative flex-1 h-4 flex items-center">
+              <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(1, volume)) * 100}%`, backgroundColor: accentColor }} />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={Math.max(0, Math.min(1, volume))}
+                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Secondary Utility Row */}
+          <div className="flex items-center justify-around pt-2 border-t border-white/10 text-xs">
+            {(onCycleRecommendMode || onToggleAutoRecommend) && (
+              <button
+                type="button"
+                onClick={onCycleRecommendMode || onToggleAutoRecommend}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+                style={recommendMode !== 'off' ? { color: accentColor } : undefined}
+              >
+                <Radio className="w-4 h-4" />
+                <span className="text-[10px] font-mono uppercase">{recommendMode}</span>
+              </button>
+            )}
+            {onAddToAlbum && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSheetOpen(false);
+                  onAddToAlbum();
+                }}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4" />
+                <span className="text-[10px]">Album</span>
+              </button>
+            )}
+            {onDownload && currentTrack && (
+              <button
+                type="button"
+                onClick={() => onDownload(currentTrack)}
+                disabled={isDownloading || currentTrack.source === 'local' || Boolean(currentTrack.is_downloaded)}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span className="text-[10px]">Download</span>
+              </button>
+            )}
+            {onSetSleepTimer && (
+              <button
+                type="button"
+                onClick={() => onSetSleepTimer(sleepTimerMinutes === null ? 30 : null)}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+                style={sleepTimerMinutes !== null ? { color: accentColor } : undefined}
+              >
+                <Moon className="w-4 h-4" />
+                <span className="text-[10px]">{sleepTimerMinutes !== null ? formatTimerRemaining() || `${sleepTimerMinutes}m` : 'Timer'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };

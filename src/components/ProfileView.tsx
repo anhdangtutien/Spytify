@@ -896,7 +896,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [searchFilter, setSearchFilter] = useState('');
 
   return (
-    <div className={`flex-1 flex h-full overflow-hidden select-none ${themeMode === 'light' ? 'bg-[#f8fafc]' : 'bg-[#0a0a10]'}`}>
+    <div className={`flex-1 flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden select-none ${themeMode === 'light' ? 'bg-[#f8fafc]' : 'bg-[#0a0a10]'}`}>
       {/* Hidden File Inputs */}
       <input 
         ref={fileInputRef} 
@@ -914,7 +914,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       />
 
       {/* ──────── 1. LEFT SIDEBAR (DISCORD CATEGORIES & MINI PROFILE) ──────── */}
-      <div className={`w-64 border-r flex flex-col justify-between flex-shrink-0 ${themeMode === 'light' ? 'bg-[#f1f5f9] border-[#cbd5e1]' : 'bg-[#0b0b12] border-[#181824]'}`}>
+      <div className={`w-full md:w-64 border-b md:border-b-0 md:border-r flex flex-col justify-between flex-shrink-0 ${themeMode === 'light' ? 'bg-[#f1f5f9] border-[#cbd5e1]' : 'bg-[#0b0b12] border-[#181824]'}`}>
         <div className="p-4 space-y-3 flex-1 overflow-y-auto">
           {/* User Mini Card */}
           <div className={`p-3 rounded-xl border flex items-center gap-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#12121c] border-[#1e1e2c]'}`}>
@@ -1064,7 +1064,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
 
       {/* ──────── 2. RIGHT CONTENT PANE (DISCORD SETTING CARDS) ──────── */}
-      <div className="flex-1 p-8 overflow-y-auto max-w-3xl">
+      <div className="flex-1 p-4 sm:p-6 md:p-8 md:overflow-y-auto max-w-3xl">
         {activeTab === 'account' && (
           <div className="space-y-6">
             <div>

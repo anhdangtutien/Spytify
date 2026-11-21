@@ -379,7 +379,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
       )}
 
       {/* Header — Spy Minimalist with Rust native sorting */}
-      <div className="grid grid-cols-[40px_1fr_1fr_90px_110px] px-3 py-2 border-b border-[#141418] text-[10px] font-bold text-[#666677] uppercase tracking-wider sticky top-0 bg-black/90 backdrop-blur z-10 font-mono">
+      <div className="grid grid-cols-[32px_1fr_auto] sm:grid-cols-[36px_1fr_76px_96px] md:grid-cols-[40px_1fr_1fr_90px_110px] px-2 sm:px-3 py-2 border-b border-[#141418] text-[10px] font-bold text-[#666677] uppercase tracking-wider sticky top-0 bg-black/90 backdrop-blur z-10 font-mono">
         <span 
           onClick={() => { setSortBy('default'); setSortAsc(true); }}
           className="text-center cursor-pointer hover:text-white transition-colors"
@@ -396,14 +396,14 @@ export const TrackTable: React.FC<TrackTableProps> = ({
         </span>
         <span 
           onClick={() => handleSort('artist')}
-          className="group/col flex items-center cursor-pointer hover:text-white transition-colors"
+          className="hidden md:flex group/col items-center cursor-pointer hover:text-white transition-colors"
         >
           <span>{getTranslation(language, 'table.artistAlbum')}</span>
           {renderSortIcon('artist')}
         </span>
         <span 
           onClick={() => handleSort('source')}
-          className="group/col flex items-center justify-center cursor-pointer hover:text-white transition-colors text-center"
+          className="hidden sm:flex group/col items-center justify-center cursor-pointer hover:text-white transition-colors text-center"
         >
           <span>{getTranslation(language, 'table.source')}</span>
           {renderSortIcon('source')}
@@ -463,7 +463,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 borderLeftColor: isSelected ? accentColor : 'transparent',
                 backgroundColor: isSelected ? `${accentColor}18` : undefined,
               }}
-              className={`grid grid-cols-[40px_1fr_1fr_90px_110px] items-center px-3 rounded-md transition-all group select-none relative ${
+              className={`grid grid-cols-[32px_1fr_auto] sm:grid-cols-[36px_1fr_76px_96px] md:grid-cols-[40px_1fr_1fr_90px_110px] items-center px-2 sm:px-3 rounded-md transition-all group select-none relative ${
                 canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
                 draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5 pointer-events-none' : ''
@@ -600,7 +600,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               </div>
 
               {/* Col 3: Album */}
-              <div className="truncate text-[11px] text-[#666677] pr-3 font-mono">
+              <div className="hidden md:block truncate text-[11px] text-[#666677] pr-3 font-mono">
                 {(() => {
                   const alb = track.album?.trim() || '';
                   if (!alb || alb === 'Unknown Album' || alb.startsWith('và •') || alb.startsWith('& •') || alb.startsWith('and •')) {
@@ -611,7 +611,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               </div>
 
               {/* Col 4: Source Badge */}
-              <div className="flex items-center justify-center">
+              <div className="hidden sm:flex items-center justify-center">
                 {getSourceBadge(track.source)}
               </div>
 
