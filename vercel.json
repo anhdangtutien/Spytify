@@ -1,7 +1,4 @@
 {
-  "rewrites": [
-    { "source": "/api/yt-stream", "destination": "/api/yt-stream.js" }
-  ],
   "headers": [
     {
       "source": "/api/(.*)",

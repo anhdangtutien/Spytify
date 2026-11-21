@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/yt-stream", "destination": "/api/yt-stream.js" },
     { "source": "/mobile/(.*)", "destination": "/app/$1" },
     { "source": "/mobile", "destination": "/app" }
   ],
