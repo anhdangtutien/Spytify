@@ -3180,9 +3180,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       if (res.stream_url && onlineAudioRef.current) {
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
         clearYtLoadTimers();
-        sendYtCmd('pauseVideo');
-        sendYtCmd('stopVideo');
-        setYtVideoId(null);
+        sendYtCmd('pauseVideo', [], 1);
+        sendYtCmd('pauseVideo', [], 2);
+        sendYtCmd('stopVideo', [], 1);
+        sendYtCmd('stopVideo', [], 2);
+        latestYtVideoId1Ref.current = null;
+        latestYtVideoId2Ref.current = null;
+        setYtVideoId1(null);
+        setYtVideoId2(null);
         setShowYoutubeVideo(false);
 
         ytMusicFallbackActiveRef.current = true;
@@ -3220,6 +3225,25 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       console.warn('[YouTube Music Fallback] Error resolving stream:', err);
     }
     return false;
+  };
+
+  const handleToggleYoutubeVideo = () => {
+    setShowYoutubeVideo(prev => {
+      const next = !prev;
+      if (next && currentTrackRef.current?.source === 'youtube') {
+        const vid = extractCleanYtId(currentTrackRef.current.path_or_url || currentTrackRef.current.id);
+        const curCh = activeYtChannelRef.current;
+        const curVid = curCh === 1 ? latestYtVideoId1Ref.current : latestYtVideoId2Ref.current;
+        if (vid && (!curVid || curVid !== vid)) {
+          loadOrMountYtChannel(vid, curCh, volumeRef.current * 100);
+        }
+        if (currentTimeRef.current > 0) {
+          sendYtCmd('seekTo', [Math.round(currentTimeRef.current), true], curCh);
+        }
+        sendYtCmd('playVideo', [], curCh);
+      }
+      return next;
+    });
   };
 
   // ─── Core play function ──────────────────────────────────────────────────
@@ -3496,9 +3520,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       invoke('db_add_history', { userId: currentUserRef.current.id, track }).catch(console.error);
     }
 
-    // On Web/Mobile, YouTube must stay on the single unlocked iframe channel so autoplay isn't blocked on track switches
+    // On Web/Mobile, YouTube must stay on the single unlocked iframe channel only when using video iframe
     const effectiveIsCrossfade =
-      isWebShim && (track.source === 'youtube' || previousTrack?.source === 'youtube')
+      isWebShim && !ytMusicFallbackActiveRef.current && (track.source === 'youtube' || previousTrack?.source === 'youtube')
         ? false
         : isCrossfade;
 
@@ -3587,6 +3611,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
       } else if (track.source === 'youtube') {
+        // Web / Mobile PWA: Proactively resolve direct audio stream so background lock-screen playback & smooth transitions work natively!
+        if (isWebShim && !showYoutubeVideo) {
+          try {
+            const streamPlayed = await fallbackToYoutubeMusicStream(track);
+            if (streamPlayed) return;
+          } catch (e) {
+            console.warn('Direct stream auto-fallback notice:', e);
+          }
+        }
+
         try { invoke('stop_track').catch(() => {}); } catch {}
         sendScCmd('pause', undefined, 1);
         sendScCmd('pause', undefined, 2);
@@ -5059,20 +5093,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {/* YouTube iframe Channel 1 — persistent mount so loadVideoById preserves autoplay permission */}
       {ytIframeSrc1 && (
         <div
-          className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} right-6 w-80 h-48 rounded-xl bg-black shadow-2xl border border-[#222] z-40 transition-all duration-300 overflow-hidden ${
+          className={`fixed ${
+            isPlayerBarMinimized
+              ? 'bottom-[72px] sm:bottom-[36px]'
+              : 'bottom-[116px] sm:bottom-[70px]'
+          } left-3 right-3 sm:left-auto sm:right-6 w-auto sm:w-88 max-w-[calc(100vw-24px)] aspect-video rounded-2xl bg-black shadow-2xl border border-white/20 z-50 transition-all duration-300 overflow-hidden ${
             Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode)
               ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
               : 'opacity-0 scale-95 pointer-events-none'
           }`}
         >
           {Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode) && (
-            <button
-              onClick={() => setShowYoutubeVideo(false)}
-              className="absolute top-2 right-2 z-50 p-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-[#333] cursor-pointer shadow-md transition-colors"
-              title={getTranslation(language, 'header.minimizeMv')}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <div className="absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/85 via-black/40 to-transparent z-50 flex items-center justify-between px-3 pointer-events-auto">
+              <span className="text-[11px] font-semibold text-white/95 truncate max-w-[80%] drop-shadow-sm font-sans flex items-center gap-1.5">
+                <Tv className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="truncate">{currentTrack?.title || 'YouTube MV'}</span>
+              </span>
+              <button
+                onClick={() => setShowYoutubeVideo(false)}
+                className="p-1 rounded-full bg-black/60 hover:bg-black text-white border border-white/20 cursor-pointer shadow-md transition-colors"
+                title={getTranslation(language, 'header.minimizeMv')}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
           <iframe
             ref={ytIframe1Ref}
@@ -5093,20 +5137,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {/* YouTube iframe Channel 2 — persistent mount for Desktop seamless crossfading */}
       {ytIframeSrc2 && (
         <div
-          className={`fixed ${isPlayerBarMinimized ? 'bottom-[36px]' : 'bottom-[60px]'} right-6 w-80 h-48 rounded-xl bg-black shadow-2xl border border-[#222] z-40 transition-all duration-300 overflow-hidden ${
+          className={`fixed ${
+            isPlayerBarMinimized
+              ? 'bottom-[72px] sm:bottom-[36px]'
+              : 'bottom-[116px] sm:bottom-[70px]'
+          } left-3 right-3 sm:left-auto sm:right-6 w-auto sm:w-88 max-w-[calc(100vw-24px)] aspect-video rounded-2xl bg-black shadow-2xl border border-white/20 z-50 transition-all duration-300 overflow-hidden ${
             Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode)
               ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
               : 'opacity-0 scale-95 pointer-events-none'
           }`}
         >
           {Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode) && (
-            <button
-              onClick={() => setShowYoutubeVideo(false)}
-              className="absolute top-2 right-2 z-50 p-1.5 rounded-full bg-black/80 hover:bg-black text-white border border-[#333] cursor-pointer shadow-md transition-colors"
-              title={getTranslation(language, 'header.minimizeMv')}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <div className="absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/85 via-black/40 to-transparent z-50 flex items-center justify-between px-3 pointer-events-auto">
+              <span className="text-[11px] font-semibold text-white/95 truncate max-w-[80%] drop-shadow-sm font-sans flex items-center gap-1.5">
+                <Tv className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="truncate">{currentTrack?.title || 'YouTube MV'}</span>
+              </span>
+              <button
+                onClick={() => setShowYoutubeVideo(false)}
+                className="p-1 rounded-full bg-black/60 hover:bg-black text-white border border-white/20 cursor-pointer shadow-md transition-colors"
+                title={getTranslation(language, 'header.minimizeMv')}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
           <iframe
             ref={ytIframe2Ref}
@@ -5452,9 +5506,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 )}
               </div>
 
-              {currentTrack?.source === 'youtube' && !!ytVideoId && (
+              {currentTrack?.source === 'youtube' && (
                 <button
-                  onClick={() => setShowYoutubeVideo(p => !p)}
+                  onClick={handleToggleYoutubeVideo}
                   className={`px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
                     showYoutubeVideo
                       ? 'bg-white text-black border-white'
@@ -5947,6 +6001,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         isEqualizerActive={isEqualizerActive}
         isBackgroundPlayEnabled={isBackgroundPlayEnabled}
         onToggleBackgroundPlay={handleToggleBackgroundPlay}
+        onToggleMv={handleToggleYoutubeVideo}
+        showMv={showYoutubeVideo}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}

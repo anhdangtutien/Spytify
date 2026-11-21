@@ -7,7 +7,26 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: 'yt-stream-dev-server',
+      configureServer(server) {
+        server.middlewares.use('/api/yt-stream', async (req, res) => {
+          try {
+            // @ts-expect-error dynamic import of serverless handler
+            const { default: handler } = await import('./api/yt-stream.js');
+            await handler(req, res);
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: String(e) }));
+          }
+        });
+      },
+    },
+  ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

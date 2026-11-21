@@ -576,6 +576,19 @@ async function resolveYouTubeAudioStreamWeb(
 ): Promise<{ stream_url: string | null; resolved_video_id: string; duration_secs: number }> {
   const rawVid = extractYouTubeVideoId(videoIdInput) || videoIdInput.trim();
   if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
+    // 1. Try our direct high-performance Vercel / Vite Serverless API endpoint
+    try {
+      const q = `/api/yt-stream?videoId=${encodeURIComponent(rawVid)}&title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`;
+      const data = await fetchJsonWithTimeout(q, 3500);
+      if (data && (data.proxy_url || data.stream_url)) {
+        return {
+          stream_url: (data.proxy_url || data.stream_url) as string,
+          resolved_video_id: rawVid,
+          duration_secs: Number(data.duration_secs) || 200,
+        };
+      }
+    } catch {}
+
     const pipedPromises = PIPED_API_BASES.map(async (base) => {
       const data = await fetchJsonWithTimeout(`${base}/streams/${rawVid}`, 1800);
       const streams: any[] = Array.isArray(data?.audioStreams) ? data.audioStreams : [];

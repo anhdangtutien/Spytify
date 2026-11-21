@@ -3,7 +3,7 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
-  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones
+  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -59,6 +59,8 @@ interface PlayerBarProps {
   isEqualizerActive?: boolean;
   isBackgroundPlayEnabled?: boolean;
   onToggleBackgroundPlay?: () => void;
+  onToggleMv?: () => void;
+  showMv?: boolean;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -89,6 +91,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   isEqualizerActive = true,
   isBackgroundPlayEnabled = true,
   onToggleBackgroundPlay,
+  onToggleMv,
+  showMv = false,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -352,6 +356,20 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   className="hidden sm:flex p-1.5 rounded-full text-[#555] hover:text-[var(--accent-color, #ff2a55)] hover:bg-[#161620] transition-colors cursor-pointer"
                 >
                   <FolderPlus className="w-4 h-4" />
+                </button>
+              )}
+
+              {onToggleMv && currentTrack?.source === 'youtube' && (
+                <button
+                  onClick={onToggleMv}
+                  title={showMv ? getTranslation(language, 'header.minimizeMv') : 'MV'}
+                  className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                    showMv
+                      ? 'text-cyan-400 bg-cyan-500/15 border border-cyan-500/30'
+                      : 'text-[#666] hover:text-white hover:bg-[#161620]'
+                  }`}
+                >
+                  <Tv className="w-3.5 h-3.5" />
                 </button>
               )}
 
@@ -1354,6 +1372,20 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                     ? 'BG: ON'
                     : 'BG: OFF'}
                 </span>
+              </button>
+            )}
+            {onToggleMv && currentTrack?.source === 'youtube' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSheetOpen(false);
+                  onToggleMv();
+                }}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+                style={showMv ? { color: accentColor } : undefined}
+              >
+                <Tv className="w-4 h-4" />
+                <span className="text-[10px] font-mono">{showMv ? 'Đóng MV' : 'Xem MV'}</span>
               </button>
             )}
             {onDownload && currentTrack && (
