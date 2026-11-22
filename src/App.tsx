@@ -24,7 +24,7 @@ import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSIO
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
-import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId, getCachedUnblockedVideoId, resolveUnblockedAudioVideoId } from './services/sevenCloudsResolver';
+import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId, getCachedUnblockedVideoId, resolveUnblockedAudioVideoId, cleanQueryTerm } from './services/sevenCloudsResolver';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, SkipBack, SkipForward, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
@@ -1230,6 +1230,7 @@ export default function App() {
   const consecutiveAutoSkipsRef = useRef(0);
   const lastAutoSkipTimestampRef = useRef(0);
   const handleYouTubeBlockedOrStalledRef = useRef<(track: Track) => void>(() => {});
+  const lastSearchResultsRef = useRef<SearchResult[]>([]);
 
   // Dual-channel HTML5 audio elements
   const onlineAudio1Ref = useRef<HTMLAudioElement | null>(null);
@@ -2656,8 +2657,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           return false;
         };
 
-        // YouTube events
-        if (data.event === 'onReady' || (data.event === 'onStateChange' && (data.info === 1 || data.info === 3))) {
+        // YouTube events: onReady
+        if (data.event === 'onReady') {
           if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
             const curVol = volumeRef.current;
             if (curVol > 0) {
@@ -2668,12 +2669,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             if (!crossfadeActiveRef.current) {
               sendYtCmd('setVolume', [Math.round(curVol * 100)], ytChannel);
             }
-            if (data.event === 'onReady' && isPlayingRef.current) {
+            if (isPlayingRef.current) {
               sendYtCmd('playVideo', [], ytChannel);
             }
-            ytHasStartedPlayingRef.current = true;
-            if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-            if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
+            // onReady simply confirms iframe widget initialization.
+            // Do NOT mark ytHasStartedPlayingRef or cancel watchdog timer here,
+            // as embed-blocked videos also fire onReady before showing error screen.
           }
         }
 
@@ -2708,6 +2709,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (data.event === 'onStateChange') {
           if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
             if (data.info === 1) {
+              // State 1: PLAYING - genuine playback began
               isPlayingRef.current = true;
               setIsPlaying(true);
               if (!playStartTimestampRef.current) {
@@ -2717,15 +2719,23 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
               if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
             } else if (data.info === 3) {
-              ytHasStartedPlayingRef.current = true;
-              if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
-              if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
+              // State 3: BUFFERING - keep waiting for playback, do NOT clear watchdog timer
             } else if (data.info === 2) {
+              // State 2: PAUSED
               // Bỏ qua trạng thái pause thoáng qua ngay sau khi chuyển bài (YouTube phát tín hiệu cued/buffering)
               if (!userInitiatedPauseRef.current && (Date.now() - ytLastSwitchAtRef.current) < 1200) {
                 return;
               }
               if (tryRecoverBackgroundPause()) return;
+
+              // If YouTube self-paused right after mount without user action and video has not played:
+              // this means YouTube halted due to embed-restriction (101/150) or playback failure!
+              if (!userInitiatedPauseRef.current && (!ytHasStartedPlayingRef.current || currentTimeRef.current === 0)) {
+                console.warn('[YouTube Player] Self-paused at 0:00 without user input. Triggering unblocked fallback...');
+                handleYouTubeBlockedOrStalledRef.current(currentTrackRef.current);
+                return;
+              }
+
               isPlayingRef.current = false;
               setIsPlaying(false);
               if (playStartTimestampRef.current) {
@@ -2796,20 +2806,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               sendYtCmd('unMute', [], ytChannel);
               sendYtCmd('setVolume', [Math.round(volumeRef.current * 100)], ytChannel);
             }
-            if (data.info.playerState === 1 || data.info.playerState === 3) {
+            if (data.info.playerState === 1) {
               ytHasStartedPlayingRef.current = true;
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
               if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
-              if (data.info.playerState === 1) {
-                isPlayingRef.current = true;
-                if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
-                if (!isTrayModeRef.current) setIsPlaying(true);
-                if (!crossfadeActiveRef.current) {
-                  const curVol = volumeRef.current;
-                  const volPct = Math.round(curVol * 100);
-                  sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], ytChannel);
-                  sendYtCmd('setVolume', [volPct], ytChannel);
-                }
+              isPlayingRef.current = true;
+              if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
+              if (!isTrayModeRef.current) setIsPlaying(true);
+              if (!crossfadeActiveRef.current) {
+                const curVol = volumeRef.current;
+                const volPct = Math.round(curVol * 100);
+                sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], ytChannel);
+                sendYtCmd('setVolume', [volPct], ytChannel);
               }
             }
             if (data.info.playerState === 2) {
@@ -3516,18 +3524,37 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
 
     console.warn('[YouTube Player] Video stalled or blocked:', erroredTrack.title, erroredTrack.artist);
+    const cleanBlocked = extractCleanYtId(erroredTrack.path_or_url || erroredTrack.id);
 
-    // 1. Try finding unblocked video ID via Topic channel, 7clouds, or lyric alternative
+    // 0. Extract immediate candidates from active search results pool (0ms instant resolution!)
+    let candidateVideos: Array<{ videoId: string; title: string; author?: string }> = [];
+    if (lastSearchResultsRef.current.length > 0) {
+      const cleanT = cleanQueryTerm(erroredTrack.title).toLowerCase();
+      candidateVideos = lastSearchResultsRef.current
+        .filter(r => {
+          const rClean = cleanQueryTerm(r.title).toLowerCase();
+          return rClean === cleanT || rClean.includes(cleanT) || cleanT.includes(rClean);
+        })
+        .map(r => ({
+          videoId: extractCleanYtId(r.url_or_id) || r.url_or_id,
+          title: r.title,
+          author: r.artist,
+        }))
+        .filter(i => i.videoId && i.videoId !== cleanBlocked);
+    }
+
+    // 1. Try finding unblocked video ID via candidate pool, Topic channel, 7clouds, or lyric alternative
     try {
       const unblockedVid = await resolveUnblockedAudioVideoId(
         erroredTrack.title,
         erroredTrack.artist,
-        erroredTrack.path_or_url || erroredTrack.id
+        cleanBlocked,
+        candidateVideos
       );
 
       if (currentTrackRef.current?.id !== erroredTrack.id) return;
 
-      if (unblockedVid && unblockedVid !== extractCleanYtId(erroredTrack.path_or_url || erroredTrack.id)) {
+      if (unblockedVid && unblockedVid !== cleanBlocked) {
         console.log('[YouTube Player] Switched to unblocked video:', unblockedVid);
         ytHasStartedPlayingRef.current = false;
         isPlayingRef.current = true;
@@ -4026,15 +4053,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             sendYtCmd('setVolume', [Math.round(vol * 100)], 1);
             sendYtCmd('playVideo', [], 1);
           }
-        }, 2500);
+        }, 1000);
 
-        const fallbackDelayMs = isWebShim ? 3000 : 2200;
+        const fallbackDelayMs = isWebShim ? 2500 : 1800;
         ytUnavailableTimerRef.current = setTimeout(() => {
           if (
             !ytHasStartedPlayingRef.current &&
             currentTrackRef.current?.source === 'youtube' &&
-            currentTrackRef.current?.id === track.id
+            currentTrackRef.current?.id === track.id &&
+            !ytMusicFallbackActiveRef.current
           ) {
+            console.warn('[YouTube Watchdog] Video has not started playing after 1.8s. Triggering recovery...');
             handleYouTubeBlockedOrStalled(currentTrackRef.current);
           }
         }, fallbackDelayMs);
@@ -4222,11 +4251,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (
           !ytHasStartedPlayingRef.current &&
           currentTrackRef.current?.source === 'youtube' &&
-          currentTrackRef.current?.id === track.id
+          currentTrackRef.current?.id === track.id &&
+          !ytMusicFallbackActiveRef.current
         ) {
+          console.warn('[YouTube Crossfade Watchdog] Video has not started playing after 1.8s. Triggering recovery...');
           handleYouTubeBlockedOrStalled(currentTrackRef.current);
         }
-      }, 2200);
+      }, 1800);
 
     } else if (track.source === 'audius') {
       activeAudioChannelRef.current = inAudioChannel;
@@ -5001,6 +5032,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handlePlaySearchResult = (result: SearchResult, allResults?: SearchResult[]) => {
+    if (allResults && allResults.length > 0) {
+      lastSearchResultsRef.current = allResults;
+    }
     const cleaned = result.source === 'youtube'
       ? cleanTrackMetadata(result.title, result.artist)
       : { title: result.title, artist: result.artist };
@@ -5571,6 +5605,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
 
           <iframe
+            key={ytIframeSrc1}
             ref={ytIframe1Ref}
             src={`https://www.youtube.com/embed/${ytIframeSrc1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
             onLoad={() => handleYtIframeLoad(1)}
@@ -5635,6 +5670,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             </div>
           )}
           <iframe
+            key={ytIframeSrc2}
             ref={ytIframe2Ref}
             src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
             onLoad={() => handleYtIframeLoad(2)}

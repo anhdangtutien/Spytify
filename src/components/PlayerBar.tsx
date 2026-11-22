@@ -257,10 +257,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 ? 'Playing Music Video • Click to minimize'
                 : 'YouTube Stream • Click to watch Music Video'
             }
-            className={`text-[9px] font-bold tracking-wider px-2 py-0.5 rounded inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+            className={`text-[9px] font-bold px-2 py-0.5 rounded-lg inline-flex items-center gap-1 font-mono whitespace-nowrap shrink-0 transition-all cursor-pointer ${
               showMv
-                ? 'bg-rose-500/20 text-rose-300 border border-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.35)] ring-1 ring-rose-500/50 hover:bg-rose-500/30'
-                : 'bg-[#16161c] hover:bg-[#202028] text-[#ff4e6b] hover:text-white border border-[#ff4e6b]/40 hover:border-[#ff4e6b] shadow-sm'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.35)] ring-1 ring-rose-500/50 hover:bg-rose-500/30'
+                : 'bg-[#14141a] hover:bg-[#1f1f28] text-[#ff4e6b] hover:text-white border border-[#ff4e6b]/40 hover:border-[#ff4e6b] shadow-sm'
             }`}
           >
             {showMv ? (

@@ -41,7 +41,7 @@ const KNOWN_LYRIC_CHANNELS = [
 /**
  * Normalizes title & artist by removing bracketed info, feat tags, etc.
  */
-function cleanQueryTerm(text: string): string {
+export function cleanQueryTerm(text: string): string {
   if (!text) return '';
   return text
     .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
@@ -264,7 +264,8 @@ export async function resolve7CloudsVideoId(
 export async function resolveUnblockedAudioVideoId(
   title: string,
   artist: string,
-  blockedVideoId?: string
+  blockedVideoId?: string,
+  candidateVideos?: Array<{ videoId: string; title: string; author?: string }>
 ): Promise<string | null> {
   const cleanBlocked = blockedVideoId ? (extractCleanYtId(blockedVideoId) || blockedVideoId.trim()) : '';
   if (!title || title.trim().length === 0) return null;
@@ -287,6 +288,27 @@ export async function resolveUnblockedAudioVideoId(
       }
     }
   } catch {}
+
+  // 0. Instant candidate evaluation from active search / playlist pool
+  if (candidateVideos && candidateVideos.length > 0) {
+    const poolHit = candidateVideos.find(i => {
+      const vid = extractCleanYtId(i.videoId) || i.videoId;
+      if (!vid || vid === cleanBlocked) return false;
+      const author = (i.author || '').toLowerCase();
+      const t = (i.title || '').toLowerCase();
+      return isTopicChannel(author) || is7CloudsMatch(i) || isLyricChannelMatch(author, t) || t.includes('official audio') || t.includes('audio');
+    }) || candidateVideos.find(i => {
+      const vid = extractCleanYtId(i.videoId) || i.videoId;
+      return Boolean(vid && vid !== cleanBlocked);
+    });
+
+    if (poolHit?.videoId) {
+      const found = extractCleanYtId(poolHit.videoId) || poolHit.videoId;
+      unblockedAudioCache.set(unblockKey, found);
+      try { sessionStorage.setItem(`spytify_unblocked_${unblockKey}`, found); } catch {}
+      return found;
+    }
+  }
 
   // 1. First priority: YouTube Music Topic channel / Official Audio (Unblocked studio audio, no intro/outro delays)
   const topicItems = await queryYtSearch(`${cleanT} ${cleanA} topic`);
