@@ -2435,6 +2435,54 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const [isTrayMode, setIsTrayMode] = useState(false);
   const isTrayModeRef = useRef(false);
 
+  const nextTrackPopupRef = useRef<HTMLDivElement | null>(null);
+  const [nextTrackPopupHeight, setNextTrackPopupHeight] = useState<number>(() => {
+    return isNextTrackPopupCollapsed ? 44 : 270;
+  });
+
+  const nextTrackPopupCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    nextTrackPopupRef.current = node;
+    if (node) {
+      setNextTrackPopupHeight(node.offsetHeight || (isNextTrackPopupCollapsed ? 44 : 270));
+    }
+  }, [isNextTrackPopupCollapsed]);
+
+  const isNextTrackPopupVisible = Boolean(
+    !isTrayMode &&
+    (nextTrackPopup || (isAiLoadingNext && currentTrack)) &&
+    isNextTrackPopupEnabled
+  );
+
+  useEffect(() => {
+    if (!isNextTrackPopupVisible) {
+      setNextTrackPopupHeight(0);
+      return;
+    }
+    const el = nextTrackPopupRef.current;
+    if (!el) {
+      setNextTrackPopupHeight(isNextTrackPopupCollapsed ? 44 : 270);
+      return;
+    }
+    setNextTrackPopupHeight(el.offsetHeight);
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        if (h > 0) {
+          setNextTrackPopupHeight(Math.round(h));
+        }
+      }
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isNextTrackPopupVisible, isNextTrackPopupCollapsed, nextTrackPopup, isAiLoadingNext]);
+
+  const desktopPlayerBottom = isPlayerBarMinimized ? 34 : 58;
+  const desktopYtBottom = isNextTrackPopupVisible && nextTrackPopupHeight > 0
+    ? desktopPlayerBottom + nextTrackPopupHeight + 8
+    : desktopPlayerBottom;
+
   // ─── WALL-CLOCK TIME TICKER (IMMUNE TO BACKGROUND TAB THROTTLING) ────────
   useEffect(() => {
     const interval = setInterval(() => {
@@ -5180,18 +5228,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       )}
 
       {/* ─── NEXT TRACK POPUP (SMOOTH PLAYBACK FLOATING WIDGET) ── */}
-      {!isTrayMode && (nextTrackPopup || (isAiLoadingNext && currentTrack)) && isNextTrackPopupEnabled && (
+      {isNextTrackPopupVisible && (
         <div 
+          ref={nextTrackPopupCallbackRef}
           className={`fixed left-2.5 right-2.5 sm:left-auto z-50 p-2.5 sm:p-3.5 rounded-2xl border shadow-2xl flex flex-col gap-2 sm:gap-2.5 transition-all duration-300 max-h-[55vh] sm:max-h-none overflow-y-auto ${
             themeMode === 'light' ? 'bg-white/98' : 'bg-[#0c0c14]/98'
           } ${
-            showYoutubeVideo 
-              ? (isPlayerBarMinimized
-                  ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[36px] sm:right-6 md:right-[356px] md:lg:right-[396px]'
-                  : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[86px] sm:right-6 md:right-[356px] md:lg:right-[396px]')
-              : (isPlayerBarMinimized
-                  ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[36px] sm:right-6'
-                  : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[86px] sm:right-6')
+            isPlayerBarMinimized
+              ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[34px] sm:right-6 md:right-6'
+              : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[58px] sm:right-6 md:right-6'
           } ${
             isNextTrackPopupCollapsed ? 'w-auto sm:w-80' : 'w-auto sm:w-88 max-w-full sm:max-w-[calc(100vw-3rem)]'
           }`}
@@ -5539,7 +5584,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
                   : (showYoutubeVideo
-                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
                       : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
                     ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
@@ -5562,7 +5607,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       aspectRatio: showYoutubeVideo ? '16/9' : '1/1',
                       zIndex: showYoutubeVideo ? 95 : 91,
                     })
-              : undefined
+              : ({
+                  '--desktop-yt-bottom': `${desktopYtBottom}px`,
+                } as React.CSSProperties)
           }
         >
           {/* Mobile Cover Art Overlay in "Ảnh bìa" mode */}
@@ -5625,7 +5672,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
                   : (showYoutubeVideo
-                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
                       : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
                     ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
@@ -5648,7 +5695,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       aspectRatio: showYoutubeVideo ? '16/9' : '1/1',
                       zIndex: showYoutubeVideo ? 95 : 91,
                     })
-              : undefined
+              : ({
+                  '--desktop-yt-bottom': `${desktopYtBottom}px`,
+                } as React.CSSProperties)
           }
         >
           {/* Mobile Cover Art Overlay in "Ảnh bìa" mode */}
