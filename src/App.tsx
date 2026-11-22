@@ -2636,14 +2636,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         // YouTube events
         if (data.event === 'onReady' || (data.event === 'onStateChange' && (data.info === 1 || data.info === 3))) {
           if (ytChannel === activeYtChannelRef.current && currentTrackRef.current?.source === 'youtube') {
+            const curVol = volumeRef.current;
+            if (curVol > 0) {
+              sendYtCmd('unMute', [], ytChannel);
+            } else {
+              sendYtCmd('mute', [], ytChannel);
+            }
             if (!crossfadeActiveRef.current) {
-              const curVol = volumeRef.current;
-              if (curVol === 0) {
-                sendYtCmd('mute', [], ytChannel);
-              } else {
-                sendYtCmd('unMute', [], ytChannel);
-              }
-              sendYtCmd('setVolume', [curVol * 100], ytChannel);
+              sendYtCmd('setVolume', [Math.round(curVol * 100)], ytChannel);
             }
             if (data.event === 'onReady' && isPlayingRef.current) {
               sendYtCmd('playVideo', [], ytChannel);
@@ -2662,9 +2662,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             isPlayingRef.current &&
             !ytMusicFallbackActiveRef.current
           ) {
+            const curVol = volumeRef.current;
+            if (curVol > 0) {
+              sendYtCmd('unMute', [], ytChannel);
+            } else {
+              sendYtCmd('mute', [], ytChannel);
+            }
             if (!crossfadeActiveRef.current) {
-              const curVol = volumeRef.current;
-              sendYtCmd(curVol === 0 ? 'mute' : 'unMute', [], ytChannel);
               sendYtCmd('setVolume', [Math.round(curVol * 100)], ytChannel);
             }
             sendYtCmd('playVideo', [], ytChannel);
@@ -3174,12 +3178,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         JSON.stringify({ event: 'listening', id: channel, channel: 'widget' }), '*'
       );
       sendYtCmd('loadVideoById', [videoId, 0], channel);
-      if (volPct <= 0) {
-        sendYtCmd('mute', [], channel);
-      } else {
+      if (volumeRef.current > 0) {
         sendYtCmd('unMute', [], channel);
+      } else {
+        sendYtCmd('mute', [], channel);
       }
-      sendYtCmd('setVolume', [Math.round(volPct)], channel);
+      sendYtCmd('setVolume', [Math.max(0, Math.min(100, Math.round(volPct)))], channel);
       sendYtCmd('playVideo', [], channel);
     }
 
@@ -3235,15 +3239,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         sendYtCmd('playVideo', [], channel);
         if (!playStartTimestampRef.current) playStartTimestampRef.current = Date.now();
       }
+      if (volumeRef.current > 0) {
+        sendYtCmd('unMute', [], channel);
+      } else {
+        sendYtCmd('mute', [], channel);
+      }
       if (crossfadeActiveRef.current && activeYtChannelRef.current === channel) {
         sendYtCmd('setVolume', [0], channel);
       } else {
         const curVol = volumeRef.current;
-        if (curVol === 0) {
-          sendYtCmd('mute', [], channel);
-        } else {
-          sendYtCmd('unMute', [], channel);
-        }
         sendYtCmd('setVolume', [Math.round(curVol * 100)], channel);
       }
     } catch {}
@@ -4089,10 +4093,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const outScChannel = activeScChannelRef.current;
     const outSc = outSource === 'soundcloud';
 
+    const isMobileWeb = typeof window !== 'undefined' && (
+      Boolean((window as any).__TAURI_WEB_SHIM__) ||
+      window.innerWidth < 768 ||
+      /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+    );
+
     // Pick alternate incoming channels
     const inAudioChannel: 1 | 2 = outAudioChannel === 1 ? 2 : 1;
     const inAudio = inAudioChannel === 1 ? onlineAudio1Ref.current : onlineAudio2Ref.current;
-    const inYtChannel: 1 | 2 = outYtChannel === 1 ? 2 : 1;
+    // On mobile web, browsers (WebKit / Chrome Mobile) enforce a single-audio-element gesture policy.
+    // Switching to an unactivated secondary iframe causes Safari to mute it. Keep the same channel on mobile web.
+    const inYtChannel: 1 | 2 = (isMobileWeb && outSource === 'youtube') ? outYtChannel : (outYtChannel === 1 ? 2 : 1);
     const inScChannel: 1 | 2 = outScChannel === 1 ? 2 : 1;
 
     // Toast notification for Spotify Crossfade
@@ -4188,21 +4200,26 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       const inVol = Math.sin(progress * 0.5 * Math.PI) * baseVol;
 
       // Fade out outgoing channel
-      if (outSource === 'local' || outSource === 'audius' || (outSource === 'youtube' && ytMusicFallbackActiveRef.current)) {
-        if (outAudio) outAudio.volume = Math.max(0, Math.min(1, outVol));
-      } else if (outSource === 'youtube') {
-        sendYtCmd('setVolume', [Math.max(0, Math.min(100, outVol * 100))], outYtChannel);
-      } else if (outSc) {
-        sendScCmd('setVolume', Math.max(0, Math.min(100, outVol * 100)), outScChannel);
+      if (outYtChannel !== inYtChannel) {
+        if (outSource === 'local' || outSource === 'audius' || (outSource === 'youtube' && ytMusicFallbackActiveRef.current)) {
+          if (outAudio) outAudio.volume = Math.max(0, Math.min(1, outVol));
+        } else if (outSource === 'youtube') {
+          sendYtCmd('setVolume', [Math.max(0, Math.min(100, Math.round(outVol * 100)))], outYtChannel);
+        } else if (outSc) {
+          sendScCmd('setVolume', Math.max(0, Math.min(100, Math.round(outVol * 100))), outScChannel);
+        }
       }
 
       // Fade in incoming channel
       if (track.source === 'local' || track.source === 'audius' || (track.source === 'youtube' && ytMusicFallbackActiveRef.current)) {
         if (inAudio) inAudio.volume = Math.max(0, Math.min(1, inVol));
       } else if (track.source === 'youtube') {
-        sendYtCmd('setVolume', [Math.max(0, Math.min(100, inVol * 100))], inYtChannel);
+        if (baseVol > 0) {
+          sendYtCmd('unMute', [], inYtChannel);
+        }
+        sendYtCmd('setVolume', [Math.max(0, Math.min(100, Math.round(inVol * 100)))], inYtChannel);
       } else if (track.source === 'soundcloud') {
-        sendScCmd('setVolume', Math.max(0, Math.min(100, inVol * 100)), inScChannel);
+        sendScCmd('setVolume', Math.max(0, Math.min(100, Math.round(inVol * 100))), inScChannel);
       }
 
       if (progress >= 1) {
@@ -4213,26 +4230,28 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         crossfadeActiveRef.current = false;
         setIsCrossfading(false);
 
-        // Stop and clean up outgoing channel completely
-        if (outSource === 'local' || outSource === 'audius' || (outSource === 'youtube' && ytMusicFallbackActiveRef.current)) {
-          if (outAudio) {
-            outAudio.pause();
-            outAudio.src = '';
+        // Stop and clean up outgoing channel completely (only if distinct from incoming)
+        if (outYtChannel !== inYtChannel) {
+          if (outSource === 'local' || outSource === 'audius' || (outSource === 'youtube' && ytMusicFallbackActiveRef.current)) {
+            if (outAudio) {
+              outAudio.pause();
+              outAudio.src = '';
+            }
+          } else if (outSource === 'youtube') {
+            sendYtCmd('pauseVideo', [], outYtChannel);
+            sendYtCmd('stopVideo', [], outYtChannel);
+            if (outYtChannel === 1) {
+              latestYtVideoId1Ref.current = null;
+              setYtVideoId1(null);
+            } else {
+              latestYtVideoId2Ref.current = null;
+              setYtVideoId2(null);
+            }
+          } else if (outSc) {
+            sendScCmd('pause', undefined, outScChannel);
+            if (outScChannel === 1) setScTrackUrl1(null);
+            else setScTrackUrl2(null);
           }
-        } else if (outSource === 'youtube') {
-          sendYtCmd('pauseVideo', [], outYtChannel);
-          sendYtCmd('stopVideo', [], outYtChannel);
-          if (outYtChannel === 1) {
-            latestYtVideoId1Ref.current = null;
-            setYtVideoId1(null);
-          } else {
-            latestYtVideoId2Ref.current = null;
-            setYtVideoId2(null);
-          }
-        } else if (outSc) {
-          sendScCmd('pause', undefined, outScChannel);
-          if (outScChannel === 1) setScTrackUrl1(null);
-          else setScTrackUrl2(null);
         }
 
         // Finalize incoming volume to set volume (use current volumeRef in case user moved slider during crossfade)
@@ -4241,6 +4260,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (track.source === 'local' || track.source === 'audius' || (track.source === 'youtube' && ytMusicFallbackActiveRef.current)) {
           if (inAudio) inAudio.volume = finalVol;
         } else if (track.source === 'youtube') {
+          if (finalVol > 0) {
+            sendYtCmd('unMute', [], inYtChannel);
+          }
           sendYtCmd('setVolume', [finalPct], inYtChannel);
         } else if (track.source === 'soundcloud') {
           sendScCmd('setVolume', finalPct, inScChannel);
