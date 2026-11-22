@@ -218,16 +218,16 @@ async fn resolve_audius_stream(url_or_id: String) -> Result<String, String> {
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("Spytify/1.0")
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| e.to_string())?;
 
     let stream_url = if url_or_id.starts_with("http") {
         url_or_id
     } else {
-        format!("https://discoveryprovider.audius.co/v1/tracks/{}/stream?app_name=Spytify", url_or_id)
+        format!("https://api.audius.co/v1/tracks/{}/stream?app_name=Spytify", url_or_id)
     };
 
     let res = client.get(&stream_url).send().await.map_err(|e| e.to_string())?;

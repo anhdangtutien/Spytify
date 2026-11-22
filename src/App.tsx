@@ -4133,25 +4133,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
 
         let streamUrl = track.path_or_url;
-        if (!isWebShim) {
-          try {
-            if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
-              const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
-              if (resolved) streamUrl = resolved;
-            }
-          } catch (e) {
-            console.warn('Backend Audius stream resolve error:', e);
+        try {
+          if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('audius.co')) {
+            const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
+            if (resolved) streamUrl = resolved;
           }
+        } catch (e) {
+          console.warn('Audius stream resolve error:', e);
         }
 
         if (onlineAudio1Ref.current) {
           onlineAudio1Ref.current.pause();
           ensureAudioContextRunning();
-          if (isWebShim) {
-            onlineAudio1Ref.current.removeAttribute('crossorigin');
-          } else {
-            onlineAudio1Ref.current.crossOrigin = 'anonymous';
-          }
+          onlineAudio1Ref.current.removeAttribute('crossorigin');
           onlineAudio1Ref.current.src = streamUrl;
           onlineAudio1Ref.current.volume = volumeRef.current;
           onlineAudio1Ref.current.load();
@@ -4165,9 +4159,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               try {
                 const fallback = await invoke<string>('resolve_audius_stream', { urlOrId: track.path_or_url });
                 if (fallback && onlineAudio1Ref.current && (fallback !== streamUrl || isWebShim)) {
-                  if (isWebShim) {
-                    onlineAudio1Ref.current.removeAttribute('crossorigin');
-                  }
+                  onlineAudio1Ref.current.removeAttribute('crossorigin');
                   onlineAudio1Ref.current.src = fallback;
                   onlineAudio1Ref.current.load();
                   await onlineAudio1Ref.current.play();
@@ -4263,19 +4255,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       activeAudioChannelRef.current = inAudioChannel;
       onlineAudioRef.current = inAudio;
       let streamUrl = track.path_or_url;
-      if (!isWebShim) {
-        try {
-          if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('discoveryprovider.audius.co')) {
-            const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
-            if (resolved) streamUrl = resolved;
-          }
-        } catch (e) {
-          console.warn('Audius stream resolve error:', e);
+      try {
+        if (!streamUrl.includes('/tracks/cidstream/') || streamUrl.includes('audius.co')) {
+          const resolved = await invoke<string>('resolve_audius_stream', { urlOrId: streamUrl });
+          if (resolved) streamUrl = resolved;
         }
+      } catch (e) {
+        console.warn('Audius stream resolve error:', e);
       }
       if (inAudio) {
-        if (isWebShim) inAudio.removeAttribute('crossorigin');
-        else inAudio.crossOrigin = 'anonymous';
+        inAudio.removeAttribute('crossorigin');
         inAudio.src = streamUrl;
         inAudio.volume = 0;
         inAudio.load();

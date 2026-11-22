@@ -69,7 +69,12 @@ impl AudioPlayerManager {
                     (url, dur)
                 }
                 TrackSource::Audius | TrackSource::SoundCloud => {
-                    (track.path_or_url.clone(), track.duration_secs)
+                    let url = if track.source == TrackSource::Audius && !track.path_or_url.starts_with("http") {
+                        format!("https://api.audius.co/v1/tracks/{}/stream?app_name=Spytify", track.path_or_url)
+                    } else {
+                        track.path_or_url.clone()
+                    };
+                    (url, track.duration_secs)
                 }
                 TrackSource::Local => {
                     return Err("Local track uses direct file reader".to_string());
@@ -77,7 +82,8 @@ impl AudioPlayerManager {
             };
 
             let client = reqwest::Client::builder()
-                .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15")
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .redirect(reqwest::redirect::Policy::limited(10))
                 .timeout(Duration::from_secs(20))
                 .build()
                 .map_err(|e| e.to_string())?;

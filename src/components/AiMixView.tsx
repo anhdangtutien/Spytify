@@ -561,10 +561,16 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
 
   return (
     <div className="flex-1 w-full pb-16 select-none">
-      {/* Header Banner — Spy AI Studio */}
-      <div className="mb-6 p-5 rounded-2xl bg-[#0a0a0d] border border-[#161620] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2 mb-1.5">
+      {/* Header Banner — Spy AI Studio (Smart DJ Bắt buộc & Luôn hoạt động) */}
+      <div className="mb-6 p-5 sm:p-6 rounded-2xl bg-[#0a0a0d] border border-[#161620] flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm relative overflow-hidden">
+        {/* Subtle Ambient Glow */}
+        <div 
+          className="absolute -right-20 -top-20 w-64 h-64 rounded-full blur-[90px] opacity-15 pointer-events-none"
+          style={{ backgroundColor: accentColor }}
+        />
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span 
               className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded border font-mono flex items-center gap-1.5"
               style={{
@@ -580,68 +586,23 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
               {getTranslation(language, 'aimix.badgeSub')}
             </span>
           </div>
-          <h2 className="text-xl font-bold text-white tracking-tight">
-            {getTranslation(language, 'aimix.title')}
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+            <span>{getTranslation(language, 'aimix.title')}</span>
           </h2>
-          <p className="text-xs text-[#8e8e9f] mt-1 max-w-2xl leading-relaxed">
-            {getTranslation(language, 'aimix.subtitle')}
+          <p className="text-xs text-[#8e8e9f] mt-1.5 max-w-2xl leading-relaxed">
+            {language === 'vi' 
+              ? 'Tính năng cốt lõi luôn hoạt động: Hệ thống AI tự động học gu âm nhạc từ tần suất nghe và bài hát yêu thích theo thời gian thực, liên tục điều phối và tự động phát tiếp các bản nhạc phù hợp nhất (Xử lý 100% nội bộ).'
+              : getTranslation(language, 'aimix.subtitle')}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleTrainAi}
-            disabled={training}
-            style={{
-              backgroundColor: accentColor,
-              color: getContrastTextColor(accentColor),
-              boxShadow: `0 0 12px ${accentColor}40`,
-            }}
-            className="px-4 py-2 hover:opacity-90 active:scale-95 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {training ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>{getTranslation(language, 'aimix.analyzing', { progress: trainingProgress })}</span>
-              </>
-            ) : (
-              <>
-                <Zap className="w-3.5 h-3.5 fill-current" />
-                <span>{getTranslation(language, 'aimix.trainBtn')}</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Smart DJ Toggle Card */}
-      <div className="mb-6 p-4 rounded-xl bg-[#0d0d12] border border-[#1a1a24] flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-[#14141c] flex items-center justify-center text-white border border-[#222]">
-            <Sliders className="w-4 h-4" style={{ color: accentColor }} />
-          </div>
-          <div>
-            <h3 className="text-xs font-bold text-white">
-              {getTranslation(language, 'aimix.smartDjTitle')}
-            </h3>
-            <p className="text-[11px] text-[#777]">
-              {getTranslation(language, 'aimix.smartDjDesc')}
-            </p>
+        {/* Luôn bật mặc định (Không cần nút kích hoạt thủ công) */}
+        <div className="relative z-10 flex items-center gap-2 self-start md:self-center">
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-mono font-semibold shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>{language === 'vi' ? 'Smart DJ: Đang hoạt động' : 'Smart DJ: Active'}</span>
           </div>
         </div>
-        <button
-          onClick={onToggleSmartDj}
-          className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors ${
-            smartDjEnabled ? '' : 'bg-[#22222a]'
-          }`}
-          style={smartDjEnabled ? { backgroundColor: accentColor } : undefined}
-        >
-          <div
-            className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform ${
-              smartDjEnabled ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
       </div>
 
       {/* Training Report */}

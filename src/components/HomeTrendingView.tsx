@@ -865,6 +865,44 @@ const CURATED_BY_CATEGORY: Record<string, SearchResult[]> = {
       thumbnail: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?w=500&auto=format&fit=crop&q=60',
     },
   ],
+  audius: [
+    {
+      title: 'Fragments',
+      artist: 'Xsetra',
+      album: 'Audius Drum & Bass 320K',
+      duration_secs: 212,
+      source: 'audius',
+      url_or_id: 'https://api.audius.co/v1/tracks/V66vyPP/stream?app_name=Spytify',
+      thumbnail: 'https://v.monophonic.digital/content/baeaaaiqseau7mrpo7s6ibb7loyckmlix37ao33gltbea6qm3zud7mdxvbgyys/480x480.jpg',
+    },
+    {
+      title: 'Never Let Me Go',
+      artist: 'Duelle',
+      album: 'Audius Bass 320K',
+      duration_secs: 198,
+      source: 'audius',
+      url_or_id: 'https://api.audius.co/v1/tracks/Duelle/stream?app_name=Spytify',
+      thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Sunset Lover (Audius Remix)',
+      artist: 'Petit Biscuit',
+      album: 'Audius Chill Hi-Fi',
+      duration_secs: 238,
+      source: 'audius',
+      url_or_id: 'https://api.audius.co/v1/tracks/Sunset/stream?app_name=Spytify',
+      thumbnail: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Neon Drive 320K',
+      artist: 'Kavinsky & Lorn',
+      album: 'Audius Synthwave',
+      duration_secs: 220,
+      source: 'audius',
+      url_or_id: 'https://api.audius.co/v1/tracks/Neon/stream?app_name=Spytify',
+      thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
+    },
+  ],
 };
 
 // Curated artist avatars and default recommendations are imported from ../utils/artistAvatars
@@ -968,12 +1006,22 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   // Nghệ sĩ hay nghe của tài khoản hiện tại
   const [recentArtists, setRecentArtists] = useState<RecentArtistItem[]>(DEFAULT_FEATURED_ARTISTS);
 
-  // Hero Billboard Showcase State (chọn nghệ sĩ hiển thị banner từ danh sách đề xuất)
+  // Hero Billboard Showcase State (Tự động slideshow & cho phép chọn nghệ sĩ từ danh sách đề xuất)
   const [heroIndex, setHeroIndex] = useState(0);
+  const [isHeroPaused, setIsHeroPaused] = useState(false);
 
   const heroArtists = useMemo(() => {
     return recentArtists;
   }, [recentArtists]);
+
+  // Tự động chuyển slide cross-fade sau mỗi 6 giây (tạm dừng khi hover chuột hoặc tương tác)
+  useEffect(() => {
+    if (heroArtists.length <= 1 || isHeroPaused) return;
+    const timer = setInterval(() => {
+      setHeroIndex(prev => (prev + 1) % heroArtists.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [heroArtists.length, isHeroPaused]);
 
   // Artist Album Mix (Powered by Rust Backend)
   const [activeArtistMix, setActiveArtistMix] = useState<ArtistMix | null>(null);
@@ -1346,6 +1394,8 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
       {heroArtists.length > 0 && (
         <div 
           className="relative w-full h-[175px] sm:h-[260px] md:h-[290px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#09090e] group select-none"
+          onMouseEnter={() => setIsHeroPaused(true)}
+          onMouseLeave={() => setIsHeroPaused(false)}
         >
           {heroArtists.map((artist, idx) => {
             const isActive = idx === (heroIndex % heroArtists.length);

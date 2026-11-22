@@ -1,60 +1,69 @@
 use crate::models::{SearchResult, TrackSource};
 use serde_json::Value;
 
+const AUDIUS_HOSTS: &[&str] = &[
+    "https://api.audius.co",
+    "https://discoveryprovider.audius.co",
+    "https://discoveryprovider2.audius.co",
+];
+
 pub async fn search_audius(query: &str) -> Result<Vec<SearchResult>, String> {
     let client = reqwest::Client::builder()
         .user_agent("Spytify/1.0")
+        .redirect(reqwest::redirect::Policy::limited(5))
         .timeout(std::time::Duration::from_secs(8))
         .build()
         .map_err(|e| e.to_string())?;
 
     let encoded = urlencoding_simple(query);
-    // Audius Open Music Decentralized Discovery API (Free & 100% Open, 320kbps Streams)
-    let url = format!(
-        "https://discoveryprovider.audius.co/v1/tracks/search?query={}&app_name=Spytify",
-        encoded
-    );
+    let mut last_err = String::from("No Audius hosts available");
 
-    let res = client
-        .get(&url)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !res.status().is_success() {
-        return Err(format!("Audius API returned status: {}", res.status()));
+    for host in AUDIUS_HOSTS {
+        let url = format!("{}/v1/tracks/search?query={}&app_name=Spytify", host, encoded);
+        if let Ok(res) = client.get(&url).header("Accept", "application/json").send().await {
+            if res.status().is_success() {
+                if let Ok(val) = res.json::<Value>().await {
+                    let items = parse_audius_items(&val);
+                    if !items.is_empty() {
+                        return Ok(items);
+                    }
+                }
+            } else {
+                last_err = format!("Audius host {} status: {}", host, res.status());
+            }
+        }
     }
 
-    let val = res.json::<Value>().await.map_err(|e| e.to_string())?;
-    Ok(parse_audius_items(&val))
+    Err(last_err)
 }
 
 pub async fn get_trending_audius(limit: usize) -> Result<Vec<SearchResult>, String> {
     let client = reqwest::Client::builder()
         .user_agent("Spytify/1.0")
+        .redirect(reqwest::redirect::Policy::limited(5))
         .timeout(std::time::Duration::from_secs(8))
         .build()
         .map_err(|e| e.to_string())?;
 
-    let url = format!(
-        "https://discoveryprovider.audius.co/v1/tracks/trending?app_name=Spytify&limit={}",
-        limit
-    );
+    let mut last_err = String::from("No Audius hosts available");
 
-    let res = client
-        .get(&url)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !res.status().is_success() {
-        return Err(format!("Audius Trending API status: {}", res.status()));
+    for host in AUDIUS_HOSTS {
+        let url = format!("{}/v1/tracks/trending?app_name=Spytify&limit={}", host, limit);
+        if let Ok(res) = client.get(&url).header("Accept", "application/json").send().await {
+            if res.status().is_success() {
+                if let Ok(val) = res.json::<Value>().await {
+                    let items = parse_audius_items(&val);
+                    if !items.is_empty() {
+                        return Ok(items);
+                    }
+                }
+            } else {
+                last_err = format!("Audius trending host {} status: {}", host, res.status());
+            }
+        }
     }
 
-    let val = res.json::<Value>().await.map_err(|e| e.to_string())?;
-    Ok(parse_audius_items(&val))
+    Err(last_err)
 }
 
 fn parse_audius_items(val: &Value) -> Vec<SearchResult> {
@@ -71,12 +80,10 @@ fn parse_audius_items(val: &Value) -> Vec<SearchResult> {
                 .or_else(|| item.pointer("/artwork/150x150").and_then(|v| v.as_str()))
                 .map(|s| s.to_string());
 
-            let direct_url = item.pointer("/stream/url").and_then(|v| v.as_str());
-
-            let stream_url = if let Some(d) = direct_url {
+            let stream_url = if let Some(tid) = track_id {
+                format!("https://api.audius.co/v1/tracks/{}/stream?app_name=Spytify", tid)
+            } else if let Some(d) = item.pointer("/stream/url").and_then(|v| v.as_str()) {
                 d.to_string()
-            } else if let Some(tid) = track_id {
-                format!("https://discoveryprovider.audius.co/v1/tracks/{}/stream?app_name=Spytify", tid)
             } else {
                 continue;
             };
