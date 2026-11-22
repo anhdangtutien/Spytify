@@ -2490,17 +2490,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       // ─── SPOTIFY-STYLE EQUAL-POWER CROSSFADE TRIGGER ───
       const cfSecs = crossfadeDurationRef.current;
+      const isMobileWeb = typeof window !== 'undefined' && (
+        Boolean((window as any).__TAURI_WEB_SHIM__) ||
+        window.innerWidth < 768 ||
+        /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      );
+      const isPlayingViaIframe = currentTrack?.source === 'youtube' && !ytMusicFallbackActiveRef.current;
+      
+      // On mobile web when using a single YouTube iframe, you CANNOT overlap two audios in one iframe!
+      // Triggering 12s early would abruptly cut off the last 12s of the song!
+      // Only trigger early if we have true dual audio channels (desktop) or dual HTML5 audio elements.
+      const canDoEarlyOverlap = !isMobileWeb || !isPlayingViaIframe;
+      const effectiveCfSecs = canDoEarlyOverlap ? cfSecs : 1.2;
+
       if (
         cfSecs > 0 &&
         !crossfadeActiveRef.current &&
         !isSkippingRef.current &&
-        trueDur > (cfSecs * 2) &&
+        trueDur > 10 &&
         curTime > 5 &&
-        (trueDur - curTime) <= cfSecs &&
-        (trueDur - curTime) >= 0.3
+        (trueDur - curTime) <= effectiveCfSecs &&
+        (trueDur - curTime) >= 0.2
       ) {
         crossfadeActiveRef.current = true;
-        handleNextRef.current?.(false, true);
+        handleNextRef.current?.(false, canDoEarlyOverlap);
       }
 
       // Update real-time countdown when 10s or less remains
@@ -3305,10 +3318,29 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     const handleVisibilityState = () => {
       if (document.hidden) {
-        if (!isBackgroundPlayEnabledRef.current || userInitiatedPauseRef.current || !isPlayingRef.current) return;
+        if (userInitiatedPauseRef.current || !isPlayingRef.current) return;
         lastHiddenAtRef.current = Date.now();
         bgKeepAliveAudioRef.current?.play().catch(() => {});
-        if (onlineAudioRef.current && !onlineAudioRef.current.paused) {
+
+        // On mobile web/iOS, YouTube iframes are killed by WebKit when screen locks.
+        // Hand over to direct HTML5 audio stream so background playback continues on lock screen!
+        const track = currentTrackRef.current;
+        if (track?.source === 'youtube' && !ytMusicFallbackActiveRef.current && onlineAudioRef.current) {
+          const rawVid = extractCleanYtId(track.path_or_url || track.id);
+          if (rawVid) {
+            const streamProxy = `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(rawVid)}`;
+            const cur = currentTimeRef.current || 0;
+            onlineAudioRef.current.src = streamProxy;
+            onlineAudioRef.current.currentTime = cur;
+            onlineAudioRef.current.volume = volumeRef.current;
+            (onlineAudioRef.current as any).playsInline = true;
+            onlineAudioRef.current.setAttribute('playsinline', 'true');
+            onlineAudioRef.current.play().then(() => {
+              ytMusicFallbackActiveRef.current = true;
+              sendYtCmd('pauseVideo', [], activeYtChannelRef.current);
+            }).catch(() => {});
+          }
+        } else if (onlineAudioRef.current && !onlineAudioRef.current.paused) {
           onlineAudioRef.current.play().catch(() => {});
         }
       } else {
@@ -3317,8 +3349,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           currentTimeRef.current = onlineAudioRef.current.currentTime;
           setIsPlaying(true);
           isPlayingRef.current = true;
-        } else if (isPlayingRef.current && !userInitiatedPauseRef.current && isBackgroundPlayEnabledRef.current) {
-          // If iOS WebKit suspended playback on lock screen, auto-recover immediately when woke/active
+        } else if (isPlayingRef.current && !userInitiatedPauseRef.current) {
           if (onlineAudioRef.current && onlineAudioRef.current.src) {
             onlineAudioRef.current.play().catch(() => {});
           } else if (currentTrackRef.current?.source === 'youtube') {
@@ -4171,7 +4202,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       isPlayingRef.current = true;
       setIsPlaying(true);
       playStartTimestampRef.current = Date.now();
-      loadOrMountYtChannel(videoId, inYtChannel, 0);
+      const initialVolPct = (isMobileWeb && outYtChannel === inYtChannel) ? Math.round(volumeRef.current * 100) : 0;
+      loadOrMountYtChannel(videoId, inYtChannel, initialVolPct);
 
     } else if (track.source === 'audius') {
       activeAudioChannelRef.current = inAudioChannel;
@@ -4214,7 +4246,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     // Launch Equal-Power Crossfade Fader Loop (50ms interval)
-    const durationMs = Math.max(1000, crossfadeDurationRef.current * 1000);
+    const durationMs = (isMobileWeb && outYtChannel === inYtChannel)
+      ? 1200
+      : Math.max(1000, crossfadeDurationRef.current * 1000);
     const startTime = Date.now();
     setIsCrossfading(true);
     crossfadeActiveRef.current = true;
@@ -4593,14 +4627,53 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         artwork: artworkUrl ? [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }] : [],
       });
       navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-      navigator.mediaSession.setActionHandler('play', () => {
+      navigator.mediaSession.setActionHandler('play', async () => {
         userInitiatedPauseRef.current = false;
-        if (isBackgroundPlayEnabledRef.current) bgKeepAliveAudioRef.current?.play().catch(() => {});
-        if (!isPlayingRef.current) handleTogglePlayRef.current();
+        isPlayingRef.current = true;
+        setIsPlaying(true);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+
+        const track = currentTrackRef.current;
+        if (!track) return;
+
+        // 1. If HTML5 audio stream is loaded, resume it directly (iOS WebKit allows this in MediaSession callback!)
+        if (onlineAudioRef.current && onlineAudioRef.current.src && onlineAudioRef.current.src !== '') {
+          try {
+            await onlineAudioRef.current.play();
+            return;
+          } catch {}
+        }
+
+        // 2. On iPhone/mobile web if playing YouTube, hand over to direct audio proxy so sound plays through lock screen
+        if (track.source === 'youtube') {
+          const vid = extractCleanYtId(track.path_or_url || track.id);
+          if (vid && onlineAudioRef.current) {
+            try {
+              const streamProxy = `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(vid)}`;
+              onlineAudioRef.current.src = streamProxy;
+              onlineAudioRef.current.currentTime = currentTimeRef.current || 0;
+              onlineAudioRef.current.volume = volumeRef.current;
+              await onlineAudioRef.current.play();
+              ytMusicFallbackActiveRef.current = true;
+              return;
+            } catch (e) {
+              console.warn('[LockScreen] HTML5 audio handover error:', e);
+            }
+          }
+        }
+
+        handleTogglePlayRef.current();
       });
       navigator.mediaSession.setActionHandler('pause', () => {
         userInitiatedPauseRef.current = true;
-        if (isPlayingRef.current) handleTogglePlayRef.current();
+        isPlayingRef.current = false;
+        setIsPlaying(false);
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+        if (onlineAudioRef.current) {
+          onlineAudioRef.current.pause();
+        }
+        sendYtCmd('pauseVideo');
+        sendScCmd('pause');
       });
       navigator.mediaSession.setActionHandler('previoustrack', () => handleUserPrevRef.current());
       navigator.mediaSession.setActionHandler('nexttrack', () => handleUserNextRef.current());

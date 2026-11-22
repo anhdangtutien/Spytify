@@ -748,9 +748,11 @@ async function resolveYouTubeAudioStreamWeb(
         return Boolean(vid && vid !== rawVid);
       });
       if (ytCandidate) {
+        const candidateVid = extractYouTubeVideoId(ytCandidate.url_or_id) || ytCandidate.url_or_id;
         return {
-          stream_url: null,
-          resolved_video_id: ytCandidate.url_or_id,
+          stream_url: `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(candidateVid)}`,
+          proxy_url: `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(candidateVid)}`,
+          resolved_video_id: candidateVid,
           duration_secs: ytCandidate.duration_secs || 200,
         };
       }
@@ -768,9 +770,11 @@ async function resolveYouTubeAudioStreamWeb(
     return Boolean(tMatch || (titleLow && aMatch && t.title.toLowerCase().split(' ')[0] === titleLow.split(' ')[0]));
   });
   if (curatedAlt) {
+    const curatedVid = extractYouTubeVideoId(curatedAlt.url_or_id) || curatedAlt.url_or_id;
     return {
-      stream_url: null,
-      resolved_video_id: curatedAlt.url_or_id,
+      stream_url: `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(curatedVid)}`,
+      proxy_url: `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(curatedVid)}`,
+      resolved_video_id: curatedVid,
       duration_secs: curatedAlt.duration_secs || 200,
     };
   }
@@ -818,7 +822,12 @@ async function resolveYouTubeAudioStreamWeb(
     } catch {}
   }
 
-  return { stream_url: null, resolved_video_id: rawVid, duration_secs: 200 };
+  return {
+    stream_url: rawVid ? `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(rawVid)}` : null,
+    proxy_url: rawVid ? `/api/yt-stream?proxy=1&videoId=${encodeURIComponent(rawVid)}` : null,
+    resolved_video_id: rawVid,
+    duration_secs: 200,
+  };
 }
 
 async function resolveDownloadCandidates(track: Track): Promise<string[]> {
