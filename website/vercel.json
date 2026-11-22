@@ -1,7 +1,10 @@
 {
   "rewrites": [
+    { "source": "/assets/(.*)", "destination": "/app/assets/$1" },
     { "source": "/mobile/(.*)", "destination": "/app/$1" },
-    { "source": "/mobile", "destination": "/app" }
+    { "source": "/mobile", "destination": "/app/index.html" },
+    { "source": "/app/(.*)", "destination": "/app/$1" },
+    { "source": "/app", "destination": "/app/index.html" }
   ],
   "headers": [
     {
