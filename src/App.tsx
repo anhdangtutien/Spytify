@@ -5538,11 +5538,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
-                  : `fixed bottom-[68px] left-3 w-12 h-12 rounded-lg overflow-hidden pointer-events-none z-0 opacity-100 md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:transition-all md:duration-300 md:group/mv ${
-                      showYoutubeVideo
-                        ? 'md:pointer-events-auto md:opacity-100'
-                        : 'md:pointer-events-none md:opacity-0 md:w-0 md:h-0 md:-left-[9999px]'
-                    }`)
+                  : (showYoutubeVideo
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
+                    ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
@@ -5625,11 +5624,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
-                  : `fixed bottom-[68px] left-3 w-12 h-12 rounded-lg overflow-hidden pointer-events-none z-0 opacity-100 md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:transition-all md:duration-300 md:group/mv ${
-                      showYoutubeVideo
-                        ? 'md:pointer-events-auto md:opacity-100'
-                        : 'md:pointer-events-none md:opacity-0 md:w-0 md:h-0 md:-left-[9999px]'
-                    }`)
+                  : (showYoutubeVideo
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
+                    ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
