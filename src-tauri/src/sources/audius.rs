@@ -80,10 +80,10 @@ fn parse_audius_items(val: &Value) -> Vec<SearchResult> {
                 .or_else(|| item.pointer("/artwork/150x150").and_then(|v| v.as_str()))
                 .map(|s| s.to_string());
 
-            let stream_url = if let Some(tid) = track_id {
-                format!("https://api.audius.co/v1/tracks/{}/stream?app_name=Spytify", tid)
-            } else if let Some(d) = item.pointer("/stream/url").and_then(|v| v.as_str()) {
+            let stream_url = if let Some(d) = item.pointer("/stream/url").and_then(|v| v.as_str()) {
                 d.to_string()
+            } else if let Some(tid) = track_id {
+                format!("https://api.audius.co/v1/tracks/{}/stream?app_name=Spytify", tid)
             } else {
                 continue;
             };

@@ -544,9 +544,7 @@ async function searchAudiusWeb(query: string): Promise<SearchResult[]> {
     const mapped = items
       .map((item): SearchResult | null => {
         const tid = item?.id;
-        const streamUrl = tid
-          ? `${host}/v1/tracks/${tid}/stream?app_name=Spytify`
-          : (item?.stream?.url || '');
+        const streamUrl = item?.stream?.url || (tid ? `${host}/v1/tracks/${tid}/stream?app_name=Spytify` : '');
         if (!streamUrl) return null;
         return {
           title: item.title || 'Audius Track',
@@ -722,11 +720,19 @@ async function resolveAudiusStreamUrl(urlOrId: string): Promise<string> {
   }
   const host = await resolveAudiusHost();
   const trackIdMatch = raw.match(/\/tracks\/([A-Za-z0-9_-]+)(?:\/stream)?/);
-  if (trackIdMatch?.[1] && trackIdMatch[1] !== 'cidstream') {
-    return `${host}/v1/tracks/${trackIdMatch[1]}/stream?app_name=Spytify`;
-  }
-  if (/^[A-Za-z0-9_-]{4,24}$/.test(raw)) {
-    return `${host}/v1/tracks/${raw}/stream?app_name=Spytify`;
+  const trackId = (trackIdMatch?.[1] && trackIdMatch[1] !== 'cidstream')
+    ? trackIdMatch[1]
+    : (/^[A-Za-z0-9_-]{4,24}$/.test(raw) ? raw : null);
+
+  if (trackId) {
+    try {
+      const meta = await fetchJsonWithTimeout(`${host}/v1/tracks/${trackId}?app_name=Spytify`, 4000);
+      const directUrl = meta?.data?.stream?.url;
+      if (directUrl && directUrl.includes('/tracks/cidstream/')) {
+        return directUrl;
+      }
+    } catch {}
+    return `${host}/v1/tracks/${trackId}/stream?app_name=Spytify`;
   }
   return raw;
 }
