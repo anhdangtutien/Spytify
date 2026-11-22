@@ -21,6 +21,7 @@ interface TrackTableProps {
   accentColor?: string;
   language?: LanguageCode;
   onReorderTracks?: (newTracks: Track[]) => void;
+  onOpenMobilePlayer?: () => void;
 }
 
 const ROW_HEIGHT = 54;
@@ -40,6 +41,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   accentColor = '#ff2a55',
   language = 'vi',
   onReorderTracks,
+  onOpenMobilePlayer,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -566,7 +568,16 @@ export const TrackTable: React.FC<TrackTableProps> = ({
 
               {/* Col 2: Title & Artist & Cover */}
               <div className="flex items-center gap-2 sm:gap-3 overflow-hidden min-w-0 pr-1 sm:pr-3">
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded bg-[#111] border border-[#1e1e24] flex-shrink-0 overflow-hidden relative">
+                <div 
+                  onClick={(e) => {
+                    if (typeof window !== 'undefined' && window.innerWidth < 640 && onOpenMobilePlayer) {
+                      e.stopPropagation();
+                      onOpenMobilePlayer();
+                    }
+                  }}
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded bg-[#111] border border-[#1e1e24] flex-shrink-0 overflow-hidden relative cursor-pointer"
+                  title={language === 'vi' ? 'Xem trình phát toàn màn hình' : 'Expand player'}
+                >
                   {track.cover_art ? (
                     <img
                       src={optimizeThumbnailUrl(track.cover_art, track.path_or_url || track.id)}

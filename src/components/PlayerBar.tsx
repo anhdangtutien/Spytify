@@ -63,6 +63,8 @@ interface PlayerBarProps {
   showMv?: boolean;
   isAmbientOledMode?: boolean;
   onToggleAmbientOledMode?: () => void;
+  isMobilePlayerOpen?: boolean;
+  onToggleMobilePlayer?: (isOpen: boolean) => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -97,6 +99,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   showMv = false,
   isAmbientOledMode = false,
   onToggleAmbientOledMode,
+  isMobilePlayerOpen: externalIsMobilePlayerOpen,
+  onToggleMobilePlayer,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -105,7 +109,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   const [customMinutesInput, setCustomMinutesInput] = useState('');
   const [isPrevHovered, setIsPrevHovered] = useState(false);
   const [isNextHovered, setIsNextHovered] = useState(false);
-  const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  const [internalIsMobileSheetOpen, setInternalIsMobileSheetOpen] = useState(false);
+  const isMobileSheetOpen = externalIsMobilePlayerOpen !== undefined ? externalIsMobilePlayerOpen : internalIsMobileSheetOpen;
+  const setIsMobileSheetOpen = (val: boolean | ((prev: boolean) => boolean)) => {
+    const nextVal = typeof val === 'function' ? val(isMobileSheetOpen) : val;
+    setInternalIsMobileSheetOpen(nextVal);
+    onToggleMobilePlayer?.(nextVal);
+  };
 
   const formatTimerRemaining = () => {
     if (sleepTimerMinutes === 0) return getTranslation(language, 'timer.endOfTrack');
@@ -360,20 +370,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   className="hidden sm:flex p-1.5 rounded-full text-[#555] hover:text-[var(--accent-color, #ff2a55)] hover:bg-[#161620] transition-colors cursor-pointer"
                 >
                   <FolderPlus className="w-4 h-4" />
-                </button>
-              )}
-
-              {onToggleMv && currentTrack?.source === 'youtube' && (
-                <button
-                  onClick={onToggleMv}
-                  title={showMv ? getTranslation(language, 'header.minimizeMv') : 'MV'}
-                  className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                    showMv
-                      ? 'text-cyan-400 bg-cyan-500/15 border border-cyan-500/30'
-                      : 'text-[#666] hover:text-white hover:bg-[#161620]'
-                  }`}
-                >
-                  <Tv className="w-3.5 h-3.5" />
                 </button>
               )}
 
@@ -1202,13 +1198,22 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           )}
         </div>
 
-        {/* Cover Art */}
-        <div className="my-auto py-4 flex items-center justify-center">
+        {/* Cover Art & Mobile MV Slot */}
+        <div className="my-auto py-2 flex flex-col items-center justify-center gap-3">
           <div
-            className="w-64 h-64 max-w-[72vw] max-h-[72vw] rounded-3xl overflow-hidden border border-white/15 shadow-2xl bg-[#101018] flex items-center justify-center"
+            id="mobile-cover-art-slot"
+            className={`${
+              showMv && currentTrack?.source === 'youtube'
+                ? 'w-full max-w-[92vw] aspect-video'
+                : 'w-64 h-64 max-w-[72vw] max-h-[72vw]'
+            } rounded-3xl overflow-hidden border border-white/15 shadow-2xl bg-[#101018] flex items-center justify-center transition-all duration-300 relative`}
             style={{ boxShadow: `0 20px 50px rgba(0,0,0,0.7), 0 0 30px ${accentColor}30` }}
           >
-            {currentTrack?.cover_art ? (
+            {showMv && currentTrack?.source === 'youtube' ? (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-black text-zinc-500">
+                {/* Active YouTube iframe from App.tsx mounts on top of this container */}
+              </div>
+            ) : currentTrack?.cover_art ? (
               <img
                 src={optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)}
                 alt={currentTrack.title}
@@ -1220,6 +1225,40 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <Music className="w-16 h-16 text-zinc-600" />
             )}
           </div>
+
+          {/* Option: Toggle between Cover Art & YouTube MV */}
+          {currentTrack?.source === 'youtube' && onToggleMv && (
+            <div className="inline-flex items-center p-1 rounded-full bg-white/10 border border-white/15 backdrop-blur-md z-10 shadow-lg">
+              <button
+                type="button"
+                onClick={() => {
+                  if (showMv) onToggleMv();
+                }}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  !showMv
+                    ? 'bg-white text-zinc-900 shadow-md'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Music className="w-3.5 h-3.5" />
+                <span>{language === 'vi' ? 'Ảnh bìa' : 'Artwork'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!showMv) onToggleMv();
+                }}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  showMv
+                    ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Tv className="w-3.5 h-3.5" />
+                <span>{language === 'vi' ? 'Video MV' : 'Music Video'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Title, Favorite & Actions */}
@@ -1396,20 +1435,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                     ? 'BG: ON'
                     : 'BG: OFF'}
                 </span>
-              </button>
-            )}
-            {onToggleMv && currentTrack?.source === 'youtube' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMobileSheetOpen(false);
-                  onToggleMv();
-                }}
-                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
-                style={showMv ? { color: accentColor } : undefined}
-              >
-                <Tv className="w-4 h-4" />
-                <span className="text-[10px] font-mono">{showMv ? 'Đóng MV' : 'Xem MV'}</span>
               </button>
             )}
             {onToggleAmbientOledMode && (

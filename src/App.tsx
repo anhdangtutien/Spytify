@@ -186,6 +186,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isAmbientOledMode]);
 
+  // Mobile Full-screen Now Playing Sheet
+  const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
+
   // Realtime Remote Config & Broadcast Banner
   const [remoteBroadcast, setRemoteBroadcast] = useState<RemoteBroadcastNotification | null>(null);
   const [isBroadcastDismissed, setIsBroadcastDismissed] = useState(false);
@@ -1119,6 +1122,32 @@ export default function App() {
   };
   const [showVisualizer, setShowVisualizer] = useState(true);
   const [showYoutubeVideo, setShowYoutubeVideo] = useState(false);
+  const [mobileMvRect, setMobileMvRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+
+  useEffect(() => {
+    if (!isMobilePlayerOpen || !showYoutubeVideo) {
+      setMobileMvRect(null);
+      return;
+    }
+    const updateRect = () => {
+      const el = document.getElementById('mobile-cover-art-slot');
+      if (el) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          setMobileMvRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+        }
+      }
+    };
+    updateRect();
+    const timer = setTimeout(updateRect, 60);
+    window.addEventListener('resize', updateRect);
+    window.addEventListener('orientationchange', updateRect);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateRect);
+      window.removeEventListener('orientationchange', updateRect);
+    };
+  }, [isMobilePlayerOpen, showYoutubeVideo]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [ytVideoId1, setYtVideoId1] = useState<string | null>(null);
   const [ytVideoId2, setYtVideoId2] = useState<string | null>(null);
@@ -5323,35 +5352,35 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </>
       )}
 
-      {/* YouTube iframe Channel 1 — persistent mount so loadVideoById preserves autoplay permission */}
+      {/* YouTube iframe Channel 1 — mounts over mobile cover art slot when MV is toggled, otherwise hidden */}
       {ytIframeSrc1 && (
         <div
-          className={`fixed ${
-            isPlayerBarMinimized
-              ? 'bottom-[calc(80px+env(safe-area-inset-bottom,0px))] sm:bottom-[36px]'
-              : 'bottom-[calc(135px+env(safe-area-inset-bottom,0px))] sm:bottom-[70px]'
-          } left-3 right-3 sm:left-auto sm:right-6 w-auto sm:w-88 max-w-[calc(100vw-24px)] aspect-video rounded-2xl bg-black shadow-2xl border border-white/20 z-50 transition-all duration-300 overflow-hidden ${
-            Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode)
-              ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
-              : 'opacity-0 scale-95 pointer-events-none'
-          }`}
+          className={
+            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
+              ? 'fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 pointer-events-auto'
+              : 'fixed -top-96 -left-96 w-1 h-1 overflow-hidden opacity-0 pointer-events-none'
+          }
+          style={
+            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
+              ? (mobileMvRect
+                  ? {
+                      top: `${mobileMvRect.top}px`,
+                      left: `${mobileMvRect.left}px`,
+                      width: `${mobileMvRect.width}px`,
+                      height: `${mobileMvRect.height}px`,
+                      zIndex: 95,
+                    }
+                  : {
+                      top: '16vh',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 'min(92vw, 400px)',
+                      aspectRatio: '16/9',
+                      zIndex: 95,
+                    })
+              : undefined
+          }
         >
-          {Boolean(ytVideoId1 && showYoutubeVideo && activeYtChannelRef.current === 1 && !isTrayMode) && (
-            <div className="absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/85 via-black/40 to-transparent z-50 flex items-center justify-between px-3 pointer-events-auto">
-              <span className="text-[11px] font-semibold text-white/95 truncate max-w-[80%] drop-shadow-sm font-sans flex items-center gap-1.5">
-                <Tv className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span className="truncate">{currentTrack?.title || 'YouTube MV'}</span>
-                <span className="text-[10px] text-amber-300 font-normal shrink-0 ml-1">· Chạm để phát</span>
-              </span>
-              <button
-                onClick={() => setShowYoutubeVideo(false)}
-                className="p-1 rounded-full bg-black/60 hover:bg-black text-white border border-white/20 cursor-pointer shadow-md transition-colors"
-                title={getTranslation(language, 'header.minimizeMv')}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
           <iframe
             ref={ytIframe1Ref}
             src={`https://www.youtube.com/embed/${ytIframeSrc1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
@@ -5364,35 +5393,35 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </div>
       )}
 
-      {/* YouTube iframe Channel 2 — persistent mount for Desktop seamless crossfading */}
+      {/* YouTube iframe Channel 2 — mounts over mobile cover art slot when MV is toggled, otherwise hidden */}
       {ytIframeSrc2 && (
         <div
-          className={`fixed ${
-            isPlayerBarMinimized
-              ? 'bottom-[calc(80px+env(safe-area-inset-bottom,0px))] sm:bottom-[36px]'
-              : 'bottom-[calc(135px+env(safe-area-inset-bottom,0px))] sm:bottom-[70px]'
-          } left-3 right-3 sm:left-auto sm:right-6 w-auto sm:w-88 max-w-[calc(100vw-24px)] aspect-video rounded-2xl bg-black shadow-2xl border border-white/20 z-50 transition-all duration-300 overflow-hidden ${
-            Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode)
-              ? 'opacity-100 scale-100 pointer-events-auto shadow-[0_16px_36px_rgba(0,0,0,0.9)]'
-              : 'opacity-0 scale-95 pointer-events-none'
-          }`}
+          className={
+            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
+              ? 'fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 pointer-events-auto'
+              : 'fixed -top-96 -left-96 w-1 h-1 overflow-hidden opacity-0 pointer-events-none'
+          }
+          style={
+            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
+              ? (mobileMvRect
+                  ? {
+                      top: `${mobileMvRect.top}px`,
+                      left: `${mobileMvRect.left}px`,
+                      width: `${mobileMvRect.width}px`,
+                      height: `${mobileMvRect.height}px`,
+                      zIndex: 95,
+                    }
+                  : {
+                      top: '16vh',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 'min(92vw, 400px)',
+                      aspectRatio: '16/9',
+                      zIndex: 95,
+                    })
+              : undefined
+          }
         >
-          {Boolean(ytVideoId2 && showYoutubeVideo && activeYtChannelRef.current === 2 && !isTrayMode) && (
-            <div className="absolute top-0 left-0 right-0 h-9 bg-gradient-to-b from-black/85 via-black/40 to-transparent z-50 flex items-center justify-between px-3 pointer-events-auto">
-              <span className="text-[11px] font-semibold text-white/95 truncate max-w-[80%] drop-shadow-sm font-sans flex items-center gap-1.5">
-                <Tv className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                <span className="truncate">{currentTrack?.title || 'YouTube MV'}</span>
-                <span className="text-[10px] text-amber-300 font-normal shrink-0 ml-1">· Chạm để phát</span>
-              </span>
-              <button
-                onClick={() => setShowYoutubeVideo(false)}
-                className="p-1 rounded-full bg-black/60 hover:bg-black text-white border border-white/20 cursor-pointer shadow-md transition-colors"
-                title={getTranslation(language, 'header.minimizeMv')}
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
           <iframe
             ref={ytIframe2Ref}
             src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
@@ -5962,6 +5991,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6017,6 +6047,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6072,6 +6103,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6145,6 +6177,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   language={language}
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
+                  onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6237,6 +6270,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         showMv={showYoutubeVideo}
         isAmbientOledMode={isAmbientOledMode}
         onToggleAmbientOledMode={() => setIsAmbientOledMode(p => !p)}
+        isMobilePlayerOpen={isMobilePlayerOpen}
+        onToggleMobilePlayer={setIsMobilePlayerOpen}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}
