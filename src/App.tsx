@@ -5182,16 +5182,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {/* ─── NEXT TRACK POPUP (SMOOTH PLAYBACK FLOATING WIDGET) ── */}
       {!isTrayMode && (nextTrackPopup || (isAiLoadingNext && currentTrack)) && isNextTrackPopupEnabled && (
         <div 
-          className={`fixed left-2.5 right-2.5 sm:left-auto sm:right-6 z-50 p-2.5 sm:p-3.5 rounded-2xl border shadow-2xl flex flex-col gap-2 sm:gap-2.5 transition-all duration-300 max-h-[55vh] sm:max-h-none overflow-y-auto ${
+          className={`fixed left-2.5 right-2.5 sm:left-auto z-50 p-2.5 sm:p-3.5 rounded-2xl border shadow-2xl flex flex-col gap-2 sm:gap-2.5 transition-all duration-300 max-h-[55vh] sm:max-h-none overflow-y-auto ${
             themeMode === 'light' ? 'bg-white/98' : 'bg-[#0c0c14]/98'
           } ${
             showYoutubeVideo 
               ? (isPlayerBarMinimized
-                  ? 'bottom-[calc(240px+env(safe-area-inset-bottom,0px))] md:bottom-[236px]'
-                  : 'bottom-[calc(310px+env(safe-area-inset-bottom,0px))] md:bottom-[260px]')
+                  ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[36px] sm:right-6 md:right-[356px] md:lg:right-[396px]'
+                  : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[86px] sm:right-6 md:right-[356px] md:lg:right-[396px]')
               : (isPlayerBarMinimized
-                  ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[36px]'
-                  : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[60px]')
+                  ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[36px] sm:right-6'
+                  : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[86px] sm:right-6')
           } ${
             isNextTrackPopupCollapsed ? 'w-auto sm:w-80' : 'w-auto sm:w-88 max-w-full sm:max-w-[calc(100vw-3rem)]'
           }`}
@@ -5375,9 +5375,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   }}
                   style={{
                     backgroundColor: activeAccentColor,
-                    color: (activeAccentColor === '#ffffff' || activeAccentColor.toLowerCase() === '#fff') ? '#000000' : '#ffffff',
+                    color: getContrastTextColor(activeAccentColor),
                   }}
-                  className="p-2 rounded-lg hover:scale-105 active:scale-95 transition-transform flex-shrink-0 cursor-pointer shadow-sm"
+                  className="w-8 h-8 rounded-lg hover:scale-105 active:scale-95 transition-transform flex-shrink-0 cursor-pointer shadow-sm flex items-center justify-center border border-white/20"
                   title={getTranslation(language, 'popup.playNow')}
                 >
                   <Play className="w-3.5 h-3.5 fill-current ml-0.5" />

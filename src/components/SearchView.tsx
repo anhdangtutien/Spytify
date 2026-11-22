@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Search, Loader2, Play, Music, Disc3, Sparkles, ArrowUpRight, X } from 'lucide-react';
+import { Search, Loader2, Play, Music, Disc3, Sparkles, ArrowUpRight, X, History } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { SearchResult, Track } from '../types';
 import { getContrastTextColor, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle } from '../utils/trackUtils';
@@ -18,6 +18,19 @@ interface SearchViewProps {
 
 const POPULAR = ['Die With A Smile', 'APT. ROSÉ', 'Sơn Tùng M-TP', 'Creepy Nuts', 'Alan Walker', 'V-Pop 2025', 'Lo-Fi Beats', 'Billie Eilish'];
 
+const getInitialSearchHistory = (): string[] => {
+  try {
+    const raw = localStorage.getItem('spytify_search_history');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+      }
+    }
+  } catch {}
+  return [];
+};
+
 type Filter = 'all' | 'youtube' | 'soundcloud' | 'audius' | 'local';
 
 export const SearchView: React.FC<SearchViewProps> = ({ 
@@ -34,9 +47,71 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [isTyping, setIsTyping] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<string[]>(getInitialSearchHistory);
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const addToSearchHistory = (term?: string | null) => {
+    if (!term) return;
+    const clean = term.trim();
+    if (!clean || clean.length < 2) return;
+    setSearchHistory(prev => {
+      const next = [clean, ...prev.filter(item => item.toLowerCase() !== clean.toLowerCase())].slice(0, 15);
+      try {
+        localStorage.setItem('spytify_search_history', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const clearSearchHistory = () => {
+    setSearchHistory([]);
+    try {
+      localStorage.removeItem('spytify_search_history');
+    } catch {}
+  };
+
+  const recentArtists = React.useMemo(() => {
+    const set = new Set<string>();
+    if (currentTrack?.artist) {
+      const a = currentTrack.artist.trim();
+      if (a && a !== 'Unknown Artist' && a.length > 1) set.add(a);
+    }
+    for (const t of localTracks) {
+      if (t.artist && t.artist.trim() && t.artist.trim() !== 'Unknown Artist') {
+        set.add(t.artist.trim());
+        if (set.size >= 5) break;
+      }
+    }
+    return Array.from(set);
+  }, [localTracks, currentTrack]);
+
+  const dynamicSuggestions = React.useMemo(() => {
+    const list: string[] = [];
+    const added = new Set<string>();
+
+    const pushItem = (item?: string | null) => {
+      if (!item) return;
+      const clean = item.trim();
+      const lower = clean.toLowerCase();
+      if (clean && !added.has(lower)) {
+        added.add(lower);
+        list.push(clean);
+      }
+    };
+
+    // 1. Prioritize user's searched songs & artists
+    searchHistory.forEach(pushItem);
+
+    // 2. Add artists from current and local tracks
+    recentArtists.forEach(pushItem);
+
+    // 3. Fallback to popular trending tags
+    POPULAR.forEach(pushItem);
+
+    return list.slice(0, 10);
+  }, [searchHistory, recentArtists]);
 
   // Close suggestions when clicking anywhere outside the search container
   useEffect(() => {
@@ -90,6 +165,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   const doSearch = async (q: string, f: Filter) => {
     if (!q.trim()) return;
+    addToSearchHistory(q);
     setIsTyping(false);
     setShowSuggestions(false);
     setLoading(true);
@@ -116,6 +192,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   
   const handleQuick = (term: string) => { 
     setQuery(term); 
+    addToSearchHistory(term);
     doSearch(term, filter); 
   };
 
@@ -289,19 +366,46 @@ export const SearchView: React.FC<SearchViewProps> = ({
           ))}
         </div>
 
-        {/* Quick searches */}
+        {/* Quick searches & Dynamic History Suggestions */}
         {!query && (
-          <div className="mt-4 flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] text-[#666] uppercase font-mono">{getTranslation(language, 'search.quick')}</span>
-            {POPULAR.map(term => (
-              <button
-                key={term}
-                onClick={() => handleQuick(term)}
-                className="px-2.5 py-0.5 rounded-full bg-[#101014] hover:bg-[#181820] text-[#888] hover:text-white text-[11px] border border-[#1a1a22] transition-colors cursor-pointer"
-              >
-                {term}
-              </button>
-            ))}
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-[10px] text-[#888] uppercase font-mono flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3" style={{ color: accentColor }} />
+                {searchHistory.length > 0 
+                  ? (language === 'vi' ? 'GỢI Ý THEO BÀI HÁT & NGHỆ SĨ:' : 'SUGGESTIONS FOR YOU:') 
+                  : getTranslation(language, 'search.quick')}
+              </span>
+              {searchHistory.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearSearchHistory}
+                  className="text-[10px] text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer font-mono"
+                  title={language === 'vi' ? 'Xóa lịch sử tìm kiếm' : 'Clear search history'}
+                >
+                  {language === 'vi' ? 'Xóa lịch sử' : 'Clear history'}
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {dynamicSuggestions.map((term, idx) => {
+                const isFromHistory = searchHistory.includes(term);
+                return (
+                  <button
+                    key={`${term}-${idx}`}
+                    onClick={() => handleQuick(term)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-all cursor-pointer flex items-center gap-1 ${
+                      isFromHistory
+                        ? 'bg-[#14141e] hover:bg-[#1e1e2c] text-zinc-200 border-[#2a2a3a] hover:border-white/30 shadow-sm'
+                        : 'bg-[#101014] hover:bg-[#181820] text-[#888] hover:text-white border-[#1a1a22]'
+                    }`}
+                  >
+                    {isFromHistory && <History className="w-3 h-3 text-zinc-400 shrink-0" />}
+                    <span className="truncate max-w-[200px]">{term}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -325,7 +429,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
               return (
                 <div
                   key={t.id}
-                  onClick={() => onTrackSelect(t)}
+                  onClick={() => {
+                    if (t.artist) addToSearchHistory(t.artist);
+                    if (t.title) addToSearchHistory(t.title);
+                    onTrackSelect(t);
+                  }}
                   style={isActive ? { borderColor: `${accentColor}`, backgroundColor: `${accentColor}14`, boxShadow: `0 0 14px ${accentColor}30` } : undefined}
                   className={`card-hover-accent flex items-center justify-between p-2.5 rounded-xl bg-[#0c0c10] hover:bg-[#14141a] border transition-all cursor-pointer group ${
                     isActive ? '' : 'border-[#161620]'
@@ -378,7 +486,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
               return (
                 <div
                   key={i}
-                  onClick={() => onPlaySearchResult(r, results)}
+                  onClick={() => {
+                    if (r.artist) addToSearchHistory(r.artist);
+                    if (r.title) addToSearchHistory(r.title);
+                    onPlaySearchResult(r, results);
+                  }}
                   style={isMatchCurrent ? {
                     borderColor: `${accentColor}`,
                     boxShadow: `0 0 16px ${accentColor}40`,
