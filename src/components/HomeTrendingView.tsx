@@ -1460,6 +1460,32 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
               </div>
             );
           })}
+
+          {/* Billboard Mini Dots Indicators */}
+          {heroArtists.length > 1 && (
+            <div className="absolute right-4 bottom-4 z-20 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-white/10 shadow-lg">
+              {heroArtists.slice(0, 10).map((_, i) => {
+                const isDotActive = i === (heroIndex % heroArtists.length);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHeroIndex(i);
+                    }}
+                    className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                      isDotActive ? 'w-5' : 'w-1.5 bg-white/30 hover:bg-white/60'
+                    }`}
+                    style={{
+                      backgroundColor: isDotActive ? accentColor : undefined,
+                    }}
+                    title={`Artist #${i + 1}`}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1508,7 +1534,10 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
               return (
                 <div
                   key={idx}
-                  onClick={() => setHeroIndex(idx)}
+                  onClick={() => {
+                    setHeroIndex(idx);
+                    handleOpenArtistMix(artistItem);
+                  }}
                   className={`group w-[124px] sm:w-[136px] md:w-[144px] lg:w-[152px] flex-shrink-0 p-3 rounded-2xl bg-[#09090d] hover:bg-[#14141c] border transition-all flex flex-col items-center text-center cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-1 relative ${
                     isSelected ? 'shadow-lg -translate-y-0.5' : ''
                   }`}
