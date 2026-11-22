@@ -595,7 +595,30 @@ async function searchYoutubeWeb(query: string, apiTimeoutMs = 1800): Promise<Sea
     }
   }
 
-  // Race all Piped and Invidious search endpoints concurrently so we never stall sequentially
+  // 1. High-speed direct YouTube Search API endpoint
+  try {
+    const apiBase = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+    let data = await fetchJsonWithTimeout(`/api/yt-search?q=${encodeURIComponent(query)}`, 2200);
+    if (!data || !Array.isArray(data.items) || data.items.length === 0) {
+      data = await fetchJsonWithTimeout(
+        `https://spytify-website-rho.vercel.app/api/yt-search?q=${encodeURIComponent(query)}`,
+        2600
+      );
+    }
+    if (data && Array.isArray(data.items) && data.items.length > 0) {
+      return data.items.map((i: any) => ({
+        title: i.title || query,
+        artist: i.author || 'YouTube Audio',
+        album: 'YouTube',
+        duration_secs: Number(i.duration_secs) || 200,
+        source: 'youtube' as const,
+        url_or_id: i.videoId,
+        thumbnail: i.thumbnail || `https://i.ytimg.com/vi/${i.videoId}/hqdefault.jpg`,
+      }));
+    }
+  } catch {}
+
+  // 2. Race Piped and Invidious search endpoints concurrently as backup
   const pipedPromises = PIPED_API_BASES.map(async (base): Promise<SearchResult[] | null> => {
     const data = await fetchJsonWithTimeout(
       `${base}/search?q=${encodeURIComponent(query)}&filter=music_songs`,
@@ -709,16 +732,19 @@ async function resolveYouTubeAudioStreamWeb(
         apiBase = 'https://spytify-website-rho.vercel.app';
       }
       if (data && (data.proxy_url || data.stream_url)) {
-        let stream = (data.stream_url || data.proxy_url) as string;
         let proxy = data.proxy_url ? String(data.proxy_url) : null;
-        if (stream && !stream.startsWith('http')) {
-          stream = new URL(stream, apiBase || 'https://spytify-website-rho.vercel.app').href;
-        }
         if (proxy && !proxy.startsWith('http')) {
           proxy = new URL(proxy, apiBase || 'https://spytify-website-rho.vercel.app').href;
         }
+        let stream = (data.stream_url || data.proxy_url) as string;
+        if (stream && !stream.startsWith('http')) {
+          stream = new URL(stream, apiBase || 'https://spytify-website-rho.vercel.app').href;
+        }
+        // In web / mobile browsers, raw Google Video URLs fail with 403 because they are bound to the Vercel server IP.
+        // Therefore, proxy_url (which proxies byte ranges with 206 Partial Content) is preferred for 100% reliable HTML5 audio!
+        const effectiveStream = proxy || stream;
         return {
-          stream_url: stream,
+          stream_url: effectiveStream,
           proxy_url: proxy,
           resolved_video_id: rawVid,
           duration_secs: Number(data.duration_secs) || 200,
@@ -791,29 +817,7 @@ async function resolveYouTubeAudioStreamWeb(
     };
   }
 
-  try {
-    const searchAlt = await searchYoutubeWeb(`${title || ''} ${artist || ''} official audio`, 1500);
-    const ytCandidate = searchAlt.find(t => {
-      const vid = extractYouTubeVideoId(t.url_or_id || '');
-      return Boolean(vid && vid !== rawVid);
-    });
-    if (ytCandidate) {
-      return {
-        stream_url: null,
-        resolved_video_id: ytCandidate.url_or_id,
-        duration_secs: ytCandidate.duration_secs || 200,
-      };
-    }
-    const audiusAlt = searchAlt.find(t => t.source === 'audius' && String(t.url_or_id || '').startsWith('http'));
-    if (audiusAlt) {
-      return {
-        stream_url: audiusAlt.url_or_id,
-        resolved_video_id: rawVid,
-        duration_secs: audiusAlt.duration_secs || 200,
-      };
-    }
-  } catch {}
-
+  // 2. High-priority search for open HTML5 direct audio stream (Audius) so iPhone background play & lock-screen work 100%
   try {
     const rawT = (title || '')
       .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
@@ -826,10 +830,9 @@ async function resolveYouTubeAudioStreamWeb(
       .split('ft.')[0]
       .trim();
 
-    // 1. Try search Audius with clean Title + Artist
+    // Try search Audius with clean Title + Artist, then clean Title only
     let audiusTracks = await searchAudiusWeb(`${rawT} ${rawA}`.trim());
     if (audiusTracks.length === 0 && rawT.length >= 3) {
-      // 2. Try search Audius with clean Title only
       audiusTracks = await searchAudiusWeb(rawT);
     }
 
@@ -850,6 +853,22 @@ async function resolveYouTubeAudioStreamWeb(
         stream_url: matched.url_or_id,
         resolved_video_id: rawVid,
         duration_secs: matched.duration_secs || 200,
+      };
+    }
+  } catch {}
+
+  // 3. Search for an unblocked alternative YouTube Video ID (Lyric video / Official Audio) if embed restricted
+  try {
+    const searchAlt = await searchYoutubeWeb(`${title || ''} ${artist || ''} lyric audio`, 2200);
+    const ytCandidate = searchAlt.find(t => {
+      const vid = extractYouTubeVideoId(t.url_or_id || '');
+      return Boolean(vid && vid !== rawVid);
+    });
+    if (ytCandidate) {
+      return {
+        stream_url: null,
+        resolved_video_id: ytCandidate.url_or_id,
+        duration_secs: ytCandidate.duration_secs || 200,
       };
     }
   } catch {}

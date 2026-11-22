@@ -25,7 +25,7 @@ import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser }
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
-import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
+import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, SkipBack, SkipForward, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
 import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
 import { initRemoteConfigSync, RemoteBroadcastNotification } from './services/remoteConfigListener';
@@ -172,6 +172,19 @@ export default function App() {
   const userInitiatedPauseRef = useRef<boolean>(false);
   const lastHiddenAtRef = useRef<number>(0);
   const bgKeepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [isAmbientOledMode, setIsAmbientOledMode] = useState<boolean>(false);
+  const [oledClockTime, setOledClockTime] = useState<string>('');
+
+  useEffect(() => {
+    if (!isAmbientOledMode) return;
+    const updateTime = () => {
+      const now = new Date();
+      setOledClockTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, [isAmbientOledMode]);
 
   // Realtime Remote Config & Broadcast Banner
   const [remoteBroadcast, setRemoteBroadcast] = useState<RemoteBroadcastNotification | null>(null);
@@ -2636,14 +2649,21 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (data.event === 'onError') {
           if (ytChannel !== activeYtChannelRef.current || currentTrackRef.current?.source !== 'youtube') return;
           const erroredTrack = currentTrackRef.current;
-          console.warn('[YouTube Player] Embed blocked or unavailable, code:', data.info, '-> Auto-resolving via YouTube Music API...');
+          console.warn('[YouTube Player] Embed blocked or unavailable, code:', data.info, '-> Auto-resolving via unblocked alternative...');
           if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
           if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
           const isWeb = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
+          
+          // Reset tried flag so we can search and mount an unblocked lyric/audio version of the song
+          ytMusicFallbackTriedRef.current = false;
+          if (isWeb) {
+            showNotification(`🔄 Video bị chặn nhúng. Đang tìm bản lyric/audio thay thế...`);
+          }
+
           fallbackToYoutubeMusicStream(erroredTrack).then((recovered) => {
             if (!recovered && currentTrackRef.current?.id === erroredTrack.id) {
               if (isWeb) {
-                showNotification('⚠️ Bài hát này bị giới hạn bản quyền nhúng YouTube. Vui lòng chọn bài khác.');
+                showNotification('⚠️ Bài hát này tạm thời không có bản phát thay thế trên web.');
                 isPlayingRef.current = false;
                 setIsPlaying(false);
               } else {
@@ -2965,6 +2985,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       const onError = () => {
         if (activeAudioChannelRef.current !== channel) return;
         console.warn(`[Audio Ch${channel}] HTML5 Audio playback error:`, audio.error);
+        const erroredTrack = currentTrackRef.current;
+        if (erroredTrack && erroredTrack.source === 'youtube' && ytMusicFallbackActiveRef.current) {
+          // If direct audio stream errored, switch back to YouTube iframe embed
+          ytMusicFallbackActiveRef.current = false;
+          ytMusicFallbackTriedRef.current = true;
+          const vid = extractCleanYtId(erroredTrack.path_or_url || erroredTrack.id);
+          if (vid) {
+            loadOrMountYtChannel(vid, activeYtChannelRef.current, volumeRef.current * 100);
+            return;
+          }
+        }
         isPlayingRef.current = false;
         setIsPlaying(false);
       };
@@ -3226,6 +3257,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           currentTimeRef.current = onlineAudioRef.current.currentTime;
           setIsPlaying(true);
           isPlayingRef.current = true;
+        } else if (isPlayingRef.current && !userInitiatedPauseRef.current && isBackgroundPlayEnabledRef.current) {
+          // If iOS WebKit suspended playback on lock screen, auto-recover immediately when woke/active
+          if (onlineAudioRef.current && onlineAudioRef.current.src) {
+            onlineAudioRef.current.play().catch(() => {});
+          } else if (currentTrackRef.current?.source === 'youtube') {
+            sendYtCmd('playVideo', [], activeYtChannelRef.current);
+          }
         }
       }
     };
@@ -3251,6 +3289,54 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       keepAlive.pause();
     }
   }, [isPlaying, isBackgroundPlayEnabled]);
+
+  // ─── SCREEN WAKE LOCK (Giữ sáng màn hình để iPhone không ngắt iframe YouTube) ──
+  const wakeLockRef = useRef<any>(null);
+
+  const requestWakeLock = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        if (!wakeLockRef.current) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+          wakeLockRef.current?.addEventListener('release', () => {
+            wakeLockRef.current = null;
+          });
+        }
+      } catch {
+        wakeLockRef.current = null;
+      }
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (isPlaying && (isBackgroundPlayEnabled || isAmbientOledMode)) {
+      requestWakeLock();
+    } else if (!isAmbientOledMode) {
+      releaseWakeLock();
+    }
+  }, [isPlaying, isBackgroundPlayEnabled, isAmbientOledMode, requestWakeLock, releaseWakeLock]);
+
+  useEffect(() => {
+    const handleVis = () => {
+      if (document.visibilityState === 'visible' && isPlayingRef.current && (isBackgroundPlayEnabledRef.current || isAmbientOledMode)) {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVis);
+      releaseWakeLock();
+    };
+  }, [requestWakeLock, releaseWakeLock, isAmbientOledMode]);
 
   const sendScCmd = (method: string, value?: unknown, channel?: 1 | 2) => {
     const ch = channel ?? activeScChannelRef.current;
@@ -5285,11 +5371,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
           <iframe
             ref={ytIframe1Ref}
-            src={`https://www.youtube.com/embed/${ytIframeSrc1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0${
-              typeof window !== 'undefined' && /^https?:$/i.test(window.location.protocol)
-                ? `&origin=${encodeURIComponent(window.location.origin)}`
-                : ''
-            }`}
+            src={`https://www.youtube.com/embed/${ytIframeSrc1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
             onLoad={() => handleYtIframeLoad(1)}
             title="YouTube Player 1"
             className="w-full h-full border-0"
@@ -5330,11 +5412,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
           <iframe
             ref={ytIframe2Ref}
-            src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0${
-              typeof window !== 'undefined' && /^https?:$/i.test(window.location.protocol)
-                ? `&origin=${encodeURIComponent(window.location.origin)}`
-                : ''
-            }`}
+            src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
             onLoad={() => handleYtIframeLoad(2)}
             title="YouTube Player 2"
             className="w-full h-full border-0"
@@ -6174,6 +6252,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onToggleBackgroundPlay={handleToggleBackgroundPlay}
         onToggleMv={handleToggleYoutubeVideo}
         showMv={showYoutubeVideo}
+        isAmbientOledMode={isAmbientOledMode}
+        onToggleAmbientOledMode={() => setIsAmbientOledMode(p => !p)}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}
@@ -6207,6 +6287,87 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           );
         })}
       </nav>
+
+      {/* Ambient OLED Black Screen Overlay (Nghe nhạc bỏ túi / ban đêm 0% pixel power) */}
+      {isAmbientOledMode && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black text-white flex flex-col justify-between p-6 select-none cursor-pointer"
+          onClick={() => {}}
+        >
+          {/* Top header */}
+          <div className="flex items-center justify-between opacity-50 hover:opacity-100 transition-opacity pt-[env(safe-area-inset-top,16px)]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-mono tracking-wider uppercase text-zinc-400">
+                OLED Sleep & Pocket Mode
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAmbientOledMode(false);
+              }}
+              className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-white transition-colors cursor-pointer"
+            >
+              ✕ {language === 'vi' ? 'Thoát' : 'Exit'}
+            </button>
+          </div>
+
+          {/* Center: Clock, Song details, Playback controls */}
+          <div className="flex flex-col items-center justify-center my-auto text-center px-4">
+            <div className="text-6xl sm:text-7xl font-extralight tracking-widest text-zinc-400 font-mono mb-6 select-none">
+              {oledClockTime || '00:00'}
+            </div>
+            {currentTrack ? (
+              <div className="max-w-xs sm:max-w-md">
+                <p className="text-base sm:text-lg font-medium text-zinc-200 truncate">
+                  {currentTrack.title}
+                </p>
+                <p className="text-xs sm:text-sm text-zinc-500 truncate mt-1">
+                  {currentTrack.artist}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-600 font-mono">Spytify OLED</p>
+            )}
+
+            <div
+              className="flex items-center gap-6 mt-8 opacity-70 hover:opacity-100 transition-opacity"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={handleUserPrev}
+                className="p-3 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <SkipBack className="w-6 h-6" />
+              </button>
+              <button
+                type="button"
+                onClick={handleTogglePlay}
+                className="p-4 rounded-full bg-zinc-900 text-white hover:bg-zinc-800 border border-zinc-800 transition-transform active:scale-95 cursor-pointer"
+              >
+                {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-0.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={handleUserNext}
+                className="p-3 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <SkipForward className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom hint */}
+          <div className="text-center opacity-40 text-[11px] text-zinc-500 font-mono pb-[env(safe-area-inset-bottom,16px)]">
+            {language === 'vi'
+              ? 'Màn hình OLED đen hoàn toàn (0W pin) • Giữ phát nhạc liên tục không bị iPhone ngắt'
+              : 'OLED pitch-black (0W pixel power) • Continuous background playback on iOS'}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

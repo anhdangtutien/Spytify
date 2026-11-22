@@ -61,6 +61,8 @@ interface PlayerBarProps {
   onToggleBackgroundPlay?: () => void;
   onToggleMv?: () => void;
   showMv?: boolean;
+  isAmbientOledMode?: boolean;
+  onToggleAmbientOledMode?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -93,6 +95,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onToggleBackgroundPlay,
   onToggleMv,
   showMv = false,
+  isAmbientOledMode = false,
+  onToggleAmbientOledMode,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -1071,6 +1075,26 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
+        {/* Ambient OLED Mode button */}
+        {onToggleAmbientOledMode && (
+          <button
+            type="button"
+            onClick={onToggleAmbientOledMode}
+            title={language === 'vi' ? 'Màn hình đen OLED (Tiết kiệm pin iPhone / Nghe ban đêm)' : 'Ambient OLED Mode (Pocket / Sleep)'}
+            style={isAmbientOledMode ? {
+              color: accentColor,
+              backgroundColor: `${accentColor}18`,
+              borderColor: `${accentColor}50`,
+            } : undefined}
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
+              isAmbientOledMode ? '' : 'text-[#666] hover:text-white border-transparent'
+            }`}
+          >
+            <Moon className="w-4 h-4" />
+            <span className="hidden xl:inline text-[10px] font-mono font-medium">OLED</span>
+          </button>
+        )}
+
         {/* Source Badge */}
         {currentTrack && (
           <div className="hidden md:inline-flex shrink-0">
@@ -1386,6 +1410,21 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               >
                 <Tv className="w-4 h-4" />
                 <span className="text-[10px] font-mono">{showMv ? 'Đóng MV' : 'Xem MV'}</span>
+              </button>
+            )}
+            {onToggleAmbientOledMode && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSheetOpen(false);
+                  onToggleAmbientOledMode();
+                }}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
+                style={isAmbientOledMode ? { color: accentColor } : undefined}
+                title={language === 'vi' ? 'Màn hình đen OLED (Tiết kiệm pin iPhone / Nghe khi ngủ)' : 'OLED Black Screen (Pocket / Sleep mode)'}
+              >
+                <Moon className="w-4 h-4" />
+                <span className="text-[10px] font-mono">OLED</span>
               </button>
             )}
             {onDownload && currentTrack && (
