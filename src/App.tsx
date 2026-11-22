@@ -4179,35 +4179,60 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           console.warn('Audius stream resolve error:', e);
         }
 
+        let playedViaBrowser = false;
         if (onlineAudio1Ref.current) {
-          onlineAudio1Ref.current.pause();
-          ensureAudioContextRunning();
-          onlineAudio1Ref.current.removeAttribute('crossorigin');
-          onlineAudio1Ref.current.src = streamUrl;
-          onlineAudio1Ref.current.volume = volumeRef.current;
-          onlineAudio1Ref.current.load();
-          onlineAudio1Ref.current.play()
-            .then(() => {
-              isPlayingRef.current = true;
-              setIsPlaying(true);
-              showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
-            })
-            .catch(async () => {
-              try {
-                const fallback = await invoke<string>('resolve_audius_stream', { urlOrId: track.path_or_url });
-                if (fallback && onlineAudio1Ref.current && (fallback !== streamUrl || isWebShim)) {
+          try {
+            onlineAudio1Ref.current.pause();
+            ensureAudioContextRunning();
+            if (isWebShim) {
+              onlineAudio1Ref.current.removeAttribute('crossorigin');
+            } else {
+              onlineAudio1Ref.current.crossOrigin = 'anonymous';
+            }
+            onlineAudio1Ref.current.src = streamUrl;
+            onlineAudio1Ref.current.volume = volumeRef.current;
+            onlineAudio1Ref.current.load();
+            await onlineAudio1Ref.current.play();
+            isPlayingRef.current = true;
+            setIsPlaying(true);
+            playedViaBrowser = true;
+            showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
+          } catch (e) {
+            console.warn('Browser Audius play error, trying fallback:', e);
+            try {
+              const fallback = await invoke<string>('resolve_audius_stream', { urlOrId: track.path_or_url });
+              if (fallback && onlineAudio1Ref.current) {
+                if (isWebShim) {
                   onlineAudio1Ref.current.removeAttribute('crossorigin');
-                  onlineAudio1Ref.current.src = fallback;
-                  onlineAudio1Ref.current.load();
-                  await onlineAudio1Ref.current.play();
-                  isPlayingRef.current = true;
-                  setIsPlaying(true);
-                  showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
-                  return;
+                } else {
+                  onlineAudio1Ref.current.crossOrigin = 'anonymous';
                 }
-              } catch {}
-              showNotification(getTranslation(language, 'toast.audiusError'));
-            });
+                onlineAudio1Ref.current.src = fallback;
+                onlineAudio1Ref.current.load();
+                await onlineAudio1Ref.current.play();
+                isPlayingRef.current = true;
+                setIsPlaying(true);
+                playedViaBrowser = true;
+                showNotification(`▶ Audius Hi-Fi 320K: ${track.title}`);
+              }
+            } catch {}
+          }
+        }
+
+        if (!playedViaBrowser && !isWebShim) {
+          try {
+            if (onlineAudio1Ref.current) onlineAudio1Ref.current.src = '';
+            await invoke('play_track', { track: { ...track, path_or_url: streamUrl } });
+            isPlayingRef.current = true;
+            setIsPlaying(true);
+            playedViaBrowser = true;
+            showNotification(`▶ Audius Native 320K: ${track.title}`);
+          } catch (rustErr) {
+            console.error('Rust native Audius play error:', rustErr);
+            showNotification(getTranslation(language, 'toast.audiusError'));
+          }
+        } else if (!playedViaBrowser) {
+          showNotification(getTranslation(language, 'toast.audiusError'));
         }
       }
       return;
@@ -4301,7 +4326,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         console.warn('Audius stream resolve error:', e);
       }
       if (inAudio) {
-        inAudio.removeAttribute('crossorigin');
+        if (isWebShim) {
+          inAudio.removeAttribute('crossorigin');
+        } else {
+          inAudio.crossOrigin = 'anonymous';
+        }
         inAudio.src = streamUrl;
         inAudio.volume = 0;
         inAudio.load();

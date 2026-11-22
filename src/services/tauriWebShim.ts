@@ -323,10 +323,42 @@ const WEB_CURATED_CATALOG: Record<string, SearchResult[]> = {
     { title: 'Numb', artist: 'Linkin Park', album: 'Meteora', duration_secs: 185, source: 'youtube', url_or_id: 'kXYiU_JCYtU', thumbnail: 'https://i.ytimg.com/vi/kXYiU_JCYtU/hqdefault.jpg' },
   ],
   audius: [
-    { title: 'Fragments', artist: 'Xsetra', album: 'Audius Drum & Bass 320K', duration_secs: 212, source: 'audius', url_or_id: 'https://api.audius.co/v1/tracks/V66vyPP/stream?app_name=Spytify', thumbnail: 'https://v.monophonic.digital/content/baeaaaiqseau7mrpo7s6ibb7loyckmlix37ao33gltbea6qm3zud7mdxvbgyys/480x480.jpg' },
-    { title: 'Never Let Me Go', artist: 'Duelle', album: 'Audius Bass 320K', duration_secs: 198, source: 'audius', url_or_id: 'https://api.audius.co/v1/tracks/Duelle/stream?app_name=Spytify', thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80' },
-    { title: 'Sunset Lover (Audius Remix)', artist: 'Petit Biscuit', album: 'Audius Chill Hi-Fi', duration_secs: 238, source: 'audius', url_or_id: 'https://api.audius.co/v1/tracks/Sunset/stream?app_name=Spytify', thumbnail: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80' },
-    { title: 'Neon Drive 320K', artist: 'Kavinsky & Lorn', album: 'Audius Synthwave', duration_secs: 220, source: 'audius', url_or_id: 'https://api.audius.co/v1/tracks/Neon/stream?app_name=Spytify', thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80' },
+    {
+      title: 'Fragments',
+      artist: 'Xsetra',
+      album: 'Audius Drum & Bass 320K',
+      duration_secs: 212,
+      source: 'audius',
+      url_or_id: 'https://v.monophonic.digital/tracks/cidstream/baeaaaiqsebhalqg3k6nic5q26xapepplxugf6flwp7ngqehjuw2tykhrbnco4?signature=%7B%22data%22%3A%22%7B%5C%22cid%5C%22%3A%5C%22baeaaaiqsebhalqg3k6nic5q26xapepplxugf6flwp7ngqehjuw2tykhrbnco4%5C%22%2C%5C%22timestamp%5C%22%3A1795380495000%2C%5C%22trackId%5C%22%3A2024274216%2C%5C%22userId%5C%22%3A0%7D%22%2C%22signature%22%3A%220x55a94a2adb18f889e5de845ee12f9acba62869124b743c0a94cd1fec9b3daeeb6ad0fbda2c83939674f786e769c2eab400b7ccbfaae6e0376ca7b660e851b1c901%22%7D',
+      thumbnail: 'https://audius-creator-13.theblueprint.xyz/content/baeaaaiqseau7mrpo7s6ibb7loyckmlix37ao33gltbea6qm3zud7mdxvbgyys/480x480.jpg'
+    },
+    {
+      title: 'Overkill',
+      artist: 'Rubberband$',
+      album: 'Audius Hi-Fi 320K',
+      duration_secs: 291,
+      source: 'audius',
+      url_or_id: 'https://v.monophonic.digital/tracks/cidstream/baeaaaiqseated7yegekwtau5gvsownk6f7kzfbsmmubj2bozui3vsixkxflia?signature=%7B%22data%22%3A%22%7B%5C%22cid%5C%22%3A%5C%22baeaaaiqseated7yegekwtau5gvsownk6f7kzfbsmmubj2bozui3vsixkxflia%5C%22%2C%5C%22timestamp%5C%22%3A1795380495000%2C%5C%22trackId%5C%22%3A1089078384%2C%5C%22userId%5C%22%3A0%7D%22%2C%22signature%22%3A%220x7a1e7c9cf149d845d91c002b7f9308da7b9b9ca409d3dc50f87baf5f59268abd2a891dda14d4815cc5b5d1012d7245bd4d457a75bc76fd134a982b7cd71265f000%22%7D',
+      thumbnail: 'https://val001.open-audio-validator.com/content/baeaaaiqsedeuoghqlazi7rsk5rw46xs6tjyonbqfbwscpmrj2rkx6uehbfd2a/480x480.jpg'
+    },
+    {
+      title: 'OBSESSION - THORNHILL (MORTALA. REMIX)',
+      artist: 'Mortala.',
+      album: 'Audius Hi-Fi 320K',
+      duration_secs: 168,
+      source: 'audius',
+      url_or_id: 'https://v.monophonic.digital/tracks/cidstream/baeaaaiqsedbrn4h7pedjflq26lcxi5wvebniilivzkeohzollw5gjsqnoyyh6?signature=%7B%22data%22%3A%22%7B%5C%22cid%5C%22%3A%5C%22baeaaaiqsedbrn4h7pedjflq26lcxi5wvebniilivzkeohzollw5gjsqnoyyh6%5C%22%2C%5C%22timestamp%5C%22%3A1795380495000%2C%5C%22trackId%5C%22%3A1474714520%2C%5C%22userId%5C%22%3A0%7D%22%2C%22signature%22%3A%220xf49247881e705b4f9a5eb585c19ef8ce96884d2e9f6736cc53f734934d43a5091dc781203a3f3a19543590bbd89ac1fc78bf99e2a66bd70b9393066a381311f901%22%7D',
+      thumbnail: 'https://v.monophonic.digital/content/baeaaaiqseawb6xvjpvxm6aha4ofrwfckozsjcmc2j6mqjv347gxv6mote6z2k/480x480.jpg'
+    },
+    {
+      title: 'Beneath the Lily',
+      artist: 'parasox',
+      album: 'Audius Hi-Fi 320K',
+      duration_secs: 188,
+      source: 'audius',
+      url_or_id: 'https://audius-discovery-2.altego.net/tracks/cidstream/baeaaaiqseaf5fnvgtvgqfndfgqmc7dzai6llddfvs2om7hmaw3zjusnj677n4?signature=%7B%22data%22%3A%22%7B%5C%22cid%5C%22%3A%5C%22baeaaaiqseaf5fnvgtvgqfndfgqmc7dzai6llddfvs2om7hmaw3zjusnj677n4%5C%22%2C%5C%22timestamp%5C%22%3A1795380495000%2C%5C%22trackId%5C%22%3A1298426820%2C%5C%22userId%5C%22%3A0%7D%22%2C%22signature%22%3A%220xf52c3b5619af393794b6e4945551c5f08fbe96bdc3ca174b5c69bd16ebb09b2d77ec28435381c51b15aee211c7b4ef52a7b9565835370c228e79e8f65615775f00%22%7D',
+      thumbnail: 'https://audius-content-6.figment.io/content/baeaaaiqsedmrczxlgj4rss5oqk3wvovhqh6wdnz4lvvu2r3pi7kbxkoovev7e/480x480.jpg'
+    },
   ],
 };
 
@@ -713,16 +745,21 @@ async function searchYoutubeWeb(query: string, apiTimeoutMs = 1800): Promise<Sea
   return [];
 }
 
-async function resolveAudiusStreamUrl(urlOrId: string): Promise<string> {
+async function resolveAudiusStreamUrl(urlOrId: string, forceFresh = false): Promise<string> {
   const raw = String(urlOrId || '').trim();
-  if (raw.includes('/tracks/cidstream/') && raw.includes('signature=')) {
+  if (!forceFresh && raw.includes('/tracks/cidstream/') && raw.includes('signature=')) {
     return raw;
   }
   const host = await resolveAudiusHost();
   const trackIdMatch = raw.match(/\/tracks\/([A-Za-z0-9_-]+)(?:\/stream)?/);
-  const trackId = (trackIdMatch?.[1] && trackIdMatch[1] !== 'cidstream')
+  let trackId = (trackIdMatch?.[1] && trackIdMatch[1] !== 'cidstream')
     ? trackIdMatch[1]
     : (/^[A-Za-z0-9_-]{4,24}$/.test(raw) ? raw : null);
+
+  if (!trackId) {
+    const m = raw.match(/trackId%22%3A(\d+)/) || raw.match(/"trackId":\s*(\d+)/);
+    if (m?.[1]) trackId = m[1];
+  }
 
   if (trackId) {
     try {
