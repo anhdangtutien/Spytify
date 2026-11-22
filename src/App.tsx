@@ -5825,17 +5825,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             </div>
           )}
 
-          {/* Header Bar — Minimalist */}
-          <header className="h-12 px-3 sm:px-6 flex items-center justify-between border-b border-[#141416] bg-black/95 z-40">
+          {/* Header Bar — Minimalist (Chỉ hiển thị trên Desktop, trên Mobile tiết kiệm tối đa không gian vì đã có thanh điều hướng ở dưới) */}
+          <header className="hidden md:flex h-12 px-3 sm:px-6 items-center justify-between border-b border-[#141416] bg-black/95 z-40">
             <div className="flex items-center gap-2 text-xs font-medium text-[#888]">
-              <button
-                type="button"
-                onClick={() => setIsMobileSidebarOpen(true)}
-                className="md:hidden p-1.5 rounded-lg bg-[#12121a] hover:bg-[#1c1c28] text-zinc-200 border border-[#222230] flex items-center justify-center cursor-pointer"
-                aria-label="Menu"
-              >
-                <Menu className="w-4 h-4" />
-              </button>
               <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#666] truncate">
                 {currentView === 'community'
                   ? getTranslation(language, 'nav.community').toUpperCase()
@@ -5861,17 +5853,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2.5">
-              {/* Clean Quick Search Shortcut for Mobile */}
-              {currentView !== 'search' && (
-                <button
-                  type="button"
-                  onClick={() => setCurrentView('search')}
-                  className="sm:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                  aria-label="Search"
-                >
-                  <Search className="w-4 h-4" />
-                </button>
-              )}
 
               {/* Spytify Vercel Website Button (Desktop) */}
               <button
