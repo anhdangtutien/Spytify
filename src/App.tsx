@@ -2387,7 +2387,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     } finally {
       setTimeout(() => {
         isSkippingRef.current = false;
-      }, 1000);
+      }, 300);
     }
   }, [language]);
 
@@ -2662,16 +2662,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
           fallbackToYoutubeMusicStream(erroredTrack).then((recovered) => {
             if (!recovered && currentTrackRef.current?.id === erroredTrack.id) {
-              if (isWeb) {
-                showNotification('⚠️ Bài hát này tạm thời không có bản phát thay thế trên web.');
-                isPlayingRef.current = false;
-                setIsPlaying(false);
-              } else {
-                showNotification('⚠️ Bài hát này bị giới hạn khu vực trên YouTube. Tự động chuyển bài...');
-                ytUnavailableTimerRef.current = setTimeout(() => {
-                  handleNext();
-                }, 2500);
-              }
+              showNotification(
+                isWeb
+                  ? '⚠️ Video bị YouTube chặn nhúng. Đang tự động chuyển bài tiếp theo...'
+                  : '⚠️ Bài hát này bị giới hạn khu vực trên YouTube. Tự động chuyển bài...'
+              );
+              ytUnavailableTimerRef.current = setTimeout(() => {
+                handleNext();
+              }, 1200);
             }
           });
         }
@@ -3845,21 +3843,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
       } else if (track.source === 'youtube') {
-        // Web / Mobile PWA: Proactively resolve direct audio stream so background lock-screen playback & smooth transitions work natively!
-        if (isWebShim) {
-          try {
-            const streamPlayed = await fallbackToYoutubeMusicStream(track);
-            if (streamPlayed) return;
-          } catch (e) {
-            console.warn('Direct stream auto-fallback notice:', e);
-          }
-          // On mobile web, if direct audio stream is not available, open YouTube MV frame
-          // so user can view and tap to play without browser autoplay restrictions
-          if (!showYoutubeVideo) {
-            setShowYoutubeVideo(true);
-          }
-        }
-
         try { invoke('stop_track').catch(() => {}); } catch {}
         sendScCmd('pause', undefined, 1);
         sendScCmd('pause', undefined, 2);

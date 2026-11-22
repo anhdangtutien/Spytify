@@ -719,89 +719,38 @@ async function resolveYouTubeAudioStreamWeb(
   artist?: string
 ): Promise<{ stream_url: string | null; proxy_url?: string | null; resolved_video_id: string; duration_secs: number }> {
   const rawVid = extractYouTubeVideoId(videoIdInput) || videoIdInput.trim();
-  if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
-    // 1. Try our direct high-performance Vercel / Vite Serverless API endpoint
+  const rawT = (title || '')
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
+    .replace(/official\s*(music\s*video|mv|audio|video|lyric\s*video)/gi, '')
+    .trim();
+  const rawA = (artist || '')
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
+    .split('&')[0]
+    .split('feat.')[0]
+    .split('ft.')[0]
+    .trim();
+
+  // 1. Fast search for an unblocked alternative YouTube Video ID (Lyric / Audio version)
+  if (rawT.length >= 2) {
     try {
-      const q = `/api/yt-stream?videoId=${encodeURIComponent(rawVid)}&title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`;
-      let data = await fetchJsonWithTimeout(q, 3500);
-      let apiBase = typeof window !== 'undefined' && window.location ? window.location.origin : '';
-      if (!data || (!data.proxy_url && !data.stream_url)) {
-        // Fallback to production Vercel deployment if running on standalone dev/preview
-        const prodQ = `https://spytify-website-rho.vercel.app/api/yt-stream?videoId=${encodeURIComponent(rawVid)}&title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`;
-        data = await fetchJsonWithTimeout(prodQ, 4500);
-        apiBase = 'https://spytify-website-rho.vercel.app';
-      }
-      if (data && (data.proxy_url || data.stream_url)) {
-        let proxy = data.proxy_url ? String(data.proxy_url) : null;
-        if (proxy && !proxy.startsWith('http')) {
-          proxy = new URL(proxy, apiBase || 'https://spytify-website-rho.vercel.app').href;
-        }
-        let stream = (data.stream_url || data.proxy_url) as string;
-        if (stream && !stream.startsWith('http')) {
-          stream = new URL(stream, apiBase || 'https://spytify-website-rho.vercel.app').href;
-        }
-        // In web / mobile browsers, raw Google Video URLs fail with 403 because they are bound to the Vercel server IP.
-        // Therefore, proxy_url (which proxies byte ranges with 206 Partial Content) is preferred for 100% reliable HTML5 audio!
-        const effectiveStream = proxy || stream;
+      const searchAlt = await searchYoutubeWeb(`${rawT} ${rawA} lyric audio`.trim(), 1600);
+      const ytCandidate = searchAlt.find(t => {
+        const vid = extractYouTubeVideoId(t.url_or_id || '');
+        return Boolean(vid && vid !== rawVid);
+      });
+      if (ytCandidate) {
         return {
-          stream_url: effectiveStream,
-          proxy_url: proxy,
-          resolved_video_id: rawVid,
-          duration_secs: Number(data.duration_secs) || 200,
+          stream_url: null,
+          resolved_video_id: ytCandidate.url_or_id,
+          duration_secs: ytCandidate.duration_secs || 200,
         };
       }
     } catch {}
-
-    const pipedPromises = PIPED_API_BASES.map(async (base) => {
-      const data = await fetchJsonWithTimeout(`${base}/streams/${rawVid}`, 1800);
-      const streams: any[] = Array.isArray(data?.audioStreams) ? data.audioStreams : [];
-      const valid = streams
-        .filter(s => typeof s?.url === 'string' && s.url.startsWith('http'))
-        .sort((a, b) => {
-          const aMp4 = String(a?.mimeType || '').includes('audio/mp4') ? 1 : 0;
-          const bMp4 = String(b?.mimeType || '').includes('audio/mp4') ? 1 : 0;
-          if (aMp4 !== bMp4) return bMp4 - aMp4;
-          return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
-        });
-      if (valid.length > 0) {
-        return {
-          stream_url: valid[0].url as string,
-          resolved_video_id: rawVid,
-          duration_secs: Number(data?.duration) || 200,
-        };
-      }
-      return null;
-    });
-
-    const invidiousPromises = INVIDIOUS_API_BASES.map(async (base) => {
-      const data = await fetchJsonWithTimeout(`${base}/api/v1/videos/${rawVid}`, 1800);
-      const formats: any[] = Array.isArray(data?.adaptiveFormats) ? data.adaptiveFormats : [];
-      const audioFormats = formats
-        .filter(f => typeof f?.type === 'string' && f.type.startsWith('audio/'))
-        .sort((a, b) => {
-          const aMp4 = String(a.type).includes('audio/mp4') ? 1 : 0;
-          const bMp4 = String(b.type).includes('audio/mp4') ? 1 : 0;
-          if (aMp4 !== bMp4) return bMp4 - aMp4;
-          return (Number(b?.bitrate) || 0) - (Number(a?.bitrate) || 0);
-        });
-      const bestFmt = audioFormats.find(f => typeof f?.url === 'string' && f.url.startsWith('http'));
-      if (bestFmt?.url) {
-        return {
-          stream_url: String(bestFmt.url),
-          resolved_video_id: rawVid,
-          duration_secs: Number(data?.lengthSeconds) || 200,
-        };
-      }
-      return null;
-    });
-
-    const streamRes = await raceFirstSuccess([...pipedPromises, ...invidiousPromises]);
-    if (streamRes) return streamRes;
   }
 
-  // Search for a playable alternate videoId or Audius open stream for the same song
-  const titleLow = String(title || '').trim().toLowerCase();
-  const artistLow = String(artist || '').trim().toLowerCase();
+  // 2. Check curated alternates
+  const titleLow = rawT.toLowerCase();
+  const artistLow = rawA.toLowerCase();
   const curatedAlt = getAllCuratedTracks().find(t => {
     const vid = extractYouTubeVideoId(t.url_or_id || '');
     if (!vid || vid === rawVid) return false;
@@ -817,61 +766,48 @@ async function resolveYouTubeAudioStreamWeb(
     };
   }
 
-  // 2. High-priority search for open HTML5 direct audio stream (Audius) so iPhone background play & lock-screen work 100%
-  try {
-    const rawT = (title || '')
-      .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
-      .replace(/official\s*(music\s*video|mv|audio|video|lyric\s*video)/gi, '')
-      .trim();
-    const rawA = (artist || '')
-      .replace(/\([^)]*\)|\[[^\]]*\]/g, '')
-      .split('&')[0]
-      .split('feat.')[0]
-      .split('ft.')[0]
-      .trim();
+  // 3. Fast check for open direct audio stream (Audius)
+  if (rawT.length >= 2) {
+    try {
+      const audiusTracks = await searchAudiusWeb(`${rawT} ${rawA}`.trim());
+      const matched = audiusTracks.find(at => {
+        const atTitle = (at.title || '').toLowerCase();
+        return atTitle.includes(titleLow.slice(0, 5));
+      });
+      if (matched && matched.url_or_id.startsWith('http')) {
+        return {
+          stream_url: matched.url_or_id,
+          resolved_video_id: rawVid,
+          duration_secs: matched.duration_secs || 200,
+        };
+      }
+    } catch {}
+  }
 
-    // Try search Audius with clean Title + Artist, then clean Title only
-    let audiusTracks = await searchAudiusWeb(`${rawT} ${rawA}`.trim());
-    if (audiusTracks.length === 0 && rawT.length >= 3) {
-      audiusTracks = await searchAudiusWeb(rawT);
-    }
-
-    const tLower = rawT.toLowerCase();
-    const tWord = tLower.split(' ')[0];
-    const aLower = rawA.toLowerCase();
-
-    const matched = audiusTracks.find(at => {
-      const atTitle = (at.title || '').toLowerCase();
-      const atArtist = (at.artist || '').toLowerCase();
-      const hasTitle = (tLower && atTitle.includes(tLower)) || (tWord && tWord.length >= 3 && atTitle.includes(tWord));
-      const hasArtist = aLower && (atArtist.includes(aLower) || atTitle.includes(aLower));
-      return (hasTitle && (hasArtist || !aLower)) || (hasArtist && atTitle.length > 2);
-    });
-
-    if (matched && matched.url_or_id.startsWith('http')) {
-      return {
-        stream_url: matched.url_or_id,
-        resolved_video_id: rawVid,
-        duration_secs: matched.duration_secs || 200,
-      };
-    }
-  } catch {}
-
-  // 3. Search for an unblocked alternative YouTube Video ID (Lyric video / Official Audio) if embed restricted
-  try {
-    const searchAlt = await searchYoutubeWeb(`${title || ''} ${artist || ''} lyric audio`, 2200);
-    const ytCandidate = searchAlt.find(t => {
-      const vid = extractYouTubeVideoId(t.url_or_id || '');
-      return Boolean(vid && vid !== rawVid);
-    });
-    if (ytCandidate) {
-      return {
-        stream_url: null,
-        resolved_video_id: ytCandidate.url_or_id,
-        duration_secs: ytCandidate.duration_secs || 200,
-      };
-    }
-  } catch {}
+  // 4. Quick attempt to resolve audio stream proxy (timeout 1800ms)
+  if (rawVid && /^[A-Za-z0-9_-]{11}$/.test(rawVid)) {
+    try {
+      const q = `/api/yt-stream?videoId=${encodeURIComponent(rawVid)}&title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`;
+      const data = await fetchJsonWithTimeout(q, 1800);
+      if (data && (data.proxy_url || data.stream_url)) {
+        let apiBase = typeof window !== 'undefined' && window.location ? window.location.origin : '';
+        let proxy = data.proxy_url ? String(data.proxy_url) : null;
+        if (proxy && !proxy.startsWith('http')) {
+          proxy = new URL(proxy, apiBase || 'https://spytify-website-rho.vercel.app').href;
+        }
+        let stream = (data.stream_url || data.proxy_url) as string;
+        if (stream && !stream.startsWith('http')) {
+          stream = new URL(stream, apiBase || 'https://spytify-website-rho.vercel.app').href;
+        }
+        return {
+          stream_url: proxy || stream,
+          proxy_url: proxy,
+          resolved_video_id: rawVid,
+          duration_secs: Number(data.duration_secs) || 200,
+        };
+      }
+    } catch {}
+  }
 
   return { stream_url: null, resolved_video_id: rawVid, duration_secs: 200 };
 }
