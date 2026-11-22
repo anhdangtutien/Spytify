@@ -241,13 +241,38 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     }
 
     switch (source) {
-      case 'youtube':
+      case 'youtube': {
+        const isClickable = Boolean(onToggleMv);
         return (
-          <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-[#ff4e6b] border border-[var(--accent-color, #ff2a55)]/30 inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0">
-            <YoutubeIcon className="w-2.5 h-2.5 shrink-0" />
+          <button
+            type="button"
+            disabled={!isClickable}
+            onClick={onToggleMv}
+            title={
+              language === 'vi'
+                ? showMv
+                  ? 'Đang phát Video MV • Nhấn để thu nhỏ'
+                  : 'Nguồn YouTube • Nhấn để xem Video MV'
+                : showMv
+                ? 'Playing Music Video • Click to minimize'
+                : 'YouTube Stream • Click to watch Music Video'
+            }
+            className={`text-[9px] font-bold tracking-wider px-2 py-0.5 rounded inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0 transition-all cursor-pointer ${
+              showMv
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500 shadow-[0_0_12px_rgba(244,63,94,0.35)] ring-1 ring-rose-500/50 hover:bg-rose-500/30'
+                : 'bg-[#16161c] hover:bg-[#202028] text-[#ff4e6b] hover:text-white border border-[#ff4e6b]/40 hover:border-[#ff4e6b] shadow-sm'
+            }`}
+          >
+            {showMv ? (
+              <Tv className="w-2.5 h-2.5 text-rose-400 shrink-0 animate-pulse" />
+            ) : (
+              <YoutubeIcon className="w-2.5 h-2.5 shrink-0" />
+            )}
             <span className="whitespace-nowrap">YT STREAM</span>
-          </span>
+            {showMv && <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse shrink-0" />}
+          </button>
         );
+      }
       case 'soundcloud':
         return (
           <span className="text-[9px] font-bold tracking-wider px-2 py-0.5 rounded bg-[#16161c] text-orange-400 border border-orange-500/30 inline-flex items-center gap-1.5 font-mono whitespace-nowrap shrink-0">
@@ -1107,29 +1132,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
-        {/* Desktop Music Video (MV) Toggle Button */}
-        {currentTrack?.source === 'youtube' && onToggleMv && (
-          <button
-            type="button"
-            onClick={onToggleMv}
-            title={language === 'vi' ? (showMv ? 'Thu nhỏ Video MV' : 'Phát Video MV trên máy tính') : (showMv ? 'Minimize MV' : 'Watch Music Video')}
-            style={showMv ? {
-              backgroundColor: '#f43f5e',
-              borderColor: '#f43f5e',
-              color: '#ffffff',
-              boxShadow: '0 0 12px rgba(244, 63, 94, 0.4)',
-            } : undefined}
-            className={`hidden sm:flex px-2.5 py-1 rounded-md transition-all cursor-pointer border items-center gap-1.5 shrink-0 font-medium ${
-              showMv ? '' : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/10'
-            }`}
-          >
-            <Tv className="w-3.5 h-3.5 text-rose-400" style={showMv ? { color: '#ffffff' } : undefined} />
-            <span className="text-[11px] font-mono font-bold">MV</span>
-            {showMv && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-          </button>
-        )}
-
-        {/* Source Badge */}
+        {/* Source Badge (Clicking YT STREAM toggles Desktop MV) */}
         {currentTrack && (
           <div className="hidden md:inline-flex shrink-0">
             {getSourceBadge(currentTrack.source)}
