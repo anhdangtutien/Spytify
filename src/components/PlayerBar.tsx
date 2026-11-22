@@ -198,6 +198,39 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     ? Math.min(100, Math.max(0, (displayTime / safeDuration) * 100))
     : 0;
 
+  const handleSeekFromEvent = (
+    e: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement> | React.PointerEvent<HTMLElement>,
+    commit: boolean
+  ) => {
+    if (safeDuration <= 0) return;
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    let clientX = 0;
+    if ('touches' in e && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+    } else if ('changedTouches' in e && e.changedTouches.length > 0) {
+      clientX = e.changedTouches[0].clientX;
+    } else if ('clientX' in e) {
+      clientX = e.clientX;
+    } else {
+      return;
+    }
+
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const targetTime = ratio * safeDuration;
+
+    if (commit) {
+      setIsDragging(false);
+      setDragValue(targetTime);
+      onSeek(targetTime);
+    } else {
+      setIsDragging(true);
+      setDragValue(targetTime);
+    }
+  };
+
   const getSourceBadge = (source: string) => {
     if (isLive) {
       return (
@@ -275,9 +308,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     }`}>
       {/* Sleek Top-Edge Progress Bar in Compact Mode */}
       {isCompact && (
-        <div className="absolute top-0 left-0 right-0 h-[2.5px] hover:h-[5px] transition-all bg-[#181822] cursor-pointer group/compact-seek z-20">
+        <div
+          onClick={(e) => handleSeekFromEvent(e, true)}
+          className="absolute top-0 left-0 right-0 h-[3px] hover:h-[6px] transition-all bg-[#181822] cursor-pointer group/compact-seek z-20"
+        >
           <div 
-            className="h-full transition-all"
+            className="h-full transition-all pointer-events-none"
             style={{ 
               width: isLive ? '100%' : `${progressPercent}%`, 
               backgroundColor: accentColor,
@@ -302,6 +338,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 setIsDragging(false);
                 onSeek(Number((e.target as HTMLInputElement).value));
               }}
+              onClick={(e) => handleSeekFromEvent(e, true)}
               className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
             />
           )}
@@ -745,7 +782,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <span className="w-9 text-right font-bold text-xs" style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}>
                 {formatTime(displayTime)}
               </span>
-              <div className="relative flex-1 flex items-center group h-4 cursor-pointer">
+              <div
+                className="relative flex-1 flex items-center group h-4 cursor-pointer"
+                onClick={(e) => handleSeekFromEvent(e, true)}
+              >
                 {/* Background track */}
                 <div 
                   className="absolute w-full h-[4px] rounded-full group-hover:h-[6px] transition-all overflow-hidden border border-black/5"
@@ -1293,30 +1333,41 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               </div>
             ) : (
               <>
-                <div className="relative flex items-center h-5">
-                  <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${progressPercent}%`, backgroundColor: accentColor }} />
+                <div
+                  className="relative flex items-center h-8 cursor-pointer touch-none select-none py-2"
+                  onPointerDown={(e) => {
+                    try { (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId); } catch {}
+                    handleSeekFromEvent(e, false);
+                  }}
+                  onPointerMove={(e) => {
+                    if (isDragging || e.buttons === 1) {
+                      handleSeekFromEvent(e, false);
+                    }
+                  }}
+                  onPointerUp={(e) => {
+                    handleSeekFromEvent(e, true);
+                  }}
+                  onPointerCancel={() => {
+                    setIsDragging(false);
+                  }}
+                  onClick={(e) => {
+                    handleSeekFromEvent(e, true);
+                  }}
+                >
+                  <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden pointer-events-none relative">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${progressPercent}%`, backgroundColor: accentColor }}
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={safeDuration}
-                    step={0.25}
-                    value={displayTime}
-                    onTouchStart={(e) => {
-                      setIsDragging(true);
-                      setDragValue(Number((e.target as HTMLInputElement).value));
+                  {/* Thumb handle */}
+                  <div
+                    className="absolute w-4 h-4 rounded-full bg-white shadow-lg pointer-events-none transition-transform -translate-x-1/2"
+                    style={{
+                      left: `${progressPercent}%`,
+                      transform: `translateX(-50%) scale(${isDragging ? 1.3 : 1})`,
+                      boxShadow: `0 0 12px ${accentColor}80`,
                     }}
-                    onChange={(e) => setDragValue(Number(e.target.value))}
-                    onTouchEnd={(e) => {
-                      setIsDragging(false);
-                      onSeek(Number((e.target as HTMLInputElement).value));
-                    }}
-                    onMouseUp={(e) => {
-                      setIsDragging(false);
-                      onSeek(Number((e.target as HTMLInputElement).value));
-                    }}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                 </div>
                 <div className="flex justify-between text-[10px] font-mono text-zinc-400">

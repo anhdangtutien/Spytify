@@ -2483,10 +2483,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       // ─── SPOTIFY-STYLE EQUAL-POWER CROSSFADE TRIGGER ───
       const cfSecs = crossfadeDurationRef.current;
-      const isWebYoutube = Boolean((window as any).__TAURI_WEB_SHIM__) && track.source === 'youtube';
       if (
         cfSecs > 0 &&
-        !isWebYoutube &&
         !crossfadeActiveRef.current &&
         !isSkippingRef.current &&
         trueDur > (cfSecs * 2) &&
@@ -2719,6 +2717,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
               if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
             } else if (data.info === 2) {
+              // Bỏ qua trạng thái pause thoáng qua ngay sau khi chuyển bài (YouTube phát tín hiệu cued/buffering)
+              if (!userInitiatedPauseRef.current && (Date.now() - ytLastSwitchAtRef.current) < 1200) {
+                return;
+              }
               if (tryRecoverBackgroundPause()) return;
               isPlayingRef.current = false;
               setIsPlaying(false);
@@ -3110,6 +3112,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       clearTimeout(ytUnavailableRetryTimerRef.current);
       ytUnavailableRetryTimerRef.current = null;
     }
+    if (ytUnavailableTimerRef.current) {
+      clearTimeout(ytUnavailableTimerRef.current);
+      ytUnavailableTimerRef.current = null;
+    }
   };
 
   const extractCleanYtId = (raw: string): string => {
@@ -3146,9 +3152,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     const currentSrcId = channel === 1 ? ytIframeSrc1Ref.current : ytIframeSrc2Ref.current;
-    const isWeb = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
 
-    if (!currentSrcId || (isWeb && currentSrcId !== videoId)) {
+    // Chỉ mount iframe src lần đầu tiên để giữ iframe document tồn tại liên tục,
+    // không reload iframe giúp bảo toàn quyền autoplay và user activation gesture trên mobile.
+    if (!currentSrcId) {
       if (channel === 1) {
         ytIframeSrc1Ref.current = videoId;
         setYtIframeSrc1(videoId);
@@ -3781,11 +3788,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       invoke('db_add_history', { userId: currentUserRef.current.id, track }).catch(console.error);
     }
 
-    // On Web/Mobile, YouTube must stay on the single unlocked iframe channel only when using video iframe
-    const effectiveIsCrossfade =
-      isWebShim && !ytMusicFallbackActiveRef.current && (track.source === 'youtube' || previousTrack?.source === 'youtube')
-        ? false
-        : isCrossfade;
+    // Spotify-style crossfade support across all platforms
+    const effectiveIsCrossfade = isCrossfade;
 
     // ──────────────────────────────────────────────────────────────────────────
     // CASE A: NORMAL PLAYBACK (No Crossfade — Direct Switch)
@@ -3895,11 +3899,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         isPlayingRef.current = true;
         setIsPlaying(true);
         loadOrMountYtChannel(videoId, 1, curVol * 100);
-        if (isWebShim) {
-          showNotification(`▶ YouTube: ${track.title} (Chạm khung video để nghe)`);
-        } else {
-          showNotification(`▶ YouTube Hi-Fi: ${track.title}`);
-        }
+        showNotification(`▶ YouTube Hi-Fi: ${track.title}`);
 
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
         ytUnavailableRetryTimerRef.current = setTimeout(() => {
