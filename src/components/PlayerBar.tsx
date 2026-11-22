@@ -1247,23 +1247,23 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               showMv && currentTrack?.source === 'youtube'
                 ? 'w-full max-w-[92vw] aspect-video'
                 : 'w-64 h-64 max-w-[72vw] max-h-[72vw]'
-            } rounded-3xl overflow-hidden border border-white/15 shadow-2xl bg-[#101018] flex items-center justify-center transition-all duration-300 relative`}
+            } rounded-3xl overflow-hidden border border-white/15 shadow-2xl bg-black flex items-center justify-center transition-all duration-300 relative`}
             style={{ boxShadow: `0 20px 50px rgba(0,0,0,0.7), 0 0 30px ${accentColor}30` }}
           >
-            {showMv && currentTrack?.source === 'youtube' ? (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-black text-zinc-500">
-                {/* Active YouTube iframe from App.tsx mounts on top of this container */}
-              </div>
-            ) : currentTrack?.cover_art ? (
+            {currentTrack?.cover_art ? (
               <img
                 src={optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)}
                 alt={currentTrack.title}
                 referrerPolicy="no-referrer"
                 onError={(e) => handleImageError(e, currentTrack.path_or_url || currentTrack.id)}
-                className="w-full h-full object-cover"
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  showMv && currentTrack?.source === 'youtube' ? 'opacity-0' : 'opacity-100'
+                }`}
               />
             ) : (
-              <Music className="w-16 h-16 text-zinc-600" />
+              <Music className={`w-16 h-16 text-zinc-600 transition-opacity duration-300 ${
+                showMv && currentTrack?.source === 'youtube' ? 'opacity-0' : 'opacity-100'
+              }`} />
             )}
           </div>
 

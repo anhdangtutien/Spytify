@@ -24,7 +24,7 @@ import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSIO
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
-import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId } from './services/sevenCloudsResolver';
+import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId, resolveUnblockedAudioVideoId } from './services/sevenCloudsResolver';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, SkipBack, SkipForward, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
@@ -1126,6 +1126,18 @@ export default function App() {
       }
     };
     updateRect();
+
+    // Smooth frame-by-frame synchronization during CSS transition (450ms)
+    let animId: number | null = null;
+    const animStart = performance.now();
+    const tick = () => {
+      updateRect();
+      if (performance.now() - animStart < 450) {
+        animId = requestAnimationFrame(tick);
+      }
+    };
+    tick();
+
     const el = document.getElementById('mobile-cover-art-slot');
     let ro: ResizeObserver | null = null;
     if (el && typeof ResizeObserver !== 'undefined') {
@@ -1134,14 +1146,11 @@ export default function App() {
       });
       ro.observe(el);
     }
-    const t1 = setTimeout(updateRect, 50);
-    const t2 = setTimeout(updateRect, 320);
     window.addEventListener('resize', updateRect);
     window.addEventListener('orientationchange', updateRect);
     return () => {
+      if (animId) cancelAnimationFrame(animId);
       ro?.disconnect();
-      clearTimeout(t1);
-      clearTimeout(t2);
       window.removeEventListener('resize', updateRect);
       window.removeEventListener('orientationchange', updateRect);
     };
@@ -2678,29 +2687,40 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (data.event === 'onError') {
           if (ytChannel !== activeYtChannelRef.current || currentTrackRef.current?.source !== 'youtube') return;
           const erroredTrack = currentTrackRef.current;
-          console.warn('[YouTube Player] Embed blocked or unavailable, code:', data.info, '-> Auto-resolving via unblocked alternative...');
+          console.warn('[YouTube Player] Embed blocked or unavailable, code:', data.info, '-> Auto-resolving via Topic / 7clouds / Lyric channel...');
           if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
           if (ytUnavailableRetryTimerRef.current) clearTimeout(ytUnavailableRetryTimerRef.current);
-          const isWeb = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
           
-          // Reset tried flag so we can search and mount an unblocked lyric/audio version of the song
-          ytMusicFallbackTriedRef.current = false;
-          if (isWeb) {
-            showNotification(`🔄 Video bị chặn nhúng. Đang tìm bản lyric/audio thay thế...`);
-          }
+          showNotification(language === 'vi' 
+            ? '🔄 Bài hát bị chặn truy cập. Đang tự động tìm bản Topic / 7clouds thay thế...' 
+            : '🔄 Video embed restricted. Finding Topic / 7clouds audio stream...');
 
-          fallbackToYoutubeMusicStream(erroredTrack).then((recovered) => {
-            if (!recovered && currentTrackRef.current?.id === erroredTrack.id) {
-              showNotification(
-                isWeb
-                  ? '⚠️ Video bị YouTube chặn nhúng. Đang tự động chuyển bài tiếp theo...'
-                  : '⚠️ Bài hát này bị giới hạn khu vực trên YouTube. Tự động chuyển bài...'
-              );
-              ytUnavailableTimerRef.current = setTimeout(() => {
-                handleNext();
-              }, 1200);
-            }
-          });
+          // Reset fallback flag so alternative streams can be mounted
+          ytMusicFallbackTriedRef.current = false;
+
+          resolveUnblockedAudioVideoId(erroredTrack.title, erroredTrack.artist, erroredTrack.path_or_url || erroredTrack.id)
+            .then(async (unblockedVid) => {
+              if (unblockedVid && unblockedVid !== extractCleanYtId(erroredTrack.path_or_url || erroredTrack.id)) {
+                console.log('[YouTube Player] Found unblocked alternative video:', unblockedVid);
+                ytHasStartedPlayingRef.current = false;
+                isPlayingRef.current = true;
+                setIsPlaying(true);
+                playStartTimestampRef.current = Date.now();
+                loadOrMountYtChannel(unblockedVid, activeYtChannelRef.current, volumeRef.current * 100);
+                showNotification(language === 'vi' ? `▶ Đã chuyển sang bản phát không bị chặn: ${erroredTrack.title}` : `▶ Switched to unblocked audio stream`);
+                return;
+              }
+              // If not found via search, try fallbackToYoutubeMusicStream
+              const recovered = await fallbackToYoutubeMusicStream(erroredTrack);
+              if (!recovered && currentTrackRef.current?.id === erroredTrack.id) {
+                showNotification(language === 'vi' 
+                  ? '⚠️ Không tìm thấy nguồn phát thay thế. Tự động chuyển bài tiếp theo...' 
+                  : '⚠️ No playable alternative found. Skipping to next track...');
+                ytUnavailableTimerRef.current = setTimeout(() => {
+                  handleNext();
+                }, 1200);
+              }
+            });
         }
 
         if (data.event === 'onStateChange') {
@@ -3949,21 +3969,31 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               sendYtCmd('playVideo', [], 1);
               return;
             }
-            fallbackToYoutubeMusicStream(stalledTrack).then((recovered) => {
-              if (!recovered && currentTrackRef.current?.id === stalledTrack.id && !ytHasStartedPlayingRef.current) {
-                if (isWebShim) {
-                  // On mobile web, DO NOT auto-skip into an endless loop!
-                  // Reveal YouTube player so user can tap play directly
-                  setShowYoutubeVideo(true);
-                  showNotification('▶ Chạm vào khung video YouTube để bắt đầu nghe nhạc trên di động');
-                } else {
-                  showNotification('⚠️ Bài hát này không khả dụng. Tự động chuyển bài tiếp theo...');
-                  setTimeout(() => {
-                    handleNext();
-                  }, 1500);
+            resolveUnblockedAudioVideoId(stalledTrack.title, stalledTrack.artist, stalledTrack.path_or_url || stalledTrack.id)
+              .then(async (unblockedVid) => {
+                if (unblockedVid && unblockedVid !== extractCleanYtId(stalledTrack.path_or_url || stalledTrack.id)) {
+                  console.log('[YouTube Player] Recovered stalled video with unblocked source:', unblockedVid);
+                  ytHasStartedPlayingRef.current = false;
+                  isPlayingRef.current = true;
+                  setIsPlaying(true);
+                  playStartTimestampRef.current = Date.now();
+                  loadOrMountYtChannel(unblockedVid, activeYtChannelRef.current, volumeRef.current * 100);
+                  showNotification(language === 'vi' ? `▶ Đã chuyển sang bản phát không bị chặn: ${stalledTrack.title}` : `▶ Switched to unblocked audio stream`);
+                  return;
                 }
-              }
-            });
+                const recovered = await fallbackToYoutubeMusicStream(stalledTrack);
+                if (!recovered && currentTrackRef.current?.id === stalledTrack.id && !ytHasStartedPlayingRef.current) {
+                  if (isWebShim) {
+                    setShowYoutubeVideo(true);
+                    showNotification('▶ Chạm vào khung video YouTube để bắt đầu nghe nhạc trên di động');
+                  } else {
+                    showNotification('⚠️ Bài hát này không khả dụng. Tự động chuyển bài tiếp theo...');
+                    setTimeout(() => {
+                      handleNext();
+                    }, 1500);
+                  }
+                }
+              });
           }
         }, fallbackDelayMs);
 
@@ -5397,8 +5427,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           className={
             Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
               ? (isMobilePlayerOpen
-                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
-                  : 'fixed bottom-[86px] right-4 sm:right-6 z-40 w-[380px] sm:w-[480px] lg:w-[560px] aspect-video rounded-2xl overflow-hidden bg-black shadow-[0_25px_70px_rgba(0,0,0,0.95)] border-2 border-white/20 ring-4 ring-black/70 pointer-events-auto opacity-100 transition-all duration-300 group/mv')
+                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-300'
+                  : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[380px] md:sm:w-[480px] md:lg:w-[560px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_25px_70px_rgba(0,0,0,0.95)] md:border-2 md:border-white/20 md:ring-4 md:ring-black/70 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv')
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
@@ -5426,7 +5456,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         >
           {/* Desktop Floating Header Bar (Overlay on hover) */}
           {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1) && (
-            <div className="absolute top-0 inset-x-0 p-2.5 bg-gradient-to-b from-black/95 via-black/60 to-transparent flex items-center justify-between z-10 opacity-0 group-hover/mv:opacity-100 transition-opacity pointer-events-auto">
+            <div className="hidden md:flex absolute top-0 inset-x-0 p-2.5 bg-gradient-to-b from-black/95 via-black/60 to-transparent items-center justify-between z-10 opacity-0 group-hover/mv:opacity-100 transition-opacity pointer-events-auto">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
                 <span className="text-[11px] font-bold text-white truncate drop-shadow">
@@ -5462,8 +5492,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           className={
             Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
               ? (isMobilePlayerOpen
-                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
-                  : 'fixed bottom-[86px] right-4 sm:right-6 z-40 w-[380px] sm:w-[480px] lg:w-[560px] aspect-video rounded-2xl overflow-hidden bg-black shadow-[0_25px_70px_rgba(0,0,0,0.95)] border-2 border-white/20 ring-4 ring-black/70 pointer-events-auto opacity-100 transition-all duration-300 group/mv')
+                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-300'
+                  : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[380px] md:sm:w-[480px] md:lg:w-[560px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_25px_70px_rgba(0,0,0,0.95)] md:border-2 md:border-white/20 md:ring-4 md:ring-black/70 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv')
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
@@ -5491,7 +5521,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         >
           {/* Desktop Floating Header Bar (Overlay on hover) */}
           {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2) && (
-            <div className="absolute top-0 inset-x-0 p-2.5 bg-gradient-to-b from-black/95 via-black/60 to-transparent flex items-center justify-between z-10 opacity-0 group-hover/mv:opacity-100 transition-opacity pointer-events-auto">
+            <div className="hidden md:flex absolute top-0 inset-x-0 p-2.5 bg-gradient-to-b from-black/95 via-black/60 to-transparent items-center justify-between z-10 opacity-0 group-hover/mv:opacity-100 transition-opacity pointer-events-auto">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
                 <span className="text-[11px] font-bold text-white truncate drop-shadow">
@@ -5508,7 +5538,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </button>
             </div>
           )}
-
           <iframe
             ref={ytIframe2Ref}
             src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
