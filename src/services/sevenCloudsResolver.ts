@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core';
 import { extractCleanYtId } from '../utils/trackUtils';
 
 // In-memory cache for resolved 7clouds video IDs: key = `${title}___${artist}`.toLowerCase()
@@ -92,18 +93,47 @@ export function isLyricChannelMatch(author?: string, title?: string): boolean {
 
 /**
  * Helper to query high-speed YouTube search API
+ * Uses native Rust command in Tauri desktop, or high-speed Vercel Edge API on Web/PWA.
  */
 async function queryYtSearch(query: string): Promise<Array<{ videoId: string; title: string; author: string }>> {
+  // 1. In Tauri desktop app: call native Rust backend directly (0ms latency, zero CORS, no 404s)
+  if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+    try {
+      const results = await invoke<Array<{
+        url_or_id: string;
+        title: string;
+        artist: string;
+      }>>('search_online', { query, source: 'youtube' });
+      if (results && results.length > 0) {
+        return results.map(r => ({
+          videoId: extractCleanYtId(r.url_or_id) || r.url_or_id,
+          title: r.title,
+          author: r.artist,
+        }));
+      }
+    } catch (e) {
+      console.warn('[queryYtSearch] Tauri native search error, using web fallback:', e);
+    }
+  }
+
+  // 2. Web / PWA fallback
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2800);
+    const timeoutId = setTimeout(() => controller.abort(), 3200);
 
     let res: Response | null = null;
-    try {
-      res = await fetch(`/api/yt-search?q=${encodeURIComponent(query)}`, {
-        signal: controller.signal,
-      });
-    } catch {
+    // If running on Vercel domain, try local relative /api/yt-search
+    if (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')) {
+      try {
+        const test = await fetch(`/api/yt-search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        });
+        if (test.ok) res = test;
+      } catch {}
+    }
+
+    // Otherwise use canonical Vercel API endpoint
+    if (!res || !res.ok) {
       res = await fetch(
         `https://spytify-website-rho.vercel.app/api/yt-search?q=${encodeURIComponent(query)}`,
         { signal: controller.signal }
@@ -233,11 +263,14 @@ export async function resolveUnblockedAudioVideoId(
     }
   } catch {}
 
-  // 1. First priority: YouTube Music Topic channel (Official unblocked studio audio, no intro/outro delays)
+  // 1. First priority: YouTube Music Topic channel / Official Audio (Unblocked studio audio, no intro/outro delays)
   const topicItems = await queryYtSearch(`${cleanT} ${cleanA} topic`);
   const topicHit = topicItems.find(i => {
     const vid = extractCleanYtId(i.videoId) || i.videoId;
-    return vid && vid !== cleanBlocked && isTopicChannel(i.author);
+    if (!vid || vid === cleanBlocked) return false;
+    const author = (i.author || '').toLowerCase();
+    const title = (i.title || '').toLowerCase();
+    return isTopicChannel(author) || title.includes('topic') || title.includes('official audio') || title.includes('audio');
   });
   if (topicHit?.videoId) {
     const found = extractCleanYtId(topicHit.videoId) || topicHit.videoId;
@@ -272,15 +305,27 @@ export async function resolveUnblockedAudioVideoId(
     return found;
   }
 
-  // 4. Any alternative video with "Lyrics" or "Audio" in the title that is not the blocked one
+  // 4. Any alternative video with "Lyrics", "Audio", "Visualizer" or "Topic" in the title that is not the blocked one
   const anyAudioHit = [...topicItems, ...sevenCloudsItems, ...lyricItems].find(i => {
     const vid = extractCleanYtId(i.videoId) || i.videoId;
     if (!vid || vid === cleanBlocked) return false;
     const t = (i.title || '').toLowerCase();
-    return t.includes('lyric') || t.includes('audio') || t.includes('topic');
+    return t.includes('lyric') || t.includes('audio') || t.includes('topic') || t.includes('visualizer');
   });
   if (anyAudioHit?.videoId) {
     const found = extractCleanYtId(anyAudioHit.videoId) || anyAudioHit.videoId;
+    unblockedAudioCache.set(unblockKey, found);
+    try { sessionStorage.setItem(`spytify_unblocked_${unblockKey}`, found); } catch {}
+    return found;
+  }
+
+  // 5. Ultimate Fallback: Any alternate upload of the song from search that is not the blocked ID
+  const anyAlternateHit = [...topicItems, ...sevenCloudsItems, ...lyricItems].find(i => {
+    const vid = extractCleanYtId(i.videoId) || i.videoId;
+    return Boolean(vid && vid !== cleanBlocked);
+  });
+  if (anyAlternateHit?.videoId) {
+    const found = extractCleanYtId(anyAlternateHit.videoId) || anyAlternateHit.videoId;
     unblockedAudioCache.set(unblockKey, found);
     try { sessionStorage.setItem(`spytify_unblocked_${unblockKey}`, found); } catch {}
     return found;
