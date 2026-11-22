@@ -1112,7 +1112,7 @@ export default function App() {
   const [mobileMvRect, setMobileMvRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
   useEffect(() => {
-    if (!isMobilePlayerOpen || !showYoutubeVideo) {
+    if (!isMobilePlayerOpen) {
       setMobileMvRect(null);
       return;
     }
@@ -3599,19 +3599,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     setShowYoutubeVideo(prev => {
       const next = !prev;
       if (next && currentTrackRef.current?.source === 'youtube') {
-        const vid = extractCleanYtId(currentTrackRef.current.path_or_url || currentTrackRef.current.id);
         const curCh = activeYtChannelRef.current;
-        const curVid = curCh === 1 ? latestYtVideoId1Ref.current : latestYtVideoId2Ref.current;
-        if (vid && (!curVid || curVid !== vid)) {
-          loadOrMountYtChannel(vid, curCh, volumeRef.current * 100);
-        }
-        if (currentTimeRef.current > 0) {
-          sendYtCmd('seekTo', [Math.round(currentTimeRef.current), true], curCh);
-        }
         sendYtCmd('playVideo', [], curCh);
-        if (!ytHasStartedPlayingRef.current) {
-          handleYouTubeBlockedOrStalled(currentTrackRef.current);
-        }
       }
       return next;
     });
@@ -5544,35 +5533,56 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc1 && (
         <div
           className={
-            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
+            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1
               ? (isMobilePlayerOpen
-                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-300'
-                  : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv')
+                  ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
+                      showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
+                    }`
+                  : `fixed bottom-[68px] left-3 w-12 h-12 rounded-lg overflow-hidden pointer-events-none z-0 opacity-100 md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:transition-all md:duration-300 md:group/mv ${
+                      showYoutubeVideo
+                        ? 'md:pointer-events-auto md:opacity-100'
+                        : 'md:pointer-events-none md:opacity-0 md:w-0 md:h-0 md:-left-[9999px]'
+                    }`)
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
-              ? (isMobilePlayerOpen
-                  ? (mobileMvRect
-                      ? {
-                          top: `${mobileMvRect.top}px`,
-                          left: `${mobileMvRect.left}px`,
-                          width: `${mobileMvRect.width}px`,
-                          height: `${mobileMvRect.height}px`,
-                          zIndex: 95,
-                        }
-                      : {
-                          top: '16vh',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: 'min(92vw, 400px)',
-                          aspectRatio: '16/9',
-                          zIndex: 95,
-                        })
-                  : undefined)
+            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1 && isMobilePlayerOpen
+              ? (mobileMvRect
+                  ? {
+                      top: `${mobileMvRect.top}px`,
+                      left: `${mobileMvRect.left}px`,
+                      width: `${mobileMvRect.width}px`,
+                      height: `${mobileMvRect.height}px`,
+                      zIndex: showYoutubeVideo ? 95 : 91,
+                    }
+                  : {
+                      top: '16vh',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 'min(92vw, 400px)',
+                      aspectRatio: showYoutubeVideo ? '16/9' : '1/1',
+                      zIndex: showYoutubeVideo ? 95 : 91,
+                    })
               : undefined
           }
         >
+          {/* Mobile Cover Art Overlay in "Ảnh bìa" mode */}
+          {!showYoutubeVideo && isMobilePlayerOpen && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1 && (
+            <div className="absolute inset-0 z-20 bg-black flex items-center justify-center pointer-events-none select-none rounded-3xl overflow-hidden">
+              {currentTrack?.cover_art ? (
+                <img
+                  src={optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)}
+                  alt={currentTrack.title}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => handleImageError(e, currentTrack.path_or_url || currentTrack.id)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Music className="w-16 h-16 text-zinc-600" />
+              )}
+            </div>
+          )}
+
           {/* Desktop Floating Header Bar (Overlay) */}
           {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1) && (
             <div className="hidden md:flex absolute top-0 inset-x-0 p-2 bg-gradient-to-b from-black/95 via-black/75 to-transparent items-center justify-between z-10 opacity-80 hover:opacity-100 transition-opacity pointer-events-auto">
@@ -5610,35 +5620,56 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc2 && (
         <div
           className={
-            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
+            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2
               ? (isMobilePlayerOpen
-                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-300'
-                  : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv')
+                  ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
+                      showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
+                    }`
+                  : `fixed bottom-[68px] left-3 w-12 h-12 rounded-lg overflow-hidden pointer-events-none z-0 opacity-100 md:top-auto md:left-auto md:bottom-[86px] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:aspect-video md:rounded-2xl md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:transition-all md:duration-300 md:group/mv ${
+                      showYoutubeVideo
+                        ? 'md:pointer-events-auto md:opacity-100'
+                        : 'md:pointer-events-none md:opacity-0 md:w-0 md:h-0 md:-left-[9999px]'
+                    }`)
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
-              ? (isMobilePlayerOpen
-                  ? (mobileMvRect
-                      ? {
-                          top: `${mobileMvRect.top}px`,
-                          left: `${mobileMvRect.left}px`,
-                          width: `${mobileMvRect.width}px`,
-                          height: `${mobileMvRect.height}px`,
-                          zIndex: 95,
-                        }
-                      : {
-                          top: '16vh',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: 'min(92vw, 400px)',
-                          aspectRatio: '16/9',
-                          zIndex: 95,
-                        })
-                  : undefined)
+            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2 && isMobilePlayerOpen
+              ? (mobileMvRect
+                  ? {
+                      top: `${mobileMvRect.top}px`,
+                      left: `${mobileMvRect.left}px`,
+                      width: `${mobileMvRect.width}px`,
+                      height: `${mobileMvRect.height}px`,
+                      zIndex: showYoutubeVideo ? 95 : 91,
+                    }
+                  : {
+                      top: '16vh',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 'min(92vw, 400px)',
+                      aspectRatio: showYoutubeVideo ? '16/9' : '1/1',
+                      zIndex: showYoutubeVideo ? 95 : 91,
+                    })
               : undefined
           }
         >
+          {/* Mobile Cover Art Overlay in "Ảnh bìa" mode */}
+          {!showYoutubeVideo && isMobilePlayerOpen && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2 && (
+            <div className="absolute inset-0 z-20 bg-black flex items-center justify-center pointer-events-none select-none rounded-3xl overflow-hidden">
+              {currentTrack?.cover_art ? (
+                <img
+                  src={optimizeThumbnailUrl(currentTrack.cover_art, currentTrack.path_or_url || currentTrack.id)}
+                  alt={currentTrack.title}
+                  referrerPolicy="no-referrer"
+                  onError={(e) => handleImageError(e, currentTrack.path_or_url || currentTrack.id)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Music className="w-16 h-16 text-zinc-600" />
+              )}
+            </div>
+          )}
+
           {/* Desktop Floating Header Bar (Overlay) */}
           {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2) && (
             <div className="hidden md:flex absolute top-0 inset-x-0 p-2 bg-gradient-to-b from-black/95 via-black/75 to-transparent items-center justify-between z-10 opacity-80 hover:opacity-100 transition-opacity pointer-events-auto">
