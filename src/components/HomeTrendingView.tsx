@@ -1434,10 +1434,10 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                 </div>
 
                 {/* Right Column: Hero Artist Card Showcase (Visible on both mobile & desktop) */}
-                <div className="relative z-10 flex items-center justify-center flex-shrink-0 pr-1">
+                <div className="relative z-10 flex flex-col items-center justify-center flex-shrink-0 pr-1 sm:pr-2 gap-2">
                   <div 
                     onClick={() => handleOpenArtistMix(artist)}
-                    className="relative w-20 h-20 sm:w-44 sm:h-44 md:w-52 md:h-52 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-2 border-white/20 ring-2 sm:ring-4 ring-black/40 group/card cursor-pointer hover:border-white/30 transition-all duration-300 hover:scale-105"
+                    className="relative w-20 h-20 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-2 border-white/20 ring-2 sm:ring-4 ring-black/40 group/card cursor-pointer hover:border-white/30 transition-all duration-300 hover:scale-105"
                   >
                     <img
                       src={artist.avatar}
@@ -1456,36 +1456,36 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       </span>
                     </div>
                   </div>
+
+                  {/* Centered Mini Dots Indicators directly under photo */}
+                  {heroArtists.length > 1 && (
+                    <div className="flex items-center justify-center gap-1 sm:gap-1.5 bg-black/70 backdrop-blur-md px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-white/10 shadow-lg">
+                      {heroArtists.slice(0, 10).map((_, i) => {
+                        const isDotActive = i === (heroIndex % heroArtists.length);
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setHeroIndex(i);
+                            }}
+                            className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                              isDotActive ? 'w-3.5 sm:w-5' : 'w-1 sm:w-1.5 bg-white/30 hover:bg-white/60'
+                            }`}
+                            style={{
+                              backgroundColor: isDotActive ? accentColor : undefined,
+                            }}
+                            title={`Artist #${i + 1}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
-
-          {/* Billboard Mini Dots Indicators */}
-          {heroArtists.length > 1 && (
-            <div className="absolute right-4 bottom-4 z-20 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-white/10 shadow-lg">
-              {heroArtists.slice(0, 10).map((_, i) => {
-                const isDotActive = i === (heroIndex % heroArtists.length);
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setHeroIndex(i);
-                    }}
-                    className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                      isDotActive ? 'w-5' : 'w-1.5 bg-white/30 hover:bg-white/60'
-                    }`}
-                    style={{
-                      backgroundColor: isDotActive ? accentColor : undefined,
-                    }}
-                    title={`Artist #${i + 1}`}
-                  />
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
 

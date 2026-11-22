@@ -1074,7 +1074,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               onClick={onToggleThemeMode}
               className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-zinc-300 flex items-center gap-1.5 cursor-pointer"
             >
-              {themeMode === 'light' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-cyan-400" />}
+              {themeMode === 'light' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-indigo-300" />}
               <span>{themeMode === 'light' ? (language === 'vi' ? 'Sáng' : 'Light') : (language === 'vi' ? 'Tối' : 'Dark')}</span>
             </button>
           </div>
@@ -1139,14 +1139,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 {language === 'vi' ? 'Đồng bộ Cloud' : 'Cloud Sync'}
               </span>
               {cloudStatusMsg && (
-                <p className="text-[10px] text-cyan-400 truncate">{cloudStatusMsg}</p>
+                <p className="text-[10px] text-zinc-400 truncate">{cloudStatusMsg}</p>
               )}
             </div>
             <button
               type="button"
               onClick={handleTriggerCloudSync}
               disabled={isCloudSyncing}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-cyan-400 flex items-center gap-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-zinc-200 hover:text-white flex items-center gap-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
               <span>{isCloudSyncing ? (language === 'vi' ? 'Đang đồng bộ...' : 'Syncing...') : (language === 'vi' ? 'Đồng bộ ngay' : 'Sync Now')}</span>
@@ -1158,7 +1158,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <button
               type="button"
               onClick={() => openWebsite()}
-              className="text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
+              className="text-zinc-300 hover:text-white hover:underline flex items-center gap-1 cursor-pointer"
             >
               <span>spytify.vercel.app</span>
               <ArrowUpRight className="w-3 h-3" />
@@ -1193,7 +1193,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <button 
                 type="button" 
                 onClick={() => setActiveTab('profile_appearance')} 
-                className="text-[10px] text-[#888] hover:text-cyan-400 font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                className="text-[10px] text-[#888] hover:text-white font-mono flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <Edit3 className="w-2.5 h-2.5" />
                 <span>{getTranslation(language, 'settings.editProfile')}</span>
@@ -1318,7 +1318,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
 
       {/* ──────── 2. RIGHT CONTENT PANE (DISCORD SETTING CARDS - DESKTOP) ──────── */}
-      <div className="hidden md:block flex-1 p-4 sm:p-6 md:p-8 md:overflow-y-auto max-w-3xl">
+      <div className="hidden md:block flex-1 p-4 sm:p-6 md:p-8 md:overflow-y-auto w-full max-w-5xl 2xl:max-w-6xl">
         {activeTab === 'account' && (
           <div className="space-y-6">
             <div>
@@ -1375,7 +1375,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         value={userBio}
                         onChange={e => setUserBio(e.target.value)}
                         className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-sans border outline-none ${
-                          themeMode === 'light' ? 'bg-slate-100 border-slate-300 text-slate-900' : 'bg-[#141420] border-[#252538] text-white focus:border-cyan-400'
+                          themeMode === 'light' ? 'bg-slate-100 border-slate-300 text-slate-900' : 'bg-[#141420] border-[#252538] text-white focus:border-white/40'
                         }`}
                       />
                       <button
@@ -1390,7 +1390,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           onUpdateBio(userBio.trim());
                           setIsEditingBio(false);
                         }}
-                        className="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-mono font-bold cursor-pointer transition-colors"
+                        style={{
+                          backgroundColor: accentColor,
+                          color: getContrastTextColor(accentColor),
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-mono font-bold cursor-pointer transition-colors shadow"
                       >
                         {getTranslation(language, 'settings.save')}
                       </button>
@@ -1468,7 +1472,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <div className="pr-4">
                       <div className="flex items-center gap-2">
                         <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.twoFactor')}</p>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                        <span 
+                          className="text-[10px] px-2 py-0.5 rounded font-mono font-bold border"
+                          style={{
+                            backgroundColor: `${accentColor}18`,
+                            borderColor: `${accentColor}40`,
+                            color: accentColor,
+                          }}
+                        >
                           Google Authenticator
                         </span>
                       </div>
@@ -1495,8 +1506,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <button
                           type="button"
                           onClick={handleOpen2FaSetup}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-black transition-all cursor-pointer shadow-sm hover:scale-105 flex items-center gap-1.5"
-                          style={{ backgroundColor: accentColor }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-sm hover:scale-105 flex items-center gap-1.5"
+                          style={{
+                            backgroundColor: accentColor,
+                            color: getContrastTextColor(accentColor),
+                          }}
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
                           <span>Kích hoạt 2FA</span>
@@ -1509,8 +1523,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   {twoFactorEnabled && (
                     <div className="mt-3.5 pt-3 border-t border-white/5 space-y-2 animate-in fade-in duration-200">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                          <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5" style={{ color: accentColor }} />
                           <span>Áp dụng xác thực 2FA khi:</span>
                         </span>
                         <span className="text-[9px] font-mono text-zinc-500">
@@ -1542,23 +1556,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               key={item.id}
                               type="button"
                               onClick={() => handleUpdate2FaScope(item.id)}
-                              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between group ${
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between group ${
                                 isSelected
-                                  ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-200 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
-                                  : 'bg-[#12121c] border-[#222234] text-zinc-400 hover:text-white hover:bg-white/5'
+                                  ? 'text-white shadow-lg'
+                                  : 'bg-[#12121c]/70 border-[#222234] text-zinc-400 hover:text-white hover:bg-white/5'
                               }`}
+                              style={isSelected ? {
+                                backgroundColor: `${accentColor}18`,
+                                borderColor: `${accentColor}60`,
+                                boxShadow: `0 0 14px ${accentColor}15`,
+                              } : undefined}
                             >
-                              <div className="flex items-center justify-between gap-1 mb-1">
-                                <span className={`text-xs font-bold ${isSelected ? 'text-cyan-300' : 'text-zinc-200'}`}>
+                              <div className="flex items-center justify-between gap-1 mb-1.5">
+                                <span 
+                                  className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-zinc-300'}`}
+                                  style={isSelected ? { color: accentColor } : undefined}
+                                >
                                   {item.title}
                                 </span>
                                 {isSelected ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{ color: accentColor }} />
                                 ) : (
                                   <span className="w-2.5 h-2.5 rounded-full border border-white/20 shrink-0 group-hover:border-white/40" />
                                 )}
                               </div>
-                              <p className="text-[10px] text-zinc-500 leading-tight">
+                              <p className="text-[10px] text-zinc-400 leading-tight">
                                 {item.desc}
                               </p>
                             </button>
@@ -1574,7 +1596,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.signedInDevices')}</p>
                     <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.signedInDeviceCount')}</p>
                   </div>
-                  <span className="text-xs font-mono text-cyan-400 font-bold">{getTranslation(language, 'settings.currentDevice')}</span>
+                  <span className="text-xs font-mono font-bold flex items-center gap-1.5 text-zinc-300">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }} />
+                    {getTranslation(language, 'settings.currentDevice')}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1805,9 +1830,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </p>
             </div>
 
-            {/* Blue Info Banner matching Discord Image */}
-            <div className="p-4 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-cyan-200 text-xs flex items-start gap-3">
-              <Info className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+            {/* Neutral Glass Info Banner */}
+            <div className="p-4 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-300 text-xs flex items-start gap-3 shadow-sm">
+              <Info className="w-4 h-4 text-zinc-400 flex-shrink-0 mt-0.5" style={{ color: accentColor }} />
               <p className="leading-relaxed">
                 {getTranslation(language, 'settings.ageNotice')}
               </p>
@@ -1842,7 +1867,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+                  <div 
+                    className="w-8 h-8 rounded-full flex items-center justify-center border"
+                    style={{
+                      backgroundColor: `${accentColor}18`,
+                      borderColor: `${accentColor}40`,
+                      color: accentColor,
+                    }}
+                  >
                     <Database className="w-4 h-4" />
                   </div>
                   <div>
@@ -1850,7 +1882,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.sqliteDescription')}</p>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-cyan-400">{getTranslation(language, 'settings.active')}</span>
+                <span className="text-xs font-mono font-bold" style={{ color: accentColor }}>{getTranslation(language, 'settings.active')}</span>
               </div>
             </div>
           </div>
@@ -1874,11 +1906,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <Volume2 className="w-4 h-4 text-cyan-400" />
+                        <Volume2 className="w-4 h-4 text-zinc-300" style={{ color: accentColor }} />
                         <span className="text-xs font-bold text-white">Âm lượng phát nhạc chính (Master)</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded">
+                        <span 
+                          className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+                          style={{
+                            backgroundColor: `${accentColor}18`,
+                            borderColor: `${accentColor}40`,
+                            color: accentColor,
+                          }}
+                        >
                           {Math.round((volume ?? 0.8) * 100)}%
                         </span>
                         <button
@@ -1898,7 +1937,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       step="0.01"
                       value={volume ?? 0.8}
                       onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-                      className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                      style={{ accentColor }}
+                      className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer"
                     />
                   </div>
                   <div className="flex items-center justify-between mt-3 pt-1">
@@ -1950,11 +1990,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <Volume2 className="w-4 h-4 text-cyan-400" />
+                        <Volume2 className="w-4 h-4 text-zinc-300" style={{ color: accentColor }} />
                         <span className="text-xs font-bold text-white">{getTranslation(language, 'settings.speakerVolume')}</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/40 border border-cyan-500/30 px-2 py-0.5 rounded">
+                        <span 
+                          className="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+                          style={{
+                            backgroundColor: `${accentColor}18`,
+                            borderColor: `${accentColor}40`,
+                            color: accentColor,
+                          }}
+                        >
                           {voiceSpeakerVolume}%
                         </span>
                         <button
@@ -1974,7 +2021,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       step="1"
                       value={voiceSpeakerVolume}
                       onChange={(e) => handleUpdateSpeakerVolume(parseInt(e.target.value, 10))}
-                      className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                      style={{ accentColor }}
+                      className="w-full h-1.5 bg-[#1c1c2a] rounded-lg appearance-none cursor-pointer"
                     />
                   </div>
                   <div className="flex items-center justify-between mt-3 pt-1">
@@ -1982,7 +2030,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <button
                       type="button"
                       onClick={playSpeakerTestChime}
-                      className="px-2.5 py-1 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
+                      style={{
+                        backgroundColor: `${accentColor}18`,
+                        borderColor: `${accentColor}40`,
+                        color: accentColor,
+                      }}
+                      className="px-2.5 py-1 rounded-lg border font-mono text-[10px] flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
                     >
                       <Volume1 className="w-3 h-3" />
                       <span>{getTranslation(language, 'settings.testSpeaker')}</span>
@@ -2547,14 +2600,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div 
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-cyan-950/40 text-cyan-400 border border-cyan-500/30"
+                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-white/5 border border-white/10"
+                    style={{ color: accentColor }}
                   >
                     <Globe className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-xs font-bold text-white">{getTranslation(language, 'website.title')}</p>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/50 text-cyan-300 border border-cyan-500/30">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 text-zinc-300 border border-white/10">
                         Vercel Live
                       </span>
                     </div>
@@ -2562,7 +2616,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       Trang web giới thiệu ứng dụng, tính năng Spytify và tải trực tiếp file cài đặt.
                     </p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[10px] font-mono text-cyan-400 truncate max-w-[280px]">
+                      <span className="text-[10px] font-mono text-zinc-400 truncate max-w-[280px]">
                         {siteUrl}
                       </span>
                       {siteUrl !== DEFAULT_WEBSITE_URL && (
@@ -2586,7 +2640,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <button
                     type="button"
                     onClick={() => openWebsite(siteUrl)}
-                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer bg-cyan-500 hover:bg-cyan-400 text-black shadow-md hover:scale-105"
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md hover:scale-105"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>{getTranslation(language, 'website.btnOpen')}</span>
@@ -2794,8 +2852,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="w-full max-w-md bg-[#0e0e14] border border-[#222230] rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#1c1c28] pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                <div 
+                  className="w-8 h-8 rounded-lg flex items-center justify-center border"
+                  style={{
+                    backgroundColor: `${accentColor}18`,
+                    borderColor: `${accentColor}40`,
+                    color: accentColor,
+                  }}
+                >
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">Thiết lập Google Authenticator (2FA)</h3>
@@ -2814,7 +2879,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="space-y-3.5 text-xs text-zinc-300">
               <div className="p-3 rounded-xl bg-black/50 border border-white/5 space-y-1">
                 <p className="font-semibold text-white flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-cyan-500 text-black text-[10px] font-bold flex items-center justify-center">1</span>
+                  <span 
+                    className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                    }}
+                  >
+                    1
+                  </span>
                   Tải app Authenticator
                 </p>
                 <p className="text-[11px] text-zinc-400 pl-5">
@@ -2824,7 +2897,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               <div className="p-3 rounded-xl bg-black/50 border border-white/5 space-y-2">
                 <p className="font-semibold text-white flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-cyan-500 text-black text-[10px] font-bold flex items-center justify-center">2</span>
+                  <span 
+                    className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                    }}
+                  >
+                    2
+                  </span>
                   Quét mã QR hoặc nhập khóa thủ công
                 </p>
                 
@@ -2846,7 +2927,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       type="text"
                       readOnly
                       value={secret2Fa}
-                      className="flex-1 py-1 px-2.5 rounded-lg bg-[#07070a] border border-[#262634] text-xs text-cyan-300 font-mono tracking-wider select-all"
+                      className="flex-1 py-1 px-2.5 rounded-lg bg-[#07070a] border border-[#262634] text-xs text-zinc-200 font-mono tracking-wider select-all"
                     />
                     <button
                       type="button"
@@ -2864,7 +2945,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <form onSubmit={handleConfirm2FaSetup} className="space-y-3">
                 <div className="p-3 rounded-xl bg-black/50 border border-white/5 space-y-1.5">
                   <label className="font-semibold text-white flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-cyan-500 text-black text-[10px] font-bold flex items-center justify-center">3</span>
+                    <span 
+                      className="w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center"
+                      style={{
+                        backgroundColor: accentColor,
+                        color: getContrastTextColor(accentColor),
+                      }}
+                    >
+                      3
+                    </span>
                     Nhập mã 6 chữ số từ app để xác nhận:
                   </label>
                   <input
@@ -2874,7 +2963,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     placeholder="000000"
                     value={code2FaInput}
                     onChange={(e) => setCode2FaInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full py-2 px-3 text-center text-lg font-mono tracking-[0.3em] font-bold rounded-lg bg-[#07070a] border border-cyan-500/40 text-cyan-400 outline-none focus:border-cyan-400"
+                    className="w-full py-2 px-3 text-center text-lg font-mono tracking-[0.3em] font-bold rounded-lg bg-[#07070a] border border-white/20 text-white outline-none focus:border-white/50"
                     autoFocus
                   />
                 </div>
@@ -2897,7 +2986,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <button
                     type="submit"
                     disabled={code2FaInput.length !== 6 || twoFactorLoading}
-                    className="px-5 py-2 rounded-xl text-xs font-bold text-black bg-cyan-400 hover:bg-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+                    style={{
+                      backgroundColor: accentColor,
+                      color: getContrastTextColor(accentColor),
+                    }}
+                    className="px-5 py-2 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-lg"
                   >
                     {twoFactorLoading ? 'Đang kiểm tra...' : 'Xác nhận & Kích hoạt'}
                   </button>
@@ -2952,8 +3045,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="w-full max-w-md bg-[#0e0e14] border border-[#222230] rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-[#1c1c28] pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
-                  <KeyRound className="w-4 h-4 text-cyan-400" />
+                <div 
+                  className="w-8 h-8 rounded-lg flex items-center justify-center border"
+                  style={{
+                    backgroundColor: `${accentColor}18`,
+                    borderColor: `${accentColor}40`,
+                    color: accentColor,
+                  }}
+                >
+                  <KeyRound className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">Đổi mật khẩu tài khoản</h3>
@@ -2994,25 +3094,35 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setChangePasswordVerifyMode('authenticator')}
-                      className={`p-2 rounded-xl text-left border text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                      className={`p-2.5 rounded-xl text-left border text-xs flex items-center gap-2 cursor-pointer transition-all ${
                         changePasswordVerifyMode === 'authenticator'
-                          ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-bold'
+                          ? 'text-white font-bold shadow-md'
                           : 'bg-[#121218] border-white/10 text-zinc-400 hover:text-white'
                       }`}
+                      style={changePasswordVerifyMode === 'authenticator' ? {
+                        backgroundColor: `${accentColor}18`,
+                        borderColor: `${accentColor}60`,
+                        color: accentColor,
+                      } : undefined}
                     >
-                      <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={changePasswordVerifyMode === 'authenticator' ? { color: accentColor } : undefined} />
                       <span>Google Authenticator</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setChangePasswordVerifyMode('password')}
-                      className={`p-2 rounded-xl text-left border text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                      className={`p-2.5 rounded-xl text-left border text-xs flex items-center gap-2 cursor-pointer transition-all ${
                         changePasswordVerifyMode === 'password'
-                          ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-bold'
+                          ? 'text-white font-bold shadow-md'
                           : 'bg-[#121218] border-white/10 text-zinc-400 hover:text-white'
                       }`}
+                      style={changePasswordVerifyMode === 'password' ? {
+                        backgroundColor: `${accentColor}18`,
+                        borderColor: `${accentColor}60`,
+                        color: accentColor,
+                      } : undefined}
                     >
-                      <Lock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <Lock className="w-3.5 h-3.5 shrink-0" style={changePasswordVerifyMode === 'password' ? { color: accentColor } : undefined} />
                       <span>Mật khẩu hiện tại</span>
                     </button>
                   </div>
@@ -3033,7 +3143,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     placeholder="000000"
                     value={changePasswordTotpInput}
                     onChange={(e) => setChangePasswordTotpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full py-2 px-3 bg-[#07070a] text-cyan-400 font-mono tracking-widest text-center font-bold text-base rounded-xl border border-cyan-500/40 focus:border-cyan-400 outline-none transition-colors"
+                    className="w-full py-2 px-3 bg-[#07070a] text-white font-mono tracking-widest text-center font-bold text-base rounded-xl border border-white/20 focus:border-white/50 outline-none transition-colors"
                   />
                 </div>
               ) : (
@@ -3047,7 +3157,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     value={currentPasswordInput}
                     onChange={(e) => setCurrentPasswordInput(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-cyan-400 outline-none transition-colors"
+                    className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-white/40 outline-none transition-colors"
                   />
                 </div>
               )}
@@ -3064,7 +3174,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   value={newPasswordInput}
                   onChange={(e) => setNewPasswordInput(e.target.value)}
                   placeholder="Nhập mật khẩu mới..."
-                  className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-cyan-400 outline-none transition-colors"
+                  className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-white/40 outline-none transition-colors"
                 />
               </div>
 
@@ -3080,7 +3190,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   value={confirmNewPasswordInput}
                   onChange={(e) => setConfirmNewPasswordInput(e.target.value)}
                   placeholder="Xác nhận mật khẩu mới..."
-                  className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-cyan-400 outline-none transition-colors"
+                  className="w-full py-2 px-3 bg-[#07070a] text-white text-xs rounded-xl border border-[#262634] focus:border-white/40 outline-none transition-colors"
                 />
               </div>
 
@@ -3095,7 +3205,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   type="submit"
                   disabled={changePasswordLoading || newPasswordInput.length < 6 || !confirmNewPasswordInput}
-                  className="px-5 py-2 rounded-xl text-xs font-bold text-black bg-cyan-400 hover:bg-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-lg shadow-cyan-500/20"
+                  style={{
+                    backgroundColor: accentColor,
+                    color: getContrastTextColor(accentColor),
+                  }}
+                  className="px-5 py-2 rounded-xl text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-lg"
                 >
                   {changePasswordLoading ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}
                 </button>
