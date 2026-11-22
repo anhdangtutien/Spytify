@@ -968,22 +968,12 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   // Nghệ sĩ hay nghe của tài khoản hiện tại
   const [recentArtists, setRecentArtists] = useState<RecentArtistItem[]>(DEFAULT_FEATURED_ARTISTS);
 
-  // Hero Billboard Showcase State (màn hình lớn tự động chuyển fade dần các nghệ sĩ hay nghe)
+  // Hero Billboard Showcase State (chọn nghệ sĩ hiển thị banner từ danh sách đề xuất)
   const [heroIndex, setHeroIndex] = useState(0);
-  const [isHeroPaused, setIsHeroPaused] = useState(false);
 
   const heroArtists = useMemo(() => {
-    return recentArtists.slice(0, 8);
+    return recentArtists;
   }, [recentArtists]);
-
-  // Tự động chuyển slide cross-fade sau mỗi 6 giây (tạm dừng khi hover)
-  useEffect(() => {
-    if (heroArtists.length <= 1 || isHeroPaused) return;
-    const timer = setInterval(() => {
-      setHeroIndex(prev => (prev + 1) % heroArtists.length);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [heroArtists.length, isHeroPaused]);
 
   // Artist Album Mix (Powered by Rust Backend)
   const [activeArtistMix, setActiveArtistMix] = useState<ArtistMix | null>(null);
@@ -991,24 +981,6 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   const [loadingArtistName, setLoadingArtistName] = useState<string>('');
   const mixTracklistRef = useRef<HTMLDivElement | null>(null);
   const recentArtistsScrollRef = useRef<HTMLDivElement | null>(null);
-
-  // Auto-slideshow cho danh sách đề xuất nghệ sĩ hay nghe (tự động trượt và tạm dừng khi hover)
-  const [isArtistSliderPaused, setIsArtistSliderPaused] = useState(false);
-
-  useEffect(() => {
-    if (isArtistSliderPaused || recentArtists.length <= 4) return;
-    const interval = setInterval(() => {
-      const el = recentArtistsScrollRef.current;
-      if (!el) return;
-      const maxScroll = el.scrollWidth - el.clientWidth;
-      if (el.scrollLeft >= maxScroll - 15) {
-        el.scrollTo({ left: 0, behavior: 'smooth' });
-      } else {
-        el.scrollBy({ left: 160, behavior: 'smooth' });
-      }
-    }, 3200);
-    return () => clearInterval(interval);
-  }, [isArtistSliderPaused, recentArtists.length]);
 
   const scrollRecentArtists = (direction: 'left' | 'right') => {
     if (recentArtistsScrollRef.current) {
@@ -1370,20 +1342,18 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
         </div>
       </div>
 
-      {/* ─── HERO SHOWCASE BILLBOARD: CHUYỂN FADE DẦN CÁC NGHỆ SĨ HAY NGHE ──── */}
+      {/* ─── HERO SHOWCASE BILLBOARD: CHỌN NGHỆ SĨ TỪ DANH SÁCH ĐỀ XUẤT ──── */}
       {heroArtists.length > 0 && (
         <div 
           className="relative w-full h-[175px] sm:h-[260px] md:h-[290px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#09090e] group select-none"
-          onMouseEnter={() => setIsHeroPaused(true)}
-          onMouseLeave={() => setIsHeroPaused(false)}
         >
           {heroArtists.map((artist, idx) => {
-            const isActive = idx === heroIndex;
+            const isActive = idx === (heroIndex % heroArtists.length);
             const isLoadingThis = loadingArtistMix && loadingArtistName === artist.artist;
             return (
               <div
                 key={artist.artist + idx}
-                className={`absolute inset-0 transition-opacity duration-1000 ease-in-out flex items-center justify-between p-3.5 sm:p-7 md:p-8 ${
+                className={`absolute inset-0 transition-opacity duration-700 ease-in-out flex items-center justify-between p-3.5 sm:p-7 md:p-8 ${
                   isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
                 }`}
               >
@@ -1393,7 +1363,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                     src={artist.avatar}
                     alt={artist.artist}
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover scale-110 filter blur-3xl opacity-35 transition-transform duration-1000 ease-out"
+                    className="w-full h-full object-cover scale-110 filter blur-3xl opacity-35 transition-transform duration-700 ease-out"
                   />
                   {/* Gradient Overlays for contrast */}
                   <div className="absolute inset-0 bg-gradient-to-r from-[#09090e] via-[#09090e]/85 to-transparent" />
@@ -1490,56 +1460,6 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
               </div>
             );
           })}
-
-          {/* Billboard Navigation Controls */}
-          {heroArtists.length > 1 && (
-            <div className="absolute right-4 bottom-4 z-20 flex items-center gap-1.5 bg-black/60 backdrop-blur-md px-2 py-1.5 rounded-2xl border border-white/10 shadow-lg">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setHeroIndex(prev => (prev - 1 + heroArtists.length) % heroArtists.length);
-                }}
-                className="w-7 h-7 rounded-xl bg-white/5 hover:bg-white/15 text-zinc-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-90"
-                title={language === 'vi' ? 'Nghệ sĩ trước' : 'Previous artist'}
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              
-              {/* Mini Indicators */}
-              <div className="flex items-center gap-1 px-1">
-                {heroArtists.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setHeroIndex(i);
-                    }}
-                    className={`h-1.5 rounded-full transition-all cursor-pointer ${
-                      i === heroIndex ? 'w-5' : 'w-1.5 bg-white/30 hover:bg-white/60'
-                    }`}
-                    style={{
-                      backgroundColor: i === heroIndex ? accentColor : undefined,
-                    }}
-                    title={`Artist #${i + 1}`}
-                  />
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setHeroIndex(prev => (prev + 1) % heroArtists.length);
-                }}
-                className="w-7 h-7 rounded-xl bg-white/5 hover:bg-white/15 text-zinc-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-90"
-                title={language === 'vi' ? 'Nghệ sĩ tiếp theo' : 'Next artist'}
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -1554,17 +1474,6 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
               </h2>
             </div>
             <div className="flex items-center gap-3">
-              <div 
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono transition-colors"
-                title={language === 'vi' ? 'Tự động trượt danh sách nghệ sĩ đề xuất (tạm dừng khi rê chuột)' : 'Auto-scrolling suggested artists (pauses on hover)'}
-              >
-                <span 
-                  className={`w-1.5 h-1.5 rounded-full ${isArtistSliderPaused ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`} 
-                />
-                <span className={isArtistSliderPaused ? 'text-amber-300' : 'text-zinc-300'}>
-                  {isArtistSliderPaused ? (language === 'vi' ? 'Tạm dừng' : 'Paused') : 'Auto Slideshow'}
-                </span>
-              </div>
               <span className="text-xs text-[#777] font-mono">
                 {currentUser?.username ? `@${currentUser.username}` : getTranslation(language, 'home.tasteRecommendations')}
               </span>
@@ -1591,20 +1500,30 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
 
           <div
             ref={recentArtistsScrollRef}
-            onMouseEnter={() => setIsArtistSliderPaused(true)}
-            onMouseLeave={() => setIsArtistSliderPaused(false)}
             className="flex items-stretch gap-3 overflow-x-auto hover-scrollbar scroll-smooth py-1"
           >
             {recentArtists.map((artistItem, idx) => {
               const isLoadingThis = loadingArtistMix && loadingArtistName === artistItem.artist;
+              const isSelected = idx === (heroIndex % recentArtists.length);
               return (
                 <div
                   key={idx}
-                  onClick={() => handleOpenArtistMix(artistItem)}
-                  className="group w-[124px] sm:w-[136px] md:w-[144px] lg:w-[152px] flex-shrink-0 p-3 rounded-2xl bg-[#09090d] hover:bg-[#14141c] border border-[#181822] hover:border-cyan-500/40 transition-all flex flex-col items-center text-center cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-1 relative"
+                  onClick={() => setHeroIndex(idx)}
+                  className={`group w-[124px] sm:w-[136px] md:w-[144px] lg:w-[152px] flex-shrink-0 p-3 rounded-2xl bg-[#09090d] hover:bg-[#14141c] border transition-all flex flex-col items-center text-center cursor-pointer shadow-sm hover:shadow-xl hover:-translate-y-1 relative ${
+                    isSelected ? 'shadow-lg -translate-y-0.5' : ''
+                  }`}
+                  style={isSelected ? {
+                    borderColor: accentColor,
+                    boxShadow: `0 0 16px ${accentColor}35`,
+                  } : {
+                    borderColor: '#181822',
+                  }}
                 >
                   {/* Artist Cover / Logo - Modern Rounded Square (Not fixed circle) */}
-                  <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-2.5 bg-[#12121a] border border-white/10 group-hover:border-cyan-400/60 transition-all shadow-md">
+                  <div 
+                    className="relative w-full aspect-square rounded-2xl overflow-hidden mb-2.5 bg-[#12121a] border transition-all shadow-md"
+                    style={isSelected ? { borderColor: `${accentColor}80` } : { borderColor: 'rgba(255,255,255,0.1)' }}
+                  >
                     <img
                       src={artistItem.avatar}
                       alt={artistItem.artist}
@@ -1617,10 +1536,22 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
 
+                    {/* Active showcase indicator */}
+                    {isSelected && (
+                      <div 
+                        className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full animate-pulse shadow-md z-10"
+                        style={{ backgroundColor: accentColor, boxShadow: `0 0 6px ${accentColor}` }}
+                      />
+                    )}
+
                     {/* Hover Play / Loading Overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2">
                       <div
-                        className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePlayArtistMixDirect(artistItem);
+                        }}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-transform cursor-pointer"
                         style={{
                           backgroundColor: accentColor,
                           color: getContrastTextColor(accentColor),
@@ -1636,12 +1567,21 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                     </div>
 
                     {/* Album Mix Badge */}
-                    <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-sm border border-white/10 text-[8.5px] font-mono font-bold text-cyan-300 uppercase opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenArtistMix(artistItem);
+                      }}
+                      className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/75 backdrop-blur-sm border border-white/10 text-[8.5px] font-mono font-bold text-cyan-300 uppercase opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-black"
+                    >
                       Mix
                     </div>
                   </div>
 
-                  <p className="w-full text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors">
+                  <p 
+                    className="w-full text-xs font-bold truncate transition-colors"
+                    style={{ color: isSelected ? accentColor : '#ffffff' }}
+                  >
                     {artistItem.artist}
                   </p>
                   <p className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate w-full">
