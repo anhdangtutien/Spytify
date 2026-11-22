@@ -24,7 +24,7 @@ import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSIO
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
-import { resolve7CloudsVideoId, cleanTrackMetadata } from './services/sevenCloudsResolver';
+import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId } from './services/sevenCloudsResolver';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, SkipBack, SkipForward, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
@@ -1140,11 +1140,22 @@ export default function App() {
       }
     };
     updateRect();
-    const timer = setTimeout(updateRect, 60);
+    const el = document.getElementById('mobile-cover-art-slot');
+    let ro: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        updateRect();
+      });
+      ro.observe(el);
+    }
+    const t1 = setTimeout(updateRect, 50);
+    const t2 = setTimeout(updateRect, 320);
     window.addEventListener('resize', updateRect);
     window.addEventListener('orientationchange', updateRect);
     return () => {
-      clearTimeout(timer);
+      ro?.disconnect();
+      clearTimeout(t1);
+      clearTimeout(t2);
       window.removeEventListener('resize', updateRect);
       window.removeEventListener('orientationchange', updateRect);
     };
@@ -2789,6 +2800,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 if (!isTrayModeRef.current) setDuration(0);
               }
             }
+            if (data.info.muted === true && volumeRef.current > 0) {
+              sendYtCmd('unMute', [], ytChannel);
+              sendYtCmd('setVolume', [Math.round(volumeRef.current * 100)], ytChannel);
+            }
             if (data.info.playerState === 1 || data.info.playerState === 3) {
               ytHasStartedPlayingRef.current = true;
               if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
@@ -3888,9 +3903,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
 
         const rawVid = extractCleanYtId(track.path_or_url || track.id);
-        // Ưu tiên phát nhạc từ 7clouds Rap / 7clouds để loại bỏ các đoạn chờ/nói chuyện ở đầu và cuối MV gốc,
-        // nếu không có thì giữ nguyên video ID từ MV gốc.
-        const videoId = await resolve7CloudsVideoId(track.title, track.artist, rawVid);
+        // Ưu tiên phát 7clouds nếu đã được tra cứu trong bộ nhớ đệm; nếu chưa thì phát ngay rawVid đồng bộ
+        // để duy trì user activation gesture trên iOS Safari / Android Chrome giúp âm thanh phát không bị tắt tiếng (mute).
+        const cached7c = getCached7CloudsVideoId(track.title, track.artist);
+        const videoId = cached7c || rawVid;
+        if (!cached7c && track.title) {
+          resolve7CloudsVideoId(track.title, track.artist, rawVid).catch(() => {});
+        }
 
         activeYtChannelRef.current = 1;
         sendYtCmd('pauseVideo', [], 2);
@@ -4115,7 +4134,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     } else if (track.source === 'youtube') {
       activeYtChannelRef.current = inYtChannel;
       const rawVid = extractCleanYtId(track.path_or_url || track.id);
-      const videoId = await resolve7CloudsVideoId(track.title, track.artist, rawVid);
+      const cached7c = getCached7CloudsVideoId(track.title, track.artist);
+      const videoId = cached7c || rawVid;
+      if (!cached7c && track.title) {
+        resolve7CloudsVideoId(track.title, track.artist, rawVid).catch(() => {});
+      }
       ytHasStartedPlayingRef.current = false;
       isPlayingRef.current = true;
       setIsPlaying(true);
@@ -5365,8 +5388,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         <div
           className={
             Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
-              ? 'fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 pointer-events-auto'
-              : 'fixed -top-96 -left-96 w-1 h-1 overflow-hidden opacity-0 pointer-events-none'
+              ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
+              : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
             Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
@@ -5394,7 +5417,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             src={`https://www.youtube.com/embed/${ytIframeSrc1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
             onLoad={() => handleYtIframeLoad(1)}
             title="YouTube Player 1"
-            className="w-full h-full border-0"
+            className="w-full h-full border-0 object-cover"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
@@ -5406,8 +5429,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         <div
           className={
             Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
-              ? 'fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 pointer-events-auto'
-              : 'fixed -top-96 -left-96 w-1 h-1 overflow-hidden opacity-0 pointer-events-none'
+              ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
+              : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
             Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
@@ -5435,7 +5458,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
             onLoad={() => handleYtIframeLoad(2)}
             title="YouTube Player 2"
-            className="w-full h-full border-0"
+            className="w-full h-full border-0 object-cover"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
           />
@@ -5657,7 +5680,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     ? 'Bật/tắt chế độ phát nhạc nền khi tắt màn hình điện thoại'
                     : 'Toggle background playback when screen is off'
                 }
-                className={`hidden sm:flex px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer shadow-sm ${
+                className={`hidden md:flex px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer shadow-sm ${
                   isBackgroundPlayEnabled
                     ? themeMode === 'light'
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
@@ -5682,7 +5705,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 type="button"
                 onClick={() => openWebsite()}
                 title="Mở trang web giới thiệu Spytify (Vercel) trên trình duyệt"
-                className={`hidden sm:flex px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer hover:scale-105 shadow-sm ${
+                className={`hidden md:flex px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer hover:scale-105 shadow-sm ${
                   themeMode === 'light'
                     ? 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-300'
                     : 'bg-[#101018] hover:bg-[#181824] text-white border-[#222230] hover:border-cyan-500/50'
@@ -5696,7 +5719,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </button>
 
               {/* Quick Language Switcher Dropdown (Desktop) */}
-              <div className="hidden sm:block relative" ref={langDropdownRef}>
+              <div className="hidden md:block relative" ref={langDropdownRef}>
                 <button
                   onClick={() => setShowLanguageDropdown(p => !p)}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer ${
@@ -5794,7 +5817,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               {currentTrack?.source === 'youtube' && (
                 <button
                   onClick={handleToggleYoutubeVideo}
-                  className={`hidden sm:flex px-3 py-1 rounded-md text-xs font-medium items-center gap-1.5 border transition-all cursor-pointer ${
+                  className={`hidden md:flex px-3 py-1 rounded-md text-xs font-medium items-center gap-1.5 border transition-all cursor-pointer ${
                     showYoutubeVideo
                       ? 'bg-white text-black border-white'
                       : 'bg-[#0f0f0f] hover:bg-[#1a1a1a] text-[#888] hover:text-white border-[#222]'

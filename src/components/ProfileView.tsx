@@ -10,8 +10,9 @@ import {
   Folder, FolderOpen, FolderDown, Copy, CheckCheck, ExternalLink, Zap, Power, Monitor,
   Mic, Volume2, Sliders, RotateCcw, Volume1, Search, Edit3, ChevronRight,
   ShieldCheck, CheckCircle2, UserCheck, AlertCircle, Info, Lock,
-  QrCode, Smartphone, KeyRound, ShieldAlert, AlertTriangle
+  QrCode, Smartphone, KeyRound, ShieldAlert, AlertTriangle, ArrowUpRight
 } from 'lucide-react';
+import { getContrastTextColor } from '../utils/trackUtils';
 import { 
   getStoredSupabaseConfig, getCustomSupabaseConfig, saveStoredSupabaseConfig, resetToDefaultSupabase,
   isSupabaseConfigured, cloudSyncPush, cloudSyncPull, SUPABASE_SCHEMA_SQL, testSupabaseConnection,
@@ -918,8 +919,256 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         className="hidden" 
       />
 
-      {/* ──────── 1. LEFT SIDEBAR (DISCORD CATEGORIES & MINI PROFILE) ──────── */}
-      <div className={`w-full md:w-64 border-b md:border-b-0 md:border-r flex flex-col justify-between flex-shrink-0 ${themeMode === 'light' ? 'bg-[#f1f5f9] border-[#cbd5e1]' : 'bg-[#0b0b12] border-[#181824]'}`}>
+      {/* ──────── MOBILE SETTINGS VIEW (CLEAN, MINIMAL & STREAMLINED) ──────── */}
+      <div className="md:hidden flex-1 overflow-y-auto p-4 space-y-4 pb-28">
+        {/* Mobile Header */}
+        <div className="flex items-center justify-between pb-2 border-b border-white/10">
+          <div>
+            <h1 className={`text-lg font-black tracking-tight ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+              {language === 'vi' ? 'Cài đặt' : 'Settings'}
+            </h1>
+            <p className="text-[11px] text-zinc-400 font-medium">
+              {language === 'vi' ? 'Tùy chỉnh Spytify cho điện thoại' : 'Personalize Spytify for mobile'}
+            </p>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-zinc-300 border border-white/10">
+            v{CURRENT_VERSION}
+          </span>
+        </div>
+
+        {/* 1. Account Card */}
+        <div className={`p-4 rounded-2xl border ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+          <div className="flex items-center gap-3">
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="relative w-14 h-14 rounded-2xl overflow-hidden border-2 border-white/20 flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0 cursor-pointer"
+              style={{ 
+                background: currentUser?.avatar ? 'transparent' : `linear-gradient(135deg, ${accentColor} 0%, #000000 100%)`,
+              }}
+            >
+              {currentUser?.avatar ? (
+                <img src={currentUser.avatar} alt="Avatar" className="w-full h-full object-cover" />
+              ) : (
+                <span>{currentUser ? currentUser.display_name.charAt(0).toUpperCase() : 'S'}</span>
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 active:opacity-100 flex items-center justify-center transition-opacity">
+                <Camera className="w-4 h-4 text-white" />
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className={`text-sm font-bold truncate ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
+                  {currentUser ? currentUser.display_name : (language === 'vi' ? 'Khách chưa đăng nhập' : 'Guest')}
+                </h2>
+                {currentUser && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                )}
+              </div>
+              <p className="text-xs text-zinc-400 truncate mt-0.5">
+                {currentUser?.email || (language === 'vi' ? 'Chế độ ngoại tuyến / Offline' : 'Offline Mode')}
+              </p>
+            </div>
+
+            {currentUser ? (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20 active:scale-95 transition-all cursor-pointer"
+              >
+                {language === 'vi' ? 'Đăng xuất' : 'Logout'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-black active:scale-95 transition-all shadow-md cursor-pointer"
+                style={{ backgroundColor: accentColor, color: getContrastTextColor(accentColor) }}
+              >
+                {language === 'vi' ? 'Đăng nhập' : 'Sign in'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 2. Playback & Audio Card */}
+        <div className={`p-4 rounded-2xl border space-y-3.5 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+          <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
+            <Headphones className="w-4 h-4" style={{ color: accentColor }} />
+            <span>{language === 'vi' ? 'Phát nhạc & Âm thanh' : 'Playback & Audio'}</span>
+          </div>
+
+          {/* Background Play Switch */}
+          <div className="flex items-center justify-between pt-1">
+            <div className="pr-2">
+              <p className={`text-xs font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-white'}`}>
+                {language === 'vi' ? 'Phát nhạc khi tắt màn hình' : 'Background Playback'}
+              </p>
+              <p className="text-[11px] text-zinc-400 leading-tight mt-0.5">
+                {language === 'vi' ? 'Giữ nhạc phát liên tục khi khoá màn hình iOS / Android' : 'Keep playing when screen is locked'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onToggleBackgroundPlay}
+              className={`w-12 h-7 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${
+                isBackgroundPlayEnabled ? 'bg-emerald-500' : 'bg-zinc-700'
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 w-5 h-5 rounded-full bg-white transition-transform ${
+                  isBackgroundPlayEnabled ? 'transform translate-x-5' : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Crossfade duration */}
+          <div className="pt-2 border-t border-white/5 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className={`font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-white'}`}>
+                {language === 'vi' ? 'Chuyển bài chéo (Crossfade)' : 'Crossfade'}
+              </span>
+              <span className="font-mono text-zinc-400">
+                {(crossfadeDuration || 0) === 0 ? (language === 'vi' ? 'Tắt' : 'Off') : `${crossfadeDuration}s`}
+              </span>
+            </div>
+            <div className="grid grid-cols-4 gap-2 pt-1">
+              {[0, 3, 6, 12].map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  onClick={() => onUpdateCrossfadeDuration?.(sec)}
+                  className={`py-1.5 rounded-xl text-xs font-mono font-bold border transition-all cursor-pointer ${
+                    (crossfadeDuration || 0) === sec
+                      ? 'border-transparent text-black'
+                      : 'border-white/10 text-zinc-400 bg-white/5'
+                  }`}
+                  style={
+                    (crossfadeDuration || 0) === sec
+                      ? { backgroundColor: accentColor, color: getContrastTextColor(accentColor) }
+                      : undefined
+                  }
+                >
+                  {sec === 0 ? (language === 'vi' ? 'Tắt' : 'Off') : `${sec}s`}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Appearance & Theme Card */}
+        <div className={`p-4 rounded-2xl border space-y-3.5 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+          <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
+            <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
+            <span>{language === 'vi' ? 'Giao diện & Màu chủ đạo' : 'Appearance & Theme'}</span>
+          </div>
+
+          {/* Dark / Light Toggle */}
+          <div className="flex items-center justify-between">
+            <span className={`text-xs font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-white'}`}>
+              {language === 'vi' ? 'Chế độ hiển thị' : 'Theme Mode'}
+            </span>
+            <button
+              type="button"
+              onClick={onToggleThemeMode}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-zinc-300 flex items-center gap-1.5 cursor-pointer"
+            >
+              {themeMode === 'light' ? <Sun className="w-3.5 h-3.5 text-amber-400" /> : <Moon className="w-3.5 h-3.5 text-cyan-400" />}
+              <span>{themeMode === 'light' ? (language === 'vi' ? 'Sáng' : 'Light') : (language === 'vi' ? 'Tối' : 'Dark')}</span>
+            </button>
+          </div>
+
+          {/* Accent Color Swatches */}
+          <div className="pt-2 border-t border-white/5 space-y-2">
+            <p className={`text-xs font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-white'}`}>
+              {language === 'vi' ? 'Màu chủ đạo' : 'Accent Color'}
+            </p>
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-1 no-scrollbar">
+              {THEME_PALETTE.map((pal) => (
+                <button
+                  key={pal.hex}
+                  type="button"
+                  onClick={() => onUpdateAccentColor(pal.hex)}
+                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-transform cursor-pointer ${
+                    accentColor.toLowerCase() === pal.hex.toLowerCase()
+                      ? 'scale-110 border-white'
+                      : 'border-transparent opacity-70'
+                  }`}
+                  style={{ backgroundColor: pal.hex }}
+                >
+                  {accentColor.toLowerCase() === pal.hex.toLowerCase() && (
+                    <CheckCircle2 className="w-4 h-4 text-black drop-shadow" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Language Card */}
+        <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+          <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
+            <Globe className="w-4 h-4" style={{ color: accentColor }} />
+            <span>{language === 'vi' ? 'Ngôn ngữ' : 'Language'}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            {SUPPORTED_LANGUAGES.map((l) => (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => onUpdateLanguage?.(l.code)}
+                className={`py-2 px-3 rounded-xl text-xs font-semibold border flex items-center justify-between transition-all cursor-pointer ${
+                  language === l.code
+                    ? 'border-white/30 text-white font-bold bg-white/15'
+                    : 'border-white/5 text-zinc-400 bg-white/5'
+                }`}
+              >
+                <span>{l.nativeName}</span>
+                <span className="text-[10px] font-mono opacity-60">{l.tag}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 5. Cloud Sync & About Card */}
+        <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className={`text-xs font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-white'}`}>
+                {language === 'vi' ? 'Đồng bộ Cloud' : 'Cloud Sync'}
+              </span>
+              {cloudStatusMsg && (
+                <p className="text-[10px] text-cyan-400 truncate">{cloudStatusMsg}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleTriggerCloudSync}
+              disabled={isCloudSyncing}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/5 border border-white/10 text-cyan-400 flex items-center gap-1.5 active:scale-95 disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCloudSyncing ? 'animate-spin' : ''}`} />
+              <span>{isCloudSyncing ? (language === 'vi' ? 'Đang đồng bộ...' : 'Syncing...') : (language === 'vi' ? 'Đồng bộ ngay' : 'Sync Now')}</span>
+            </button>
+          </div>
+
+          <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs text-zinc-400">
+            <span>Spytify Music</span>
+            <button
+              type="button"
+              onClick={() => openWebsite()}
+              className="text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <span>spytify.vercel.app</span>
+              <ArrowUpRight className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ──────── 1. LEFT SIDEBAR (DESKTOP) ──────── */}
+      <div className={`hidden md:flex md:w-64 border-r flex-col justify-between flex-shrink-0 ${themeMode === 'light' ? 'bg-[#f1f5f9] border-[#cbd5e1]' : 'bg-[#0b0b12] border-[#181824]'}`}>
         <div className="p-4 space-y-3 flex-1 overflow-y-auto">
           {/* User Mini Card */}
           <div className={`p-3 rounded-xl border flex items-center gap-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#12121c] border-[#1e1e2c]'}`}>
@@ -1068,8 +1317,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       </div>
 
-      {/* ──────── 2. RIGHT CONTENT PANE (DISCORD SETTING CARDS) ──────── */}
-      <div className="flex-1 p-4 sm:p-6 md:p-8 md:overflow-y-auto max-w-3xl">
+      {/* ──────── 2. RIGHT CONTENT PANE (DISCORD SETTING CARDS - DESKTOP) ──────── */}
+      <div className="hidden md:block flex-1 p-4 sm:p-6 md:p-8 md:overflow-y-auto max-w-3xl">
         {activeTab === 'account' && (
           <div className="space-y-6">
             <div>

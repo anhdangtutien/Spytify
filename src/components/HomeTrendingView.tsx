@@ -1153,6 +1153,34 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
     }
   };
 
+  // Phát Album Mix trực tiếp ngay lập tức khi bấm nút Phát
+  const handlePlayArtistMixDirect = async (artistItem: RecentArtistItem) => {
+    setLoadingArtistName(artistItem.artist);
+    setLoadingArtistMix(true);
+    try {
+      const mix = await invoke<ArtistMix>('get_artist_album_mix', {
+        artist: artistItem.artist,
+        userId: currentUser?.id || null,
+      });
+      if (mix && mix.tracks && mix.tracks.length > 0) {
+        if (!mix.cover_art && artistItem.avatar) {
+          mix.cover_art = artistItem.avatar;
+        }
+        if (onPlayArtistMix) {
+          onPlayArtistMix(mix, 0);
+        }
+      } else {
+        handlePlayArtistDirect(artistItem);
+      }
+    } catch (err) {
+      console.warn('Failed to direct play artist mix:', err);
+      handlePlayArtistDirect(artistItem);
+    } finally {
+      setLoadingArtistMix(false);
+      setLoadingArtistName('');
+    }
+  };
+
   const handlePlayArtistDirect = async (artistItem: RecentArtistItem) => {
     // 1. Kiểm tra nếu có bài mẫu từ lịch sử
     if (artistItem.sampleVideoId && artistItem.topTrackTitle) {
@@ -1345,7 +1373,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
       {/* ─── HERO SHOWCASE BILLBOARD: CHUYỂN FADE DẦN CÁC NGHỆ SĨ HAY NGHE ──── */}
       {heroArtists.length > 0 && (
         <div 
-          className="relative w-full h-[240px] sm:h-[280px] md:h-[310px] rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#09090e] group select-none"
+          className="relative w-full h-[175px] sm:h-[260px] md:h-[290px] rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border border-white/10 bg-[#09090e] group select-none"
           onMouseEnter={() => setIsHeroPaused(true)}
           onMouseLeave={() => setIsHeroPaused(false)}
         >
@@ -1355,7 +1383,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
             return (
               <div
                 key={artist.artist + idx}
-                className={`absolute inset-0 transition-opacity duration-1000 ease-in-out flex items-center justify-between p-6 sm:p-8 md:p-10 ${
+                className={`absolute inset-0 transition-opacity duration-1000 ease-in-out flex items-center justify-between p-3.5 sm:p-7 md:p-8 ${
                   isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
                 }`}
               >
@@ -1377,37 +1405,37 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                 </div>
 
                 {/* Left Column: Information & Actions */}
-                <div className="relative z-10 max-w-xl flex flex-col justify-center space-y-3 sm:space-y-4">
-                  <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative z-10 flex-1 min-w-0 pr-2 flex flex-col justify-center space-y-1.5 sm:space-y-4">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <span
-                      className="text-[10px] sm:text-xs font-bold uppercase tracking-widest font-mono px-2.5 py-1 rounded-full border flex items-center gap-1.5 shadow-sm"
+                      className="text-[9px] sm:text-xs font-bold uppercase tracking-widest font-mono px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border flex items-center gap-1 sm:gap-1.5 shadow-sm"
                       style={{
                         color: accentColor,
                         backgroundColor: `${accentColor}20`,
                         borderColor: `${accentColor}40`,
                       }}
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                       <span>{language === 'vi' ? 'Nghệ sĩ bạn hay nghe' : 'Top Listened Artist'}</span>
                     </span>
-                    <span className="text-[10px] sm:text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/10">
+                    <span className="text-[9px] sm:text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/10">
                       #{idx + 1}
                     </span>
                   </div>
 
                   <div>
-                    <h2 className="text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight drop-shadow-xl line-clamp-1">
+                    <h2 className="text-xl sm:text-4xl md:text-5xl font-black text-white tracking-tight drop-shadow-xl truncate">
                       {artist.artist}
                     </h2>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs sm:text-sm text-zinc-300 font-medium">
-                      <span className="flex items-center gap-1.5 text-zinc-300">
-                        <Headphones className="w-3.5 h-3.5 text-zinc-400" />
+                    <div className="flex items-center gap-2 sm:gap-3 mt-0.5 sm:mt-1.5 text-[11px] sm:text-sm text-zinc-300 font-medium">
+                      <span className="flex items-center gap-1 sm:gap-1.5 text-zinc-300">
+                        <Headphones className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-400" />
                         <strong className="text-white">{artist.count}</strong> {language === 'vi' ? 'lượt nghe gần đây' : 'recent plays'}
                       </span>
                       {artist.topTrackTitle && (
                         <>
                           <span className="text-zinc-600">•</span>
-                          <span className="text-zinc-400 line-clamp-1 italic">
+                          <span className="text-zinc-400 line-clamp-1 italic max-w-[120px] sm:max-w-xs">
                             {artist.topTrackTitle}
                           </span>
                         </>
@@ -1415,31 +1443,31 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 pt-1">
+                  <div className="flex items-center gap-2 sm:gap-3 pt-0.5 sm:pt-1">
                     <button
                       type="button"
-                      onClick={() => handleOpenArtistMix(artist)}
-                      className="px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                      onClick={() => handlePlayArtistMixDirect(artist)}
+                      className="px-3.5 py-1.5 sm:px-5 sm:py-2.5 rounded-xl font-bold text-xs sm:text-sm shadow-xl flex items-center gap-1.5 sm:gap-2 transition-all hover:scale-105 active:scale-95 cursor-pointer"
                       style={{
                         backgroundColor: accentColor,
                         color: getContrastTextColor(accentColor),
                       }}
                     >
                       {isLoadingThis ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                       ) : (
-                        <Play className="w-4 h-4 fill-current ml-0.5" />
+                        <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current ml-0.5" />
                       )}
                       <span>{language === 'vi' ? 'Phát Album Mix' : 'Play Artist Mix'}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Right Column: Hero Artist Card Showcase */}
-                <div className="relative z-10 hidden sm:flex items-center justify-center pr-2">
+                {/* Right Column: Hero Artist Card Showcase (Visible on both mobile & desktop) */}
+                <div className="relative z-10 flex items-center justify-center flex-shrink-0 pr-1">
                   <div 
                     onClick={() => handleOpenArtistMix(artist)}
-                    className="relative w-40 h-40 sm:w-48 sm:h-48 md:w-56 md:h-56 rounded-3xl overflow-hidden shadow-2xl border-2 border-white/15 ring-4 ring-black/40 group/card cursor-pointer hover:border-white/30 transition-all duration-300 hover:scale-105"
+                    className="relative w-20 h-20 sm:w-44 sm:h-44 md:w-52 md:h-52 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-2 border-white/20 ring-2 sm:ring-4 ring-black/40 group/card cursor-pointer hover:border-white/30 transition-all duration-300 hover:scale-105"
                   >
                     <img
                       src={artist.avatar}
@@ -1450,7 +1478,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       }}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-110"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity flex items-end justify-center pb-3">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity hidden sm:flex items-end justify-center pb-3">
                       <span className="text-xs font-bold text-white px-3 py-1 rounded-full bg-white/20 backdrop-blur-md">
                         {language === 'vi' ? 'Mở Album Mix' : 'Open Mix'}
                       </span>

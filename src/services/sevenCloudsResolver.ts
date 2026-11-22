@@ -4,6 +4,31 @@ import { extractCleanYtId } from '../utils/trackUtils';
 const sevenCloudsCache = new Map<string, string>();
 
 /**
+ * Synchronously retrieves a cached 7clouds video ID if available in memory or sessionStorage.
+ * This guarantees 0ms lookup without breaking user gesture / mobile autoplay.
+ */
+export function getCached7CloudsVideoId(title: string, artist: string): string | null {
+  if (!title) return null;
+  const cleanT = cleanQueryTerm(title);
+  const cleanA = cleanQueryTerm(artist);
+  if (!cleanT) return null;
+  const cacheKey = `${cleanT.toLowerCase()}___${cleanA.toLowerCase()}`;
+  if (sevenCloudsCache.has(cacheKey)) {
+    return sevenCloudsCache.get(cacheKey)!;
+  }
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const stored = sessionStorage.getItem(`spytify_7c_${cacheKey}`);
+      if (stored) {
+        sevenCloudsCache.set(cacheKey, stored);
+        return stored;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Normalizes title & artist by removing bracketed info, feat tags, etc.
  */
 function cleanQueryTerm(text: string): string {
