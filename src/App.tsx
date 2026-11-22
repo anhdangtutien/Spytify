@@ -5866,19 +5866,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 )}
               </div>
 
-              {currentTrack?.source === 'youtube' && (
-                <button
-                  onClick={handleToggleYoutubeVideo}
-                  className={`hidden md:flex px-3 py-1 rounded-md text-xs font-medium items-center gap-1.5 border transition-all cursor-pointer ${
-                    showYoutubeVideo
-                      ? 'bg-white text-black border-white'
-                      : 'bg-[#0f0f0f] hover:bg-[#1a1a1a] text-[#888] hover:text-white border-[#222]'
-                  }`}
-                >
-                  <Tv className="w-3.5 h-3.5" />
-                  {showYoutubeVideo ? getTranslation(language, 'header.minimizeMv') : 'MV'}
-                </button>
-              )}
               {currentView === 'local' && (
                 <button
                   onClick={handleSelectFolder}
