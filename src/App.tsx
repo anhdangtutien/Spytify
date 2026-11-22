@@ -24,7 +24,7 @@ import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSIO
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
-import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId, resolveUnblockedAudioVideoId } from './services/sevenCloudsResolver';
+import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId, getCachedUnblockedVideoId, resolveUnblockedAudioVideoId } from './services/sevenCloudsResolver';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, SkipBack, SkipForward, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
@@ -3147,7 +3147,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
   };
 
-  const loadOrMountYtChannel = (videoId: string, channel: 1 | 2, volPct: number) => {
+  const loadOrMountYtChannel = (videoId: string, channel: 1 | 2, volPct: number, forceRemount = false) => {
     clearYtLoadTimers();
     ytLastSwitchAtRef.current = Date.now();
 
@@ -3160,10 +3160,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     const currentSrcId = channel === 1 ? ytIframeSrc1Ref.current : ytIframeSrc2Ref.current;
+    const target = channel === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
 
-    // Chỉ mount iframe src lần đầu tiên để giữ iframe document tồn tại liên tục,
-    // không reload iframe giúp bảo toàn quyền autoplay và user activation gesture trên mobile.
-    if (!currentSrcId) {
+    // Force iframe reload/navigation when:
+    // 1) First time mounting
+    // 2) forceRemount is true (e.g. recovering from a blocked/unavailable video error page)
+    // 3) Video has not started playing (e.g. iframe is stuck on YouTube error screen)
+    // 4) Video ID is different
+    const shouldUpdateSrc = !currentSrcId || forceRemount || !ytHasStartedPlayingRef.current || currentSrcId !== videoId;
+
+    if (shouldUpdateSrc) {
       if (channel === 1) {
         ytIframeSrc1Ref.current = videoId;
         setYtIframeSrc1(videoId);
@@ -3171,10 +3177,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         ytIframeSrc2Ref.current = videoId;
         setYtIframeSrc2(videoId);
       }
+      if (target) {
+        const newSrc = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`;
+        if (target.src !== newSrc) {
+          target.src = newSrc;
+        }
+      }
     }
 
     // Always signal the target iframe if already mounted and listening
-    const target = channel === 1 ? ytIframe1Ref.current : ytIframe2Ref.current;
     if (target?.contentWindow) {
       target.contentWindow.postMessage(
         JSON.stringify({ event: 'listening', id: channel, channel: 'widget' }), '*'
@@ -3522,7 +3533,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         isPlayingRef.current = true;
         setIsPlaying(true);
         playStartTimestampRef.current = Date.now();
-        loadOrMountYtChannel(unblockedVid, activeYtChannelRef.current, volumeRef.current * 100);
+        if (currentTrackRef.current) {
+          currentTrackRef.current.path_or_url = unblockedVid;
+        }
+        setCurrentTrack(prev => prev ? { ...prev, path_or_url: unblockedVid } : prev);
+        loadOrMountYtChannel(unblockedVid, activeYtChannelRef.current, volumeRef.current * 100, true);
         showNotification(language === 'vi' ? `▶ Đã đổi sang nguồn phát không bị chặn: ${erroredTrack.title}` : `▶ Switched to unblocked audio stream`);
         return;
       }
@@ -3567,6 +3582,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           sendYtCmd('seekTo', [Math.round(currentTimeRef.current), true], curCh);
         }
         sendYtCmd('playVideo', [], curCh);
+        if (!ytHasStartedPlayingRef.current) {
+          handleYouTubeBlockedOrStalled(currentTrackRef.current);
+        }
       }
       return next;
     });
@@ -3968,11 +3986,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
 
         const rawVid = extractCleanYtId(track.path_or_url || track.id);
-        // Ưu tiên phát 7clouds nếu đã được tra cứu trong bộ nhớ đệm; nếu chưa thì phát ngay rawVid đồng bộ
-        // để duy trì user activation gesture trên iOS Safari / Android Chrome giúp âm thanh phát không bị tắt tiếng (mute).
+        const cachedUnblocked = getCachedUnblockedVideoId(track.title, track.artist, rawVid);
         const cached7c = getCached7CloudsVideoId(track.title, track.artist);
-        const videoId = cached7c || rawVid;
-        if (!cached7c && track.title) {
+        const videoId = cachedUnblocked || cached7c || rawVid;
+        if (!cachedUnblocked && !cached7c && track.title) {
           resolve7CloudsVideoId(track.title, track.artist, rawVid).catch(() => {});
         }
 
@@ -4187,9 +4204,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     } else if (track.source === 'youtube') {
       activeYtChannelRef.current = inYtChannel;
       const rawVid = extractCleanYtId(track.path_or_url || track.id);
+      const cachedUnblocked = getCachedUnblockedVideoId(track.title, track.artist, rawVid);
       const cached7c = getCached7CloudsVideoId(track.title, track.artist);
-      const videoId = cached7c || rawVid;
-      if (!cached7c && track.title) {
+      const videoId = cachedUnblocked || cached7c || rawVid;
+      if (!cachedUnblocked && !cached7c && track.title) {
         resolve7CloudsVideoId(track.title, track.artist, rawVid).catch(() => {});
       }
       ytHasStartedPlayingRef.current = false;

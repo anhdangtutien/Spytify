@@ -150,6 +150,32 @@ async function queryYtSearch(query: string): Promise<Array<{ videoId: string; ti
 }
 
 /**
+ * Synchronously retrieves a cached unblocked alternative video ID if available in memory or sessionStorage.
+ */
+export function getCachedUnblockedVideoId(title: string, artist: string, blockedId?: string): string | null {
+  if (!title) return null;
+  const cleanT = cleanQueryTerm(title);
+  const cleanA = cleanQueryTerm(artist);
+  if (!cleanT) return null;
+  const cleanBlocked = blockedId ? (extractCleanYtId(blockedId) || blockedId.trim()) : '';
+  const unblockKey = `${cleanT.toLowerCase()}___${cleanA.toLowerCase()}`;
+  if (unblockedAudioCache.has(unblockKey)) {
+    const hit = unblockedAudioCache.get(unblockKey)!;
+    if (hit && hit !== cleanBlocked) return hit;
+  }
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const stored = sessionStorage.getItem(`spytify_unblocked_${unblockKey}`);
+      if (stored && stored !== cleanBlocked) {
+        unblockedAudioCache.set(unblockKey, stored);
+        return stored;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Synchronously retrieves a cached 7clouds video ID if available in memory or sessionStorage.
  * This guarantees 0ms lookup without breaking user gesture / mobile autoplay.
  */
@@ -224,8 +250,7 @@ export async function resolve7CloudsVideoId(
     return foundVid;
   }
 
-  // Not found: save fallback to cache so we avoid repeated queries
-  sevenCloudsCache.set(cacheKey, cleanFallback);
+  // Not found on 7clouds: return fallback (do not cache fallback to allow unblocked resolution)
   return cleanFallback;
 }
 
