@@ -1,7 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { 
   Search, FolderPlus, HardDrive, Heart, Sparkles, User as UserIcon, LogIn, Home, Layers,
-  PanelLeftClose, PanelLeftOpen, Wand2, Zap, AudioLines, Headphones
+  PanelLeftClose, PanelLeftOpen, Wand2, Zap, AudioLines
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, SpytifyBrandLogo, ModernHomeIcon } from './Icons';
 import { ViewType, User } from '../types';
@@ -22,8 +22,6 @@ interface SidebarProps {
   language?: LanguageCode;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
-  isBackgroundPlayEnabled?: boolean;
-  onToggleBackgroundPlay?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -40,8 +38,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   language = 'vi',
   isCollapsed: controlledCollapsed,
   onToggleCollapse,
-  isBackgroundPlayEnabled = false,
-  onToggleBackgroundPlay,
 }) => {
   const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() => {
     try {
@@ -329,19 +325,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       ) : (
         <div className="px-3.5 py-2 flex items-center justify-between text-[10px] font-mono text-[#555] border-t border-[#141418]">
-          {onToggleBackgroundPlay ? (
-            <button
-              type="button"
-              onClick={onToggleBackgroundPlay}
-              className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#101018] hover:bg-[#181822] border border-[#222230] text-[9.5px] text-zinc-300 cursor-pointer transition-colors"
-            >
-              <Headphones className="w-3 h-3" style={isBackgroundPlayEnabled ? { color: accentColor } : undefined} />
-              <span>{language === 'vi' ? 'Nhạc nền' : 'Background'}</span>
-              <span className={`w-1.5 h-1.5 rounded-full ${isBackgroundPlayEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-            </button>
-          ) : (
-            <span className="text-[#666]">Spytify Client</span>
-          )}
+          <span className="text-[#666]">Spytify Client</span>
           <button
             onClick={() => onViewChange('profile')}
             title={getTranslation(language, 'sidebar.checkUpdate')}

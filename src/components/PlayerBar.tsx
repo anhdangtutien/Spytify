@@ -61,8 +61,6 @@ interface PlayerBarProps {
   onToggleBackgroundPlay?: () => void;
   onToggleMv?: () => void;
   showMv?: boolean;
-  isAmbientOledMode?: boolean;
-  onToggleAmbientOledMode?: () => void;
   isMobilePlayerOpen?: boolean;
   onToggleMobilePlayer?: (isOpen: boolean) => void;
 }
@@ -97,8 +95,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onToggleBackgroundPlay,
   onToggleMv,
   showMv = false,
-  isAmbientOledMode = false,
-  onToggleAmbientOledMode,
   isMobilePlayerOpen: externalIsMobilePlayerOpen,
   onToggleMobilePlayer,
 }) => {
@@ -1111,23 +1107,25 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
-        {/* Ambient OLED Mode button */}
-        {onToggleAmbientOledMode && (
+        {/* Desktop Music Video (MV) Toggle Button */}
+        {currentTrack?.source === 'youtube' && onToggleMv && (
           <button
             type="button"
-            onClick={onToggleAmbientOledMode}
-            title={language === 'vi' ? 'Màn hình đen OLED (Tiết kiệm pin iPhone / Nghe ban đêm)' : 'Ambient OLED Mode (Pocket / Sleep)'}
-            style={isAmbientOledMode ? {
-              color: accentColor,
-              backgroundColor: `${accentColor}18`,
-              borderColor: `${accentColor}50`,
+            onClick={onToggleMv}
+            title={language === 'vi' ? (showMv ? 'Thu nhỏ Video MV' : 'Phát Video MV trên máy tính') : (showMv ? 'Minimize MV' : 'Watch Music Video')}
+            style={showMv ? {
+              backgroundColor: '#f43f5e',
+              borderColor: '#f43f5e',
+              color: '#ffffff',
+              boxShadow: '0 0 12px rgba(244, 63, 94, 0.4)',
             } : undefined}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
-              isAmbientOledMode ? '' : 'text-[#666] hover:text-white border-transparent'
+            className={`hidden sm:flex px-2.5 py-1 rounded-md transition-all cursor-pointer border items-center gap-1.5 shrink-0 font-medium ${
+              showMv ? '' : 'text-zinc-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/10'
             }`}
           >
-            <Moon className="w-4 h-4" />
-            <span className="hidden xl:inline text-[10px] font-mono font-medium">OLED</span>
+            <Tv className="w-3.5 h-3.5 text-rose-400" style={showMv ? { color: '#ffffff' } : undefined} />
+            <span className="text-[11px] font-mono font-bold">MV</span>
+            {showMv && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
           </button>
         )}
 
@@ -1486,21 +1484,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                     ? 'BG: ON'
                     : 'BG: OFF'}
                 </span>
-              </button>
-            )}
-            {onToggleAmbientOledMode && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMobileSheetOpen(false);
-                  onToggleAmbientOledMode();
-                }}
-                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
-                style={isAmbientOledMode ? { color: accentColor } : undefined}
-                title={language === 'vi' ? 'Màn hình đen OLED (Tiết kiệm pin iPhone / Nghe khi ngủ)' : 'OLED Black Screen (Pocket / Sleep mode)'}
-              >
-                <Moon className="w-4 h-4" />
-                <span className="text-[10px] font-mono">OLED</span>
               </button>
             )}
             {onDownload && currentTrack && (

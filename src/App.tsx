@@ -173,20 +173,6 @@ export default function App() {
   const userInitiatedPauseRef = useRef<boolean>(false);
   const lastHiddenAtRef = useRef<number>(0);
   const bgKeepAliveAudioRef = useRef<HTMLAudioElement | null>(null);
-  const [isAmbientOledMode, setIsAmbientOledMode] = useState<boolean>(false);
-  const [oledClockTime, setOledClockTime] = useState<string>('');
-
-  useEffect(() => {
-    if (!isAmbientOledMode) return;
-    const updateTime = () => {
-      const now = new Date();
-      setOledClockTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, [isAmbientOledMode]);
-
   // Mobile Full-screen Now Playing Sheet
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
 
@@ -3368,16 +3354,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, []);
 
   useEffect(() => {
-    if (isPlaying && (isBackgroundPlayEnabled || isAmbientOledMode)) {
+    if (isPlaying && isBackgroundPlayEnabled) {
       requestWakeLock();
-    } else if (!isAmbientOledMode) {
+    } else {
       releaseWakeLock();
     }
-  }, [isPlaying, isBackgroundPlayEnabled, isAmbientOledMode, requestWakeLock, releaseWakeLock]);
+  }, [isPlaying, isBackgroundPlayEnabled, requestWakeLock, releaseWakeLock]);
 
   useEffect(() => {
     const handleVis = () => {
-      if (document.visibilityState === 'visible' && isPlayingRef.current && (isBackgroundPlayEnabledRef.current || isAmbientOledMode)) {
+      if (document.visibilityState === 'visible' && isPlayingRef.current && isBackgroundPlayEnabledRef.current) {
         requestWakeLock();
       }
     };
@@ -3386,7 +3372,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       document.removeEventListener('visibilitychange', handleVis);
       releaseWakeLock();
     };
-  }, [requestWakeLock, releaseWakeLock, isAmbientOledMode]);
+  }, [requestWakeLock, releaseWakeLock]);
 
   const sendScCmd = (method: string, value?: unknown, channel?: 1 | 2) => {
     const ch = channel ?? activeScChannelRef.current;
@@ -5383,35 +5369,59 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </>
       )}
 
-      {/* YouTube iframe Channel 1 — mounts over mobile cover art slot when MV is toggled, otherwise hidden */}
+      {/* YouTube iframe Channel 1 — mounts over mobile cover art slot or desktop cinema theater */}
       {ytIframeSrc1 && (
         <div
           className={
-            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
-              ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
+            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
+              ? (isMobilePlayerOpen
+                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
+                  : 'fixed bottom-[86px] right-4 sm:right-6 z-40 w-[380px] sm:w-[480px] lg:w-[560px] aspect-video rounded-2xl overflow-hidden bg-black shadow-[0_25px_70px_rgba(0,0,0,0.95)] border-2 border-white/20 ring-4 ring-black/70 pointer-events-auto opacity-100 transition-all duration-300 group/mv')
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
-              ? (mobileMvRect
-                  ? {
-                      top: `${mobileMvRect.top}px`,
-                      left: `${mobileMvRect.left}px`,
-                      width: `${mobileMvRect.width}px`,
-                      height: `${mobileMvRect.height}px`,
-                      zIndex: 95,
-                    }
-                  : {
-                      top: '16vh',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: 'min(92vw, 400px)',
-                      aspectRatio: '16/9',
-                      zIndex: 95,
-                    })
+            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1)
+              ? (isMobilePlayerOpen
+                  ? (mobileMvRect
+                      ? {
+                          top: `${mobileMvRect.top}px`,
+                          left: `${mobileMvRect.left}px`,
+                          width: `${mobileMvRect.width}px`,
+                          height: `${mobileMvRect.height}px`,
+                          zIndex: 95,
+                        }
+                      : {
+                          top: '16vh',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 'min(92vw, 400px)',
+                          aspectRatio: '16/9',
+                          zIndex: 95,
+                        })
+                  : undefined)
               : undefined
           }
         >
+          {/* Desktop Floating Header Bar (Overlay on hover) */}
+          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1) && (
+            <div className="absolute top-0 inset-x-0 p-2.5 bg-gradient-to-b from-black/95 via-black/60 to-transparent flex items-center justify-between z-10 opacity-0 group-hover/mv:opacity-100 transition-opacity pointer-events-auto">
+              <div className="flex items-center gap-2 min-w-0 pr-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
+                <span className="text-[11px] font-bold text-white truncate drop-shadow">
+                  {currentTrack?.title} • {currentTrack?.artist}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleYoutubeVideo}
+                className="p-1 rounded-full bg-black/60 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
+                title={language === 'vi' ? 'Thu nhỏ MV' : 'Minimize MV'}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           <iframe
             ref={ytIframe1Ref}
             src={`https://www.youtube.com/embed/${ytIframeSrc1}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
@@ -5424,35 +5434,59 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </div>
       )}
 
-      {/* YouTube iframe Channel 2 — mounts over mobile cover art slot when MV is toggled, otherwise hidden */}
+      {/* YouTube iframe Channel 2 — mounts over mobile cover art slot or desktop cinema theater */}
       {ytIframeSrc2 && (
         <div
           className={
-            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
-              ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
+            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
+              ? (isMobilePlayerOpen
+                  ? 'fixed rounded-2xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 pointer-events-auto opacity-100 transition-opacity duration-200'
+                  : 'fixed bottom-[86px] right-4 sm:right-6 z-40 w-[380px] sm:w-[480px] lg:w-[560px] aspect-video rounded-2xl overflow-hidden bg-black shadow-[0_25px_70px_rgba(0,0,0,0.95)] border-2 border-white/20 ring-4 ring-black/70 pointer-events-auto opacity-100 transition-all duration-300 group/mv')
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            Boolean(isMobilePlayerOpen && showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
-              ? (mobileMvRect
-                  ? {
-                      top: `${mobileMvRect.top}px`,
-                      left: `${mobileMvRect.left}px`,
-                      width: `${mobileMvRect.width}px`,
-                      height: `${mobileMvRect.height}px`,
-                      zIndex: 95,
-                    }
-                  : {
-                      top: '16vh',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: 'min(92vw, 400px)',
-                      aspectRatio: '16/9',
-                      zIndex: 95,
-                    })
+            Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2)
+              ? (isMobilePlayerOpen
+                  ? (mobileMvRect
+                      ? {
+                          top: `${mobileMvRect.top}px`,
+                          left: `${mobileMvRect.left}px`,
+                          width: `${mobileMvRect.width}px`,
+                          height: `${mobileMvRect.height}px`,
+                          zIndex: 95,
+                        }
+                      : {
+                          top: '16vh',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 'min(92vw, 400px)',
+                          aspectRatio: '16/9',
+                          zIndex: 95,
+                        })
+                  : undefined)
               : undefined
           }
         >
+          {/* Desktop Floating Header Bar (Overlay on hover) */}
+          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2) && (
+            <div className="absolute top-0 inset-x-0 p-2.5 bg-gradient-to-b from-black/95 via-black/60 to-transparent flex items-center justify-between z-10 opacity-0 group-hover/mv:opacity-100 transition-opacity pointer-events-auto">
+              <div className="flex items-center gap-2 min-w-0 pr-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
+                <span className="text-[11px] font-bold text-white truncate drop-shadow">
+                  {currentTrack?.title} • {currentTrack?.artist}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleYoutubeVideo}
+                className="p-1 rounded-full bg-black/60 hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
+                title={language === 'vi' ? 'Thu nhỏ MV' : 'Minimize MV'}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           <iframe
             ref={ytIframe2Ref}
             src={`https://www.youtube.com/embed/${ytIframeSrc2}?enablejsapi=1&autoplay=1&playsinline=1&modestbranding=1&rel=0`}
@@ -5539,8 +5573,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             language={language}
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={toggleSidebarCollapse}
-            isBackgroundPlayEnabled={isBackgroundPlayEnabled}
-            onToggleBackgroundPlay={handleToggleBackgroundPlay}
           />
         </div>
 
@@ -5573,8 +5605,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 themeMode={themeMode}
                 language={language}
                 isCollapsed={false}
-                isBackgroundPlayEnabled={isBackgroundPlayEnabled}
-                onToggleBackgroundPlay={handleToggleBackgroundPlay}
               />
             </div>
           </div>
@@ -5670,35 +5700,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   <Search className="w-4 h-4" />
                 </button>
               )}
-
-              {/* Background Play Toggle (Desktop Header — Mobile has it in Drawer/Settings) */}
-              <button
-                type="button"
-                onClick={handleToggleBackgroundPlay}
-                title={
-                  language === 'vi'
-                    ? 'Bật/tắt chế độ phát nhạc nền khi tắt màn hình điện thoại'
-                    : 'Toggle background playback when screen is off'
-                }
-                className={`hidden md:flex px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer shadow-sm ${
-                  isBackgroundPlayEnabled
-                    ? themeMode === 'light'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                      : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/40'
-                    : themeMode === 'light'
-                    ? 'bg-slate-100 text-slate-500 border-slate-300'
-                    : 'bg-[#101018] text-[#777] border-[#222230]'
-                }`}
-              >
-                <Headphones className="w-3.5 h-3.5" style={isBackgroundPlayEnabled ? { color: activeAccentColor } : undefined} />
-                <span className="font-mono text-[10px] font-bold">
-                  {language === 'vi' ? 'Nền' : 'BG'}
-                </span>
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${isBackgroundPlayEnabled ? 'animate-pulse' : 'opacity-40'}`}
-                  style={{ backgroundColor: isBackgroundPlayEnabled ? '#10b981' : '#666' }}
-                />
-              </button>
 
               {/* Spytify Vercel Website Button (Desktop) */}
               <button
@@ -6039,6 +6040,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
                   onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
+                  onToggleMv={handleToggleYoutubeVideo}
+                  showMv={showYoutubeVideo}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6095,6 +6098,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
                   onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
+                  onToggleMv={handleToggleYoutubeVideo}
+                  showMv={showYoutubeVideo}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6151,6 +6156,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
                   onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
+                  onToggleMv={handleToggleYoutubeVideo}
+                  showMv={showYoutubeVideo}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6225,6 +6232,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   onDownloadTrack={handleDownloadTrack}
                   downloadingTrackIds={downloadingTrackIds}
                   onOpenMobilePlayer={() => setIsMobilePlayerOpen(true)}
+                  onToggleMv={handleToggleYoutubeVideo}
+                  showMv={showYoutubeVideo}
                   onAddToAlbum={(track) => {
                     setTrackToAddToAlbum(track);
                     setIsAddToAlbumModalOpen(true);
@@ -6315,8 +6324,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onToggleBackgroundPlay={handleToggleBackgroundPlay}
         onToggleMv={handleToggleYoutubeVideo}
         showMv={showYoutubeVideo}
-        isAmbientOledMode={isAmbientOledMode}
-        onToggleAmbientOledMode={() => setIsAmbientOledMode(p => !p)}
         isMobilePlayerOpen={isMobilePlayerOpen}
         onToggleMobilePlayer={setIsMobilePlayerOpen}
       />
@@ -6352,87 +6359,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           );
         })}
       </nav>
-
-      {/* Ambient OLED Black Screen Overlay (Nghe nhạc bỏ túi / ban đêm 0% pixel power) */}
-      {isAmbientOledMode && (
-        <div
-          className="fixed inset-0 z-[9999] bg-black text-white flex flex-col justify-between p-6 select-none cursor-pointer"
-          onClick={() => {}}
-        >
-          {/* Top header */}
-          <div className="flex items-center justify-between opacity-50 hover:opacity-100 transition-opacity pt-[env(safe-area-inset-top,16px)]">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-mono tracking-wider uppercase text-zinc-400">
-                OLED Sleep & Pocket Mode
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsAmbientOledMode(false);
-              }}
-              className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 hover:text-white transition-colors cursor-pointer"
-            >
-              ✕ {language === 'vi' ? 'Thoát' : 'Exit'}
-            </button>
-          </div>
-
-          {/* Center: Clock, Song details, Playback controls */}
-          <div className="flex flex-col items-center justify-center my-auto text-center px-4">
-            <div className="text-6xl sm:text-7xl font-extralight tracking-widest text-zinc-400 font-mono mb-6 select-none">
-              {oledClockTime || '00:00'}
-            </div>
-            {currentTrack ? (
-              <div className="max-w-xs sm:max-w-md">
-                <p className="text-base sm:text-lg font-medium text-zinc-200 truncate">
-                  {currentTrack.title}
-                </p>
-                <p className="text-xs sm:text-sm text-zinc-500 truncate mt-1">
-                  {currentTrack.artist}
-                </p>
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-600 font-mono">Spytify OLED</p>
-            )}
-
-            <div
-              className="flex items-center gap-6 mt-8 opacity-70 hover:opacity-100 transition-opacity"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={handleUserPrev}
-                className="p-3 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <SkipBack className="w-6 h-6" />
-              </button>
-              <button
-                type="button"
-                onClick={handleTogglePlay}
-                className="p-4 rounded-full bg-zinc-900 text-white hover:bg-zinc-800 border border-zinc-800 transition-transform active:scale-95 cursor-pointer"
-              >
-                {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-0.5" />}
-              </button>
-              <button
-                type="button"
-                onClick={handleUserNext}
-                className="p-3 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <SkipForward className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-
-          {/* Bottom hint */}
-          <div className="text-center opacity-40 text-[11px] text-zinc-500 font-mono pb-[env(safe-area-inset-bottom,16px)]">
-            {language === 'vi'
-              ? 'Màn hình OLED đen hoàn toàn (0W pin) • Giữ phát nhạc liên tục không bị iPhone ngắt'
-              : 'OLED pitch-black (0W pixel power) • Continuous background playback on iOS'}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

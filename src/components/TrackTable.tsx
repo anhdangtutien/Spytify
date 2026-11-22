@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap, GripVertical } from 'lucide-react';
+import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap, GripVertical, Tv } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
 import { HoverMarquee } from './HoverMarquee';
@@ -22,6 +22,8 @@ interface TrackTableProps {
   language?: LanguageCode;
   onReorderTracks?: (newTracks: Track[]) => void;
   onOpenMobilePlayer?: () => void;
+  onToggleMv?: () => void;
+  showMv?: boolean;
 }
 
 const ROW_HEIGHT = 54;
@@ -42,6 +44,8 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   language = 'vi',
   onReorderTracks,
   onOpenMobilePlayer,
+  onToggleMv,
+  showMv = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -341,9 +345,9 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   return (
     <div ref={containerRef} className="w-full text-xs select-none">
       {/* Top Fast Filter & Status Bar */}
-      {tracks.length > 5 && (
-        <div className="flex items-center justify-between gap-3 px-3 py-2 mb-2 bg-[#09090c] rounded-xl border border-[#161620]">
-          <div className="relative flex-1 max-w-xs">
+      {tracks.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 py-2 mb-2 bg-[#09090c] rounded-xl border border-[#161620]">
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#555]" />
             <input
               type="text"
@@ -361,6 +365,25 @@ export const TrackTable: React.FC<TrackTableProps> = ({
               </button>
             )}
           </div>
+
+          {/* Desktop MV Theater Toggle Button on TrackTable */}
+          {currentTrack?.source === 'youtube' && onToggleMv && (
+            <button
+              type="button"
+              onClick={onToggleMv}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-md ${
+                showMv
+                  ? 'bg-rose-500 text-white border-rose-400 shadow-rose-500/30 ring-2 ring-rose-500/20'
+                  : 'bg-[#151520] hover:bg-[#1e1e2c] text-zinc-300 hover:text-white border-white/10'
+              }`}
+              title={language === 'vi' ? (showMv ? 'Thu nhỏ cửa sổ MV trên máy tính' : 'Phát Video MV với layout máy tính') : (showMv ? 'Minimize Desktop MV' : 'Play Music Video')}
+            >
+              <Tv className="w-3.5 h-3.5 text-rose-400" style={showMv ? { color: '#ffffff' } : undefined} />
+              <span>{showMv ? (language === 'vi' ? 'Thu nhỏ MV' : 'Hide MV') : (language === 'vi' ? 'Phát Video MV' : 'Play Music Video')}</span>
+              {showMv && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+            </button>
+          )}
+
           <div className="flex items-center gap-2.5 text-[10px] font-mono">
             {sortBy !== 'default' && (
               <button
