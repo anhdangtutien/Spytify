@@ -595,14 +595,6 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
               : getTranslation(language, 'aimix.subtitle')}
           </p>
         </div>
-
-        {/* Luôn bật mặc định (Không cần nút kích hoạt thủ công) */}
-        <div className="relative z-10 flex items-center gap-2 self-start md:self-center">
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-mono font-semibold shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{language === 'vi' ? 'Smart DJ: Đang hoạt động' : 'Smart DJ: Active'}</span>
-          </div>
-        </div>
       </div>
 
       {/* Training Report */}
