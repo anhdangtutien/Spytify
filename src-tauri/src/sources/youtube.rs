@@ -256,9 +256,25 @@ pub async fn resolve_youtube_music_stream(
 
     let visitor_data = visitor_opt.unwrap_or_default();
 
-    // Build candidate video IDs: try the requested video_id first, then official YouTube Music song IDs
+    // Build candidate video IDs: prioritize 7clouds Rap version, then requested video_id, then official YouTube Music IDs
     let mut candidate_ids: Vec<String> = Vec::new();
-    if !clean_vid.is_empty() {
+
+    // Query 7clouds / 7clouds rap version to eliminate intro/outro delays in official MVs
+    let seven_clouds_query = format!("{} {} 7clouds rap", title, artist).trim().to_string();
+    if !seven_clouds_query.is_empty() {
+        if let Ok(seven_tracks) = search_innertube(&client, &seven_clouds_query).await {
+            for st in seven_tracks {
+                let author_low = st.artist.to_lowercase();
+                let title_low = st.title.to_lowercase();
+                if author_low.contains("7cloud") || author_low.contains("7 cloud") || title_low.contains("7cloud") || title_low.contains("7 cloud") {
+                    candidate_ids.push(st.url_or_id);
+                    break;
+                }
+            }
+        }
+    }
+
+    if !clean_vid.is_empty() && !candidate_ids.contains(&clean_vid) {
         candidate_ids.push(clean_vid.clone());
     }
     for t in ytm_tracks.iter().take(4) {

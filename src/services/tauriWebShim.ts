@@ -9,6 +9,7 @@ import type {
   User,
   UserStats,
 } from '../types';
+import { cleanTrackMetadata } from './sevenCloudsResolver';
 
 export const isTauriEnvironment = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -606,15 +607,18 @@ async function searchYoutubeWeb(query: string, apiTimeoutMs = 1800): Promise<Sea
       );
     }
     if (data && Array.isArray(data.items) && data.items.length > 0) {
-      return data.items.map((i: any) => ({
-        title: i.title || query,
-        artist: i.author || 'YouTube Audio',
-        album: 'YouTube',
-        duration_secs: Number(i.duration_secs) || 200,
-        source: 'youtube' as const,
-        url_or_id: i.videoId,
-        thumbnail: i.thumbnail || `https://i.ytimg.com/vi/${i.videoId}/hqdefault.jpg`,
-      }));
+      return data.items.map((i: any) => {
+        const cleaned = cleanTrackMetadata(i.title || query, i.author || 'YouTube Audio');
+        return {
+          title: cleaned.title,
+          artist: cleaned.artist,
+          album: 'YouTube',
+          duration_secs: Number(i.duration_secs) || 200,
+          source: 'youtube' as const,
+          url_or_id: i.videoId,
+          thumbnail: i.thumbnail || `https://i.ytimg.com/vi/${i.videoId}/hqdefault.jpg`,
+        };
+      });
     }
   } catch {}
 
@@ -730,11 +734,16 @@ async function resolveYouTubeAudioStreamWeb(
     .split('ft.')[0]
     .trim();
 
-  // 1. Fast search for an unblocked alternative YouTube Video ID (Lyric / Audio version)
+  // 1. Fast search for 7clouds Rap / 7clouds audio version (clean audio without intro/outro delays)
   if (rawT.length >= 2) {
     try {
-      const searchAlt = await searchYoutubeWeb(`${rawT} ${rawA} lyric audio`.trim(), 1600);
-      const ytCandidate = searchAlt.find(t => {
+      const searchAlt = await searchYoutubeWeb(`${rawT} ${rawA} 7clouds rap`.trim(), 1600);
+      const sevenCloudsHit = searchAlt.find(t => {
+        const a = (t.artist || '').toLowerCase();
+        const ti = (t.title || '').toLowerCase();
+        return a.includes('7cloud') || a.includes('7 cloud') || ti.includes('7cloud') || ti.includes('7 cloud');
+      });
+      const ytCandidate = sevenCloudsHit || searchAlt.find(t => {
         const vid = extractYouTubeVideoId(t.url_or_id || '');
         return Boolean(vid && vid !== rawVid);
       });

@@ -4,7 +4,7 @@ import { Track } from '../types';
 export const DEFAULT_COVER_FALLBACK =
   'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=60';
 
-function extractCleanYtId(raw?: string): string | null {
+export function extractCleanYtId(raw?: string): string | null {
   if (!raw) return null;
   let s = raw.trim();
   if (s.startsWith('yt_')) s = s.slice(3);
@@ -104,8 +104,8 @@ export function sanitizeTrackTitle(title: string | undefined): string {
   return title
     .replace(/\s*\((?:cùng với|với|cùng)\s+([^)]+)\)/gi, ' (feat. $1)')
     .replace(/\s*\[(?:cùng với|với|cùng)\s+([^\]]+)\]/gi, ' (feat. $1)')
-    .replace(/\s*\[(?:Official\s*(?:Music\s*)?Video|MV|Audio|Visualizer|Lyric\s*Video|HD|4K)\]/gi, '')
-    .replace(/\s*\((?:Official\s*(?:Music\s*)?Video|MV|Audio|Visualizer|Lyric\s*Video|HD|4K)\)/gi, '')
+    .replace(/\s*\[(?:Official\s*(?:Music\s*)?Video|MV|Audio|Visualizer|Lyric\s*Video|HD|4K|Lyrics?|Lyric|7clouds(?:\s+Rap)?)\]/gi, '')
+    .replace(/\s*\((?:Official\s*(?:Music\s*)?Video|MV|Audio|Visualizer|Lyric\s*Video|HD|4K|Lyrics?|Lyric|7clouds(?:\s+Rap)?)\)/gi, '')
     .trim();
 }
 

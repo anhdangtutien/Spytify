@@ -24,6 +24,7 @@ import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSIO
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
 import { deduplicateTracks, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle, getContrastTextColor } from './utils/trackUtils';
+import { resolve7CloudsVideoId, cleanTrackMetadata } from './services/sevenCloudsResolver';
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, SkipBack, SkipForward, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
@@ -3886,7 +3887,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onlineAudio2Ref.current?.pause();
         if (onlineAudio2Ref.current) onlineAudio2Ref.current.src = '';
 
-        const videoId = extractCleanYtId(track.path_or_url || track.id);
+        const rawVid = extractCleanYtId(track.path_or_url || track.id);
+        // Ưu tiên phát nhạc từ 7clouds Rap / 7clouds để loại bỏ các đoạn chờ/nói chuyện ở đầu và cuối MV gốc,
+        // nếu không có thì giữ nguyên video ID từ MV gốc.
+        const videoId = await resolve7CloudsVideoId(track.title, track.artist, rawVid);
 
         activeYtChannelRef.current = 1;
         sendYtCmd('pauseVideo', [], 2);
@@ -4110,7 +4114,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     } else if (track.source === 'youtube') {
       activeYtChannelRef.current = inYtChannel;
-      const videoId = extractCleanYtId(track.path_or_url || track.id);
+      const rawVid = extractCleanYtId(track.path_or_url || track.id);
+      const videoId = await resolve7CloudsVideoId(track.title, track.artist, rawVid);
       ytHasStartedPlayingRef.current = false;
       isPlayingRef.current = true;
       setIsPlaying(true);
@@ -4839,6 +4844,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handlePlaySearchResult = (result: SearchResult, allResults?: SearchResult[]) => {
+    const cleaned = result.source === 'youtube'
+      ? cleanTrackMetadata(result.title, result.artist)
+      : { title: result.title, artist: result.artist };
     const safeUrl = result.url_or_id.replace(/[^a-zA-Z0-9_-]/g, '_');
     const deterministicId = `${result.source}_${safeUrl}`;
 
@@ -4846,14 +4854,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const existing = tracks.find(
       t => t.id === deterministicId ||
            (t.path_or_url && t.path_or_url === result.url_or_id) ||
-           (t.title.trim().toLowerCase() === result.title.trim().toLowerCase() &&
-            t.artist.trim().toLowerCase() === result.artist.trim().toLowerCase())
+           (t.title.trim().toLowerCase() === cleaned.title.trim().toLowerCase() &&
+            t.artist.trim().toLowerCase() === cleaned.artist.trim().toLowerCase())
     );
 
     const track: Track = existing || {
       id: deterministicId,
-      title: result.title,
-      artist: result.artist,
+      title: cleaned.title,
+      artist: cleaned.artist,
       album: result.album,
       duration_secs: result.duration_secs,
       path_or_url: result.url_or_id,
@@ -5508,6 +5516,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             language={language}
             isCollapsed={isSidebarCollapsed}
             onToggleCollapse={toggleSidebarCollapse}
+            isBackgroundPlayEnabled={isBackgroundPlayEnabled}
+            onToggleBackgroundPlay={handleToggleBackgroundPlay}
           />
         </div>
 
@@ -5540,6 +5550,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 themeMode={themeMode}
                 language={language}
                 isCollapsed={false}
+                isBackgroundPlayEnabled={isBackgroundPlayEnabled}
+                onToggleBackgroundPlay={handleToggleBackgroundPlay}
               />
             </div>
           </div>
@@ -5624,7 +5636,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </span>
             </div>
             <div className="flex items-center gap-1.5 sm:gap-2.5">
-              {/* Background Play Toggle (Mobile / Web PWA Screen-Lock Keep-Alive) */}
+              {/* Clean Quick Search Shortcut for Mobile */}
+              {currentView !== 'search' && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentView('search')}
+                  className="sm:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                  aria-label="Search"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              )}
+
+              {/* Background Play Toggle (Desktop Header — Mobile has it in Drawer/Settings) */}
               <button
                 type="button"
                 onClick={handleToggleBackgroundPlay}
@@ -5633,7 +5657,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     ? 'Bật/tắt chế độ phát nhạc nền khi tắt màn hình điện thoại'
                     : 'Toggle background playback when screen is off'
                 }
-                className={`px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md border transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                className={`hidden sm:flex px-2 sm:px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer shadow-sm ${
                   isBackgroundPlayEnabled
                     ? themeMode === 'light'
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
@@ -5653,12 +5677,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 />
               </button>
 
-              {/* Spytify Vercel Website Button */}
+              {/* Spytify Vercel Website Button (Desktop) */}
               <button
                 type="button"
                 onClick={() => openWebsite()}
                 title="Mở trang web giới thiệu Spytify (Vercel) trên trình duyệt"
-                className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-all flex items-center gap-1.5 cursor-pointer hover:scale-105 shadow-sm ${
+                className={`hidden sm:flex px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer hover:scale-105 shadow-sm ${
                   themeMode === 'light'
                     ? 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-300'
                     : 'bg-[#101018] hover:bg-[#181824] text-white border-[#222230] hover:border-cyan-500/50'
@@ -5671,8 +5695,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 <ArrowUpRight className="w-3 h-3 text-cyan-400/80" />
               </button>
 
-              {/* Quick Language Switcher Dropdown */}
-              <div className="relative" ref={langDropdownRef}>
+              {/* Quick Language Switcher Dropdown (Desktop) */}
+              <div className="hidden sm:block relative" ref={langDropdownRef}>
                 <button
                   onClick={() => setShowLanguageDropdown(p => !p)}
                   className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer ${
@@ -5770,7 +5794,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               {currentTrack?.source === 'youtube' && (
                 <button
                   onClick={handleToggleYoutubeVideo}
-                  className={`px-3 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
+                  className={`hidden sm:flex px-3 py-1 rounded-md text-xs font-medium items-center gap-1.5 border transition-all cursor-pointer ${
                     showYoutubeVideo
                       ? 'bg-white text-black border-white'
                       : 'bg-[#0f0f0f] hover:bg-[#1a1a1a] text-[#888] hover:text-white border-[#222]'
