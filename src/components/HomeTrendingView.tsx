@@ -1474,7 +1474,9 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       alt={artist.artist}
                       referrerPolicy="no-referrer"
                       onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = getOrResolveArtistAvatar(artist.artist);
+                        const target = e.currentTarget as HTMLImageElement;
+                        target.onerror = null;
+                        target.src = getOrResolveArtistAvatar(artist.artist);
                       }}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-110"
                     />
@@ -1608,7 +1610,9 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                       alt={artistItem.artist}
                       referrerPolicy="no-referrer"
                       onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).src = getOrResolveArtistAvatar(artistItem.artist);
+                        const target = e.currentTarget as HTMLImageElement;
+                        target.onerror = null;
+                        target.src = getOrResolveArtistAvatar(artistItem.artist);
                       }}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />

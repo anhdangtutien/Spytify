@@ -62,6 +62,28 @@ export const POPULAR_ARTIST_AVATARS: Record<string, string> = {
   'maroon 5': 'https://cdn-images.dzcdn.net/images/artist/f1f107f9cbb870c97800ae7c52ae8b8f/500x500-000000-80-0-0.jpg',
   'imagine dragons': 'https://cdn-images.dzcdn.net/images/artist/1c6d36e2f1f50df64db0c4768ea822f3/500x500-000000-80-0-0.jpg',
 
+  // Hip-Hop, Rap & R&B Global Legends
+  'juice wrld': 'https://cdn-images.dzcdn.net/images/artist/2ecf2968fbbc8eb042b241b8e60e5d7e/500x500-000000-80-0-0.jpg',
+  'juice world': 'https://cdn-images.dzcdn.net/images/artist/2ecf2968fbbc8eb042b241b8e60e5d7e/500x500-000000-80-0-0.jpg',
+  'juicewrld': 'https://cdn-images.dzcdn.net/images/artist/2ecf2968fbbc8eb042b241b8e60e5d7e/500x500-000000-80-0-0.jpg',
+  'fall out boy': 'https://cdn-images.dzcdn.net/images/artist/981d802fcf018a2ca52bddcb1d4a739a/500x500-000000-80-0-0.jpg',
+  'travis scott': 'https://cdn-images.dzcdn.net/images/artist/8d8316146026d7e6ce377e314536df62/500x500-000000-80-0-0.jpg',
+  'kendrick lamar': 'https://cdn-images.dzcdn.net/images/artist/be0a7c550567f4af0ed202d7235b74d6/500x500-000000-80-0-0.jpg',
+  'kanye west': 'https://cdn-images.dzcdn.net/images/artist/bb76c2ee3b068726ab4c37b0aabdb57a/500x500-000000-80-0-0.jpg',
+  'xxxtentacion': 'https://cdn-images.dzcdn.net/images/artist/62e6edfaf5461eeb5b7310903229607a/500x500-000000-80-0-0.jpg',
+  'future': 'https://cdn-images.dzcdn.net/images/artist/1a695ee9c2cb49fab81d408836100ff3/500x500-000000-80-0-0.jpg',
+  'metro boomin': 'https://cdn-images.dzcdn.net/images/artist/bc031b73f958987fa103031070be5c16/500x500-000000-80-0-0.jpg',
+  '21 savage': 'https://cdn-images.dzcdn.net/images/artist/76b4cd56c7e94e8d2bdc3e2157e1080f/500x500-000000-80-0-0.jpg',
+  'sza': 'https://cdn-images.dzcdn.net/images/artist/8ced041da2bed70d5715f0860956169b/500x500-000000-80-0-0.jpg',
+  'the kid laroi': 'https://cdn-images.dzcdn.net/images/artist/ced3d1693e8b8add20a9e40bd01eeb2e/500x500-000000-80-0-0.jpg',
+  'lil nas x': 'https://cdn-images.dzcdn.net/images/artist/1ca412353f85efec0825c88cc1a5f24c/500x500-000000-80-0-0.jpg',
+  'playboi carti': 'https://cdn-images.dzcdn.net/images/artist/b90097972a60d9d8598a79a786be1a3a/500x500-000000-80-0-0.jpg',
+  'tyler, the creator': 'https://cdn-images.dzcdn.net/images/artist/5eceecd683beab6dd901a7931294a121/500x500-000000-80-0-0.jpg',
+  'tyler the creator': 'https://cdn-images.dzcdn.net/images/artist/5eceecd683beab6dd901a7931294a121/500x500-000000-80-0-0.jpg',
+  'frank ocean': 'https://cdn-images.dzcdn.net/images/artist/882155c08dc31d6464d6d580083c968c/500x500-000000-80-0-0.jpg',
+  'a$ap rocky': 'https://cdn-images.dzcdn.net/images/artist/2fd7529af23904e6634194c5b6f4def5/500x500-000000-80-0-0.jpg',
+  'asap rocky': 'https://cdn-images.dzcdn.net/images/artist/2fd7529af23904e6634194c5b6f4def5/500x500-000000-80-0-0.jpg',
+
   // Asian / Japanese / Korean Artists
   // Real DAOKO official portrait (45861151ec512f0595e642b7285cd322)
   'daoko': 'https://cdn-images.dzcdn.net/images/artist/45861151ec512f0595e642b7285cd322/500x500-000000-80-0-0.jpg',
@@ -214,11 +236,18 @@ export const DEFAULT_FEATURED_ARTISTS: RecentArtistItem[] = [
     topTrackTitle: 'Attack on Titan OST / Promare',
     sampleVideoId: 'w3UR7nsTLlQ',
   },
+  {
+    artist: 'Juice WRLD',
+    count: 22,
+    avatar: POPULAR_ARTIST_AVATARS['juice wrld'],
+    topTrackTitle: 'Lucid Dreams / Robbery',
+    sampleVideoId: 'mzB1V935HGg',
+  },
 ];
 
 /**
  * Resolves artist avatar immediately from synchronous cache or mapped dictionary,
- * falling back cleanly to an optimized track cover (no black bars) or default avatar.
+ * falling back cleanly to an optimized track cover (no black bars) or neutral musical avatar.
  */
 export const getOrResolveArtistAvatar = (artistName: string, trackCover?: string): string => {
   const norm = artistName.trim().toLowerCase();
@@ -226,15 +255,30 @@ export const getOrResolveArtistAvatar = (artistName: string, trackCover?: string
   // 1. Direct match in verified dictionary
   if (POPULAR_ARTIST_AVATARS[norm]) return POPULAR_ARTIST_AVATARS[norm];
 
-  // 2. Partial match in verified dictionary
+  // 2. Partial match in verified dictionary (e.g. "Juice WRLD & Fall Out Boy" matches "juice wrld")
   for (const [k, v] of Object.entries(POPULAR_ARTIST_AVATARS)) {
-    if (norm === k || norm.startsWith(k + ' ') || norm.endsWith(' ' + k)) return v;
+    if (
+      norm === k ||
+      norm.startsWith(k + ' ') ||
+      norm.startsWith(k + ',') ||
+      norm.startsWith(k + '&') ||
+      norm.startsWith(k + ' &') ||
+      norm.endsWith(' ' + k)
+    ) {
+      return v;
+    }
   }
 
-  // 3. LocalStorage persistent cache (previously fetched from Deezer)
+  // 3. LocalStorage persistent cache (previously fetched from Deezer/Apple CDN)
   try {
     const cached = localStorage.getItem(`spytify_artist_avatar_${norm}`);
-    if (cached && cached.startsWith('http') && !cached.includes('3bdd07e6653666b8885b59c522ab3deb')) {
+    if (
+      cached &&
+      cached.startsWith('http') &&
+      !cached.includes('3bdd07e6653666b8885b59c522ab3deb') &&
+      // Prevent any non-Sơn Tùng artist from displaying Sơn Tùng M-TP's cached avatar
+      (!cached.includes('736c5b8ff5a001b724fb92c7471c9f1d') || norm === 'sơn tùng m-tp' || norm === 'sơn tùng' || norm === 'son tung m-tp' || norm === 'm-tp')
+    ) {
       return cached;
     }
   } catch {}
@@ -244,19 +288,19 @@ export const getOrResolveArtistAvatar = (artistName: string, trackCover?: string
     return optimizeThumbnailUrl(trackCover);
   }
 
-  // 5. Default high-quality modern ambient music avatar
-  return 'https://cdn-images.dzcdn.net/images/artist/736c5b8ff5a001b724fb92c7471c9f1d/500x500-000000-80-0-0.jpg';
+  // 5. Default neutral ambient vinyl disc avatar (Never another artist's human face)
+  return 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80';
 };
 
 /**
- * Online portrait fetcher from Deezer Public API with fan-count prioritization.
+ * Online portrait fetcher from Deezer Public API / Apple iTunes CDN with fan-count prioritization.
  * Ensures verified major artist profile is chosen over duplicate or 1-fan accounts with stock photos.
  */
 export const fetchArtistPortraitOnline = async (artistName: string): Promise<string | null> => {
   const norm = artistName.trim().toLowerCase();
   if (!norm || norm.length < 2) return null;
 
-  // Clean artist string of collaborative keywords
+  // Clean artist string of collaborative keywords (e.g. "Juice WRLD & Fall Out Boy" -> "Juice WRLD")
   const clean = artistName.split(',')[0].split('&')[0].split(/ x | ft\.?| feat\.?|\/\//i)[0].trim();
   const cleanNorm = clean.toLowerCase();
 
@@ -266,31 +310,54 @@ export const fetchArtistPortraitOnline = async (artistName: string): Promise<str
 
   try {
     const cached = localStorage.getItem(`spytify_artist_avatar_${cleanNorm}`);
-    if (cached && cached.startsWith('http') && !cached.includes('3bdd07e6653666b8885b59c522ab3deb')) {
+    if (
+      cached &&
+      cached.startsWith('http') &&
+      !cached.includes('3bdd07e6653666b8885b59c522ab3deb') &&
+      (!cached.includes('736c5b8ff5a001b724fb92c7471c9f1d') || cleanNorm === 'sơn tùng m-tp' || cleanNorm === 'sơn tùng' || cleanNorm === 'son tung m-tp' || cleanNorm === 'm-tp')
+    ) {
       return cached;
     }
   } catch {}
 
+  // 1. Try Deezer Public API
   try {
     const res = await fetch(`https://api.deezer.com/search/artist?q=${encodeURIComponent(clean)}&limit=5`);
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (!json?.data || !Array.isArray(json.data) || json.data.length === 0) return null;
+    if (res.ok) {
+      const json = await res.json();
+      if (json?.data && Array.isArray(json.data) && json.data.length > 0) {
+        // Pick the artist with the highest fan count to avoid fake / duplicate accounts
+        const bestArtist = json.data.reduce((max: any, item: any) => {
+          if (item.picture_small?.includes('3bdd07e6653666b8885b59c522ab3deb')) return max;
+          return (!max || (item.nb_fan || 0) > (max.nb_fan || 0)) ? item : max;
+        }, null);
 
-    // Pick the artist with the highest fan count to avoid fake / duplicate accounts
-    const bestArtist = json.data.reduce((max: any, item: any) => {
-      // Ignore known fake microphone image
-      if (item.picture_small?.includes('3bdd07e6653666b8885b59c522ab3deb')) return max;
-      return (!max || (item.nb_fan || 0) > (max.nb_fan || 0)) ? item : max;
-    }, null);
+        const pic = bestArtist?.picture_big || bestArtist?.picture_medium;
+        if (pic && pic.startsWith('http') && !pic.includes('3bdd07e6653666b8885b59c522ab3deb')) {
+          try {
+            localStorage.setItem(`spytify_artist_avatar_${cleanNorm}`, pic);
+            localStorage.setItem(`spytify_artist_avatar_${norm}`, pic);
+          } catch {}
+          return pic;
+        }
+      }
+    }
+  } catch {}
 
-    const pic = bestArtist?.picture_big || bestArtist?.picture_medium;
-    if (pic && pic.startsWith('http') && !pic.includes('3bdd07e6653666b8885b59c522ab3deb')) {
-      try {
-        localStorage.setItem(`spytify_artist_avatar_${cleanNorm}`, pic);
-        localStorage.setItem(`spytify_artist_avatar_${norm}`, pic);
-      } catch {}
-      return pic;
+  // 2. Fallback to Apple iTunes Search API (has Access-Control-Allow-Origin: * for web & iOS PWA browsers)
+  try {
+    const itunesRes = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(clean)}&entity=song&limit=1`);
+    if (itunesRes.ok) {
+      const itunesJson = await itunesRes.json();
+      const rawArt = itunesJson?.results?.[0]?.artworkUrl100;
+      if (rawArt && typeof rawArt === 'string') {
+        const highRes = rawArt.replace('100x100bb', '600x600bb');
+        try {
+          localStorage.setItem(`spytify_artist_avatar_${cleanNorm}`, highRes);
+          localStorage.setItem(`spytify_artist_avatar_${norm}`, highRes);
+        } catch {}
+        return highRes;
+      }
     }
   } catch {}
 
