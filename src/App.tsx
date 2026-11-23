@@ -1243,6 +1243,7 @@ export default function App() {
   const onlineAudio2Ref = useRef<HTMLAudioElement | null>(null);
   const activeAudioChannelRef = useRef<1 | 2>(1);
   const onlineAudioRef = useRef<HTMLAudioElement | null>(null);
+  const connectAudioRef = useRef<HTMLAudioElement | null>(null);
   const currentTrackRef = useRef<Track | null>(null);
   const isPlayingRef = useRef(false);
   const tracksRef = useRef<Track[]>([]);
@@ -4060,6 +4061,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
       } else if (track.source === 'youtube') {
+        if (isConnectHostActive) {
+          const directOk = await fallbackToYoutubeMusicStream(track);
+          if (directOk) return;
+        }
         try { invoke('stop_track').catch(() => {}); } catch {}
         sendScCmd('pause', undefined, 1);
         sendScCmd('pause', undefined, 2);
@@ -4496,6 +4501,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleTogglePlay = async () => {
     if (isConnectClientActive) {
+      if (connectAudioRef.current && connectAudioRef.current.paused) {
+        connectAudioRef.current.play().catch(() => {});
+      }
+      spytifyConnect.resumeAudio();
       spytifyConnect.sendCommand({ type: isPlayingRef.current ? 'PAUSE' : 'PLAY' });
       return;
     }
@@ -4546,7 +4555,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           try { await invoke('resume_track'); } catch {}
         }
       } else if (track.source === 'youtube') {
-        if (ytMusicFallbackActiveRef.current && onlineAudioRef.current?.src) {
+        if (isConnectHostActive && !ytMusicFallbackActiveRef.current) {
+          fallbackToYoutubeMusicStream(track).catch(() => {});
+        } else if (ytMusicFallbackActiveRef.current && onlineAudioRef.current?.src) {
           onlineAudioRef.current.play().catch(console.error);
         } else {
           sendYtCmd('playVideo');
@@ -4623,6 +4634,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleSeek = async (secs: number) => {
     if (isConnectClientActive) {
+      spytifyConnect.resumeAudio();
       spytifyConnect.sendCommand({ type: 'SEEK', time: secs });
       return;
     }
@@ -4687,6 +4699,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   
   const handleUserNext = () => {
     if (isConnectClientActive) {
+      spytifyConnect.resumeAudio();
       spytifyConnect.sendCommand({ type: 'NEXT' });
       return;
     }
@@ -4727,6 +4740,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleUserPrev = () => {
     if (isConnectClientActive) {
+      spytifyConnect.resumeAudio();
       spytifyConnect.sendCommand({ type: 'PREV' });
       return;
     }
@@ -4795,6 +4809,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       return;
     }
 
+    // If Desktop is playing a YouTube track via iframe, switch it to direct stream so Web Audio captures it
+    if (currentTrackRef.current?.source === 'youtube' && !ytMusicFallbackActiveRef.current) {
+      fallbackToYoutubeMusicStream(currentTrackRef.current).catch(() => {});
+    }
+
     const masterStream = getOrCreateMasterAudioStream();
     const ok = await spytifyConnect.startHost(
       effectiveUserId,
@@ -4855,6 +4874,22 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       return;
     }
 
+    if (!connectAudioRef.current) {
+      const el = new Audio();
+      (el as any).playsInline = true;
+      el.setAttribute('playsinline', 'true');
+      el.setAttribute('webkit-playsinline', 'true');
+      el.autoplay = true;
+      connectAudioRef.current = el;
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.appendChild(el);
+      }
+    }
+    if (connectAudioRef.current) {
+      connectAudioRef.current.src = createSilentKeepAliveWavUri();
+      connectAudioRef.current.play().catch(() => {});
+    }
+
     const ok = await spytifyConnect.connectClient(
       effectiveUserId,
       (remoteState: ConnectPlaybackState) => {
@@ -4865,6 +4900,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (typeof remoteState.isPlaying === 'boolean') {
           setIsPlaying(remoteState.isPlaying);
           isPlayingRef.current = remoteState.isPlaying;
+          if (remoteState.isPlaying) {
+            spytifyConnect.resumeAudio();
+          }
         }
         if (typeof remoteState.currentTime === 'number') {
           setCurrentTime(remoteState.currentTime);
@@ -4878,7 +4916,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           setVolume(remoteState.volume);
           volumeRef.current = remoteState.volume;
         }
-      }
+      },
+      connectAudioRef.current || undefined
     );
 
     if (ok) {

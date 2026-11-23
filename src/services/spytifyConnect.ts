@@ -239,17 +239,36 @@ class SpytifyConnectService {
         dynacast: true,
       });
 
-      room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication, participant: RemoteParticipant) => {
+      room.on(RoomEvent.TrackSubscribed, async (track: RemoteTrack, publication, participant: RemoteParticipant) => {
         if (track.kind === LKTrack.Kind.Audio) {
           console.log('[Spytify Connect] Audio track received from Host:', participant.identity);
           if (this.audioAttachedElement) {
             track.attach(this.audioAttachedElement);
+            try {
+              this.audioAttachedElement.muted = false;
+              this.audioAttachedElement.volume = 1.0;
+              await this.audioAttachedElement.play();
+            } catch (e) {
+              console.warn('[Spytify Connect] audioAttachedElement.play() warning:', e);
+            }
           } else {
             const el = track.attach();
             el.setAttribute('playsinline', 'true');
             el.setAttribute('webkit-playsinline', 'true');
+            el.setAttribute('autoplay', 'true');
+            el.muted = false;
+            el.volume = 1.0;
+            if (typeof document !== 'undefined' && document.body) {
+              document.body.appendChild(el);
+            }
             this.audioAttachedElement = el;
+            try {
+              await el.play();
+            } catch (e) {
+              console.warn('[Spytify Connect] Fallback element play warning:', e);
+            }
           }
+          await room.startAudio().catch(() => {});
         }
       });
 
@@ -264,6 +283,9 @@ class SpytifyConnectService {
 
       await room.connect(serverUrl, token);
       this.clientRoom = room;
+
+      // Start audio context on iOS Safari / mobile browsers
+      await room.startAudio().catch(() => {});
 
       // Connect to Supabase Realtime for remote control
       this.initClientRealtime(userId);
@@ -339,6 +361,15 @@ class SpytifyConnectService {
     targetAudioElement?: HTMLAudioElement
   ): Promise<boolean> {
     return this.connectAsClient(userId, onState, targetAudioElement);
+  }
+
+  public async resumeAudio(): Promise<void> {
+    if (this.clientRoom) {
+      await this.clientRoom.startAudio().catch(() => {});
+    }
+    if (this.audioAttachedElement && this.audioAttachedElement.paused) {
+      await this.audioAttachedElement.play().catch(() => {});
+    }
   }
 
   private initClientRealtime(userId: string) {
