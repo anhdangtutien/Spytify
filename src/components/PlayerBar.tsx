@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
-  Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio,
+  Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio, Cast,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
   ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv
 } from 'lucide-react';
@@ -63,6 +63,11 @@ interface PlayerBarProps {
   showMv?: boolean;
   isMobilePlayerOpen?: boolean;
   onToggleMobilePlayer?: (isOpen: boolean) => void;
+  isConnectHostActive?: boolean;
+  onToggleConnectHost?: () => void;
+  isConnectClientActive?: boolean;
+  isHostOnline?: boolean;
+  onToggleConnectClient?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -97,6 +102,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   showMv = false,
   isMobilePlayerOpen: externalIsMobilePlayerOpen,
   onToggleMobilePlayer,
+  isConnectHostActive = false,
+  onToggleConnectHost,
+  isConnectClientActive = false,
+  isHostOnline = false,
+  onToggleConnectClient,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -1132,6 +1142,67 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
+        {/* Spytify Connect (Desktop Broadcaster via LiveKit & Supabase) */}
+        {onToggleConnectHost && (
+          <button
+            type="button"
+            onClick={onToggleConnectHost}
+            title={
+              isConnectHostActive
+                ? (language === 'vi' ? 'Trạm phát Spytify Connect đang bật (Phát lên iPhone)' : 'Spytify Connect Broadcaster is Active (Streaming to iPhone)')
+                : (language === 'vi' ? 'Bật Spytify Connect (Phát lên iPhone)' : 'Start Spytify Connect (Stream to iPhone)')
+            }
+            style={isConnectHostActive ? {
+              color: '#10b981',
+              backgroundColor: '#10b98118',
+              borderColor: '#10b98150',
+              boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)',
+            } : undefined}
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
+              isConnectHostActive ? '' : 'text-[#666] hover:text-white border-transparent'
+            }`}
+          >
+            <Radio className={`w-4 h-4 ${isConnectHostActive ? 'animate-pulse text-emerald-400' : ''}`} />
+            <Cast className="w-3.5 h-3.5 -ml-0.5" />
+            {isConnectHostActive && (
+              <span className="hidden xl:inline text-[9px] font-mono font-bold tracking-tight text-emerald-400">
+                HOST
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* Spytify Connect (Mobile Client Listener & Remote) */}
+        {onToggleConnectClient && (
+          <button
+            type="button"
+            onClick={onToggleConnectClient}
+            title={
+              isConnectClientActive
+                ? (language === 'vi' ? 'Đang nghe trực tiếp từ Desktop (WebRTC)' : 'Listening live from Desktop (WebRTC)')
+                : (language === 'vi' ? 'Kết nối & nghe từ Desktop của bạn' : 'Connect & listen to Desktop')
+            }
+            style={isConnectClientActive ? {
+              color: '#10b981',
+              backgroundColor: '#10b98120',
+              borderColor: '#10b98160',
+              boxShadow: '0 0 12px rgba(16, 185, 129, 0.4)',
+            } : (isHostOnline ? {
+              color: '#38bdf8',
+              backgroundColor: '#38bdf818',
+              borderColor: '#38bdf850',
+            } : undefined)}
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
+              isConnectClientActive || isHostOnline ? '' : 'text-[#666] hover:text-white border-transparent'
+            }`}
+          >
+            <Radio className={`w-3.5 h-3.5 ${isConnectClientActive ? 'animate-pulse text-emerald-400' : (isHostOnline ? 'animate-bounce text-sky-400' : '')}`} />
+            <span className="text-[10px] font-mono font-bold">
+              {isConnectClientActive ? 'LIVE' : (isHostOnline ? 'DESKTOP' : 'CONNECT')}
+            </span>
+          </button>
+        )}
+
         {/* Source Badge (Clicking YT STREAM toggles Desktop MV) */}
         {currentTrack && (
           <div className="hidden md:inline-flex shrink-0">
@@ -1222,21 +1293,37 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             </span>
             <div className="mt-0.5">{currentTrack ? getSourceBadge(currentTrack.source) : null}</div>
           </div>
-          {onOpenEqualizer ? (
-            <button
-              type="button"
-              onClick={() => {
-                setIsMobileSheetOpen(false);
-                onOpenEqualizer();
-              }}
-              className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 cursor-pointer"
-              title="EQ"
-            >
-              <SlidersHorizontal className="w-4 h-4" style={isEqualizerActive ? { color: accentColor } : undefined} />
-            </button>
-          ) : (
-            <div className="w-9" />
-          )}
+          <div className="flex items-center gap-1.5">
+            {onToggleConnectClient && (
+              <button
+                type="button"
+                onClick={onToggleConnectClient}
+                className={`p-2 rounded-full cursor-pointer transition-colors ${
+                  isConnectClientActive 
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
+                    : (isHostOnline ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 animate-pulse' : 'bg-white/5 text-zinc-400 hover:text-white')
+                }`}
+                title="Spytify Connect"
+              >
+                <Radio className="w-4 h-4" />
+              </button>
+            )}
+            {onOpenEqualizer ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSheetOpen(false);
+                  onOpenEqualizer();
+                }}
+                className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 cursor-pointer"
+                title="EQ"
+              >
+                <SlidersHorizontal className="w-4 h-4" style={isEqualizerActive ? { color: accentColor } : undefined} />
+              </button>
+            ) : (
+              <div className="w-9" />
+            )}
+          </div>
         </div>
 
         {/* Cover Art & Mobile MV Slot */}

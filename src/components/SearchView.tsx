@@ -31,6 +31,19 @@ const getInitialSearchHistory = (): string[] => {
   return [];
 };
 
+const getInitialPlayedHistory = (): Array<{ title: string; artist: string }> => {
+  try {
+    const raw = localStorage.getItem('spytify_played_history');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(item => item && typeof item.title === 'string' && item.title.trim().length > 0);
+      }
+    }
+  } catch {}
+  return [];
+};
+
 type Filter = 'all' | 'youtube' | 'soundcloud' | 'audius' | 'local';
 
 export const SearchView: React.FC<SearchViewProps> = ({ 
@@ -48,6 +61,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [isTyping, setIsTyping] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>(getInitialSearchHistory);
+  const [playedHistory, setPlayedHistory] = useState<Array<{ title: string; artist: string }>>(getInitialPlayedHistory);
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,8 +81,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   const clearSearchHistory = () => {
     setSearchHistory([]);
+    setPlayedHistory([]);
     try {
       localStorage.removeItem('spytify_search_history');
+      localStorage.removeItem('spytify_played_history');
     } catch {}
   };
 
@@ -88,30 +104,48 @@ export const SearchView: React.FC<SearchViewProps> = ({
   }, [localTracks, currentTrack]);
 
   const dynamicSuggestions = React.useMemo(() => {
-    const list: string[] = [];
+    const list: Array<{ text: string; type: 'search' | 'played_artist' | 'played_track' | 'trending' }> = [];
     const added = new Set<string>();
 
-    const pushItem = (item?: string | null) => {
+    const pushItem = (item?: string | null, type: 'search' | 'played_artist' | 'played_track' | 'trending' = 'trending') => {
       if (!item) return;
       const clean = item.trim();
       const lower = clean.toLowerCase();
       if (clean && !added.has(lower)) {
         added.add(lower);
-        list.push(clean);
+        list.push({ text: clean, type });
       }
     };
 
-    // 1. Prioritize user's searched songs & artists
-    searchHistory.forEach(pushItem);
+    // 1. User's explicitly searched terms
+    searchHistory.forEach(s => pushItem(s, 'search'));
 
-    // 2. Add artists from current and local tracks
-    recentArtists.forEach(pushItem);
+    // 2. Artists from recently played songs (prioritize diverse artists user listens to)
+    playedHistory.forEach(p => {
+      if (p.artist && p.artist !== 'Unknown Artist' && p.artist.length > 1) {
+        pushItem(p.artist, 'played_artist');
+      }
+    });
 
-    // 3. Fallback to popular trending tags
-    POPULAR.forEach(pushItem);
+    // 3. Current playing artist & local track artists
+    recentArtists.forEach(a => pushItem(a, 'played_artist'));
 
-    return list.slice(0, 10);
-  }, [searchHistory, recentArtists]);
+    // 4. Songs recently listened to by user
+    playedHistory.forEach(p => {
+      if (p.title && p.title.length > 1) {
+        pushItem(p.title, 'played_track');
+      }
+    });
+
+    if (currentTrack?.title) {
+      pushItem(currentTrack.title, 'played_track');
+    }
+
+    // 5. Fallback trending
+    POPULAR.forEach(p => pushItem(p, 'trending'));
+
+    return list.slice(0, 12);
+  }, [searchHistory, playedHistory, recentArtists, currentTrack]);
 
   // Close suggestions when clicking anywhere outside the search container
   useEffect(() => {
@@ -372,36 +406,41 @@ export const SearchView: React.FC<SearchViewProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-[10px] text-[#888] uppercase font-mono flex items-center gap-1.5">
                 <Sparkles className="w-3 h-3" style={{ color: accentColor }} />
-                {searchHistory.length > 0 
-                  ? (language === 'vi' ? 'GỢI Ý THEO BÀI HÁT & NGHỆ SĨ:' : 'SUGGESTIONS FOR YOU:') 
+                {(searchHistory.length > 0 || playedHistory.length > 0)
+                  ? (language === 'vi' ? 'GỢI Ý THEO BÀI HÁT & NGHỆ SĨ:' : 'SUGGESTIONS FROM YOUR MUSIC & SEARCHES:') 
                   : getTranslation(language, 'search.quick')}
               </span>
-              {searchHistory.length > 0 && (
+              {(searchHistory.length > 0 || playedHistory.length > 0) && (
                 <button
                   type="button"
                   onClick={clearSearchHistory}
                   className="text-[10px] text-zinc-500 hover:text-rose-400 transition-colors cursor-pointer font-mono"
-                  title={language === 'vi' ? 'Xóa lịch sử tìm kiếm' : 'Clear search history'}
+                  title={language === 'vi' ? 'Xóa gợi ý & lịch sử tìm kiếm' : 'Clear suggestions and search history'}
                 >
                   {language === 'vi' ? 'Xóa lịch sử' : 'Clear history'}
                 </button>
               )}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              {dynamicSuggestions.map((term, idx) => {
-                const isFromHistory = searchHistory.includes(term);
+              {dynamicSuggestions.map((item, idx) => {
+                const isFromSearch = item.type === 'search';
+                const isFromPlayed = item.type === 'played_artist' || item.type === 'played_track';
                 return (
                   <button
-                    key={`${term}-${idx}`}
-                    onClick={() => handleQuick(term)}
-                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-all cursor-pointer flex items-center gap-1 ${
-                      isFromHistory
+                    key={`${item.text}-${idx}`}
+                    onClick={() => handleQuick(item.text)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] border transition-all cursor-pointer flex items-center gap-1.5 ${
+                      isFromSearch
                         ? 'bg-[#14141e] hover:bg-[#1e1e2c] text-zinc-200 border-[#2a2a3a] hover:border-white/30 shadow-sm'
+                        : isFromPlayed
+                        ? 'bg-[#16121f] hover:bg-[#20182c] text-purple-200 border-purple-500/25 hover:border-purple-500/50 shadow-sm'
                         : 'bg-[#101014] hover:bg-[#181820] text-[#888] hover:text-white border-[#1a1a22]'
                     }`}
                   >
-                    {isFromHistory && <History className="w-3 h-3 text-zinc-400 shrink-0" />}
-                    <span className="truncate max-w-[200px]">{term}</span>
+                    {isFromSearch && <History className="w-3 h-3 text-zinc-400 shrink-0" />}
+                    {isFromPlayed && <Music className="w-3 h-3 text-purple-400 shrink-0" />}
+                    {item.type === 'trending' && <Sparkles className="w-3 h-3 text-amber-400/80 shrink-0" />}
+                    <span className="truncate max-w-[200px]">{item.text}</span>
                   </button>
                 );
               })}

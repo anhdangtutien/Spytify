@@ -543,3 +543,27 @@ export function getEqualizerAnalyser(): AnalyserNode | null {
   initAudioGraph();
   return analyserNode;
 }
+
+let broadcastMediaStreamDest: MediaStreamAudioDestinationNode | null = null;
+
+/**
+ * Returns a live MediaStream containing the complete processed master audio output
+ * (including all Equalizer bands, 3D Spatial Audio, and volume settings)
+ * ready for real-time WebRTC broadcast to mobile via LiveKit SFU.
+ */
+export function getOrCreateMasterAudioStream(): MediaStream | null {
+  const ctx = getOrCreateAudioContext();
+  if (!ctx) return null;
+  if (!initAudioGraph() || !masterGainNode) return null;
+
+  if (!broadcastMediaStreamDest) {
+    try {
+      broadcastMediaStreamDest = ctx.createMediaStreamDestination();
+      masterGainNode.connect(broadcastMediaStreamDest);
+    } catch (e) {
+      console.warn('[Equalizer] Failed to create MediaStreamDestination for broadcast:', e);
+      return null;
+    }
+  }
+  return broadcastMediaStreamDest.stream;
+}

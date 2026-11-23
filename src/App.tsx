@@ -17,7 +17,8 @@ import { AlbumsView } from './components/AlbumsView';
 import { AddToAlbumModal } from './components/AddToAlbumModal';
 import { CreateAlbumFromSelectionModal } from './components/CreateAlbumFromSelectionModal';
 import { EqualizerModal } from './components/EqualizerModal';
-import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph } from './services/equalizer';
+import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
+import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
 import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSION, compareSemver, resolveDirectInstallerUrl } from './services/updater';
@@ -1110,6 +1111,11 @@ export default function App() {
   const [showVisualizer, setShowVisualizer] = useState(true);
   const [showYoutubeVideo, setShowYoutubeVideo] = useState(false);
   const [mobileMvRect, setMobileMvRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+
+  // Spytify Connect state (WebRTC Live Stream to iPhone & Supabase Remote Control)
+  const [isConnectHostActive, setIsConnectHostActive] = useState(false);
+  const [isConnectClientActive, setIsConnectClientActive] = useState(false);
+  const [isHostOnline, setIsHostOnline] = useState(false);
 
   useEffect(() => {
     if (!isMobilePlayerOpen) {
@@ -2479,9 +2485,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [isNextTrackPopupVisible, isNextTrackPopupCollapsed, nextTrackPopup, isAiLoadingNext]);
 
   const desktopPlayerBottom = isPlayerBarMinimized ? 34 : 58;
-  const desktopYtBottom = isNextTrackPopupVisible && nextTrackPopupHeight > 0
-    ? desktopPlayerBottom + nextTrackPopupHeight + 8
-    : desktopPlayerBottom;
+  const desktopYtBottom = desktopPlayerBottom;
 
   // ─── WALL-CLOCK TIME TICKER (IMMUNE TO BACKGROUND TAB THROTTLING) ────────
   useEffect(() => {
@@ -3656,6 +3660,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // ─── Core play function ──────────────────────────────────────────────────
   const playTrackInternal = async (rawTrack: Track, isBackOrForward = false, isCrossfade = false) => {
+    if (isConnectClientActive) {
+      spytifyConnect.sendCommand({ type: 'PLAY_TRACK', track: rawTrack });
+      return;
+    }
     const isWebShim = typeof window !== 'undefined' && Boolean((window as any).__TAURI_WEB_SHIM__);
     userInitiatedPauseRef.current = false;
 
@@ -3886,6 +3894,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     if (track.title) listenedHistoryTitlesRef.current.add(track.title.trim().toLowerCase());
     if (track.id) listenedHistoryTitlesRef.current.add(track.id.toLowerCase());
     if (track.path_or_url) listenedHistoryTitlesRef.current.add(track.path_or_url.toLowerCase());
+
+    // Record into persistent history for intelligent search suggestions
+    try {
+      const raw = localStorage.getItem('spytify_played_history');
+      const hist: Array<{ title: string; artist: string }> = raw ? JSON.parse(raw) : [];
+      const cleanTitle = (track.title || '').trim();
+      const cleanArtist = (track.artist || '').trim();
+      if (cleanTitle) {
+        const filtered = hist.filter(h => h.title.toLowerCase() !== cleanTitle.toLowerCase());
+        const updated = [{ title: cleanTitle, artist: cleanArtist }, ...filtered].slice(0, 30);
+        localStorage.setItem('spytify_played_history', JSON.stringify(updated));
+      }
+    } catch {}
 
     // Immediately promote an existing pre-fetched discovery candidate (0ms delay, no waiting for network!)
     const trackTitleNorm = track.title.trim().toLowerCase();
@@ -4474,6 +4495,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleTogglePlay = async () => {
+    if (isConnectClientActive) {
+      spytifyConnect.sendCommand({ type: isPlayingRef.current ? 'PAUSE' : 'PLAY' });
+      return;
+    }
     const track = currentTrackRef.current;
     if (!track) return;
 
@@ -4597,6 +4622,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [syncPlaybackStateNow]);
 
   const handleSeek = async (secs: number) => {
+    if (isConnectClientActive) {
+      spytifyConnect.sendCommand({ type: 'SEEK', time: secs });
+      return;
+    }
     if (!currentTrack) return;
     // Don't seek on live streams without duration to avoid crashes
     const effDur = duration > 0 ? duration : (currentTrack.duration_secs || 0);
@@ -4630,6 +4659,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleVolumeChange = async (v: number) => {
     const clamped = Math.max(0, Math.min(1, isNaN(v) ? 0.8 : v));
+    if (isConnectClientActive) {
+      spytifyConnect.sendCommand({ type: 'SET_VOLUME', volume: clamped });
+    }
     setVolume(clamped);
     volumeRef.current = clamped;
     const volPct = Math.round(clamped * 100);
@@ -4654,6 +4686,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   
   const handleUserNext = () => {
+    if (isConnectClientActive) {
+      spytifyConnect.sendCommand({ type: 'NEXT' });
+      return;
+    }
     // If the user previously navigated backwards, forward through history first
     if (playbackForwardStackRef.current.length > 0) {
       const cur = currentTrackRef.current;
@@ -4690,6 +4726,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleUserPrev = () => {
+    if (isConnectClientActive) {
+      spytifyConnect.sendCommand({ type: 'PREV' });
+      return;
+    }
     const isDedicatedPlaylist = isScopedPlaylistContext(activeQueueContextRef.current);
 
     if (!isDedicatedPlaylist && playbackHistoryStackRef.current.length > 0) {
@@ -4722,6 +4762,132 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   handleUserNextRef.current = handleUserNext;
   const handleSeekRef = useRef(handleSeek);
   handleSeekRef.current = handleSeek;
+
+  // ─── SPYTIFY CONNECT (Host Broadcaster & Mobile Listener) ──────────────
+  // Monitor Host presence for the current user/account
+  useEffect(() => {
+    const effectiveUserId = currentUser?.id || 'guest_user';
+    const unsub = spytifyConnect.monitorHostOnline(effectiveUserId, (online) => {
+      setIsHostOnline(online);
+    });
+    return unsub;
+  }, [currentUser?.id]);
+
+  // Broadcast state to LiveKit / Supabase subscribers whenever host playback changes
+  useEffect(() => {
+    if (!isConnectHostActive) return;
+    spytifyConnect.broadcastPlaybackState({
+      currentTrack,
+      isPlaying,
+      currentTime,
+      duration,
+      volume,
+      timestamp: Date.now(),
+    });
+  }, [isConnectHostActive, currentTrack, isPlaying, duration, volume]);
+
+  const handleToggleConnectHost = useCallback(async () => {
+    const effectiveUserId = currentUser?.id || 'guest_user';
+    if (isConnectHostActive) {
+      await spytifyConnect.stopHost();
+      setIsConnectHostActive(false);
+      showNotification(language === 'vi' ? 'Đã tắt trạm phát Spytify Connect' : 'Spytify Connect Broadcaster Stopped');
+      return;
+    }
+
+    const masterStream = getOrCreateMasterAudioStream();
+    const ok = await spytifyConnect.startHost(
+      effectiveUserId,
+      masterStream,
+      (cmd: ConnectCommand) => {
+        console.log('[Spytify Connect] Received remote command from mobile:', cmd);
+        switch (cmd.type) {
+          case 'PLAY':
+            if (!isPlayingRef.current) handleTogglePlayRef.current();
+            break;
+          case 'PAUSE':
+            if (isPlayingRef.current) handleTogglePlayRef.current();
+            break;
+          case 'TOGGLE_PLAY':
+            handleTogglePlayRef.current();
+            break;
+          case 'NEXT':
+            handleUserNextRef.current();
+            break;
+          case 'PREV':
+            handleUserPrevRef.current();
+            break;
+          case 'SEEK':
+            handleSeekRef.current(cmd.time);
+            break;
+          case 'SET_VOLUME':
+            handleVolumeChange(cmd.volume);
+            break;
+          case 'PLAY_TRACK':
+            if (cmd.track) playTrackInternal(cmd.track);
+            break;
+        }
+      }
+    );
+
+    if (ok) {
+      setIsConnectHostActive(true);
+      spytifyConnect.broadcastPlaybackState({
+        currentTrack,
+        isPlaying,
+        currentTime,
+        duration,
+        volume,
+        timestamp: Date.now(),
+      });
+      showNotification(language === 'vi' ? 'Trạm phát Spytify Connect đã sẵn sàng! Mở Spytify trên iPhone để nghe live' : 'Spytify Connect is live! Connect on iPhone to listen');
+    } else {
+      showNotification(language === 'vi' ? 'Không thể khởi động Spytify Connect' : 'Failed to start Spytify Connect');
+    }
+  }, [currentUser?.id, isConnectHostActive, currentTrack, isPlaying, currentTime, duration, volume, language]);
+
+  const handleToggleConnectClient = useCallback(async () => {
+    const effectiveUserId = currentUser?.id || 'guest_user';
+    if (isConnectClientActive) {
+      await spytifyConnect.disconnectClient();
+      setIsConnectClientActive(false);
+      showNotification(language === 'vi' ? 'Đã ngắt kết nối với Desktop' : 'Disconnected from Desktop');
+      return;
+    }
+
+    const ok = await spytifyConnect.connectClient(
+      effectiveUserId,
+      (remoteState: ConnectPlaybackState) => {
+        if (remoteState.currentTrack) {
+          setCurrentTrack(remoteState.currentTrack);
+          currentTrackRef.current = remoteState.currentTrack;
+        }
+        if (typeof remoteState.isPlaying === 'boolean') {
+          setIsPlaying(remoteState.isPlaying);
+          isPlayingRef.current = remoteState.isPlaying;
+        }
+        if (typeof remoteState.currentTime === 'number') {
+          setCurrentTime(remoteState.currentTime);
+          currentTimeRef.current = remoteState.currentTime;
+        }
+        if (typeof remoteState.duration === 'number') {
+          setDuration(remoteState.duration);
+          durationRef.current = remoteState.duration;
+        }
+        if (typeof remoteState.volume === 'number') {
+          setVolume(remoteState.volume);
+          volumeRef.current = remoteState.volume;
+        }
+      }
+    );
+
+    if (ok) {
+      setIsConnectClientActive(true);
+      showNotification(language === 'vi' ? 'Đã kết nối! Đang nghe trực tiếp âm thanh từ Desktop (WebRTC)' : 'Connected! Streaming live master audio from Desktop');
+    } else {
+      showNotification(language === 'vi' ? 'Không thể kết nối tới Desktop. Hãy chắc chắn Desktop đã bật Host!' : 'Failed to connect. Ensure Desktop host is active!');
+    }
+  }, [currentUser?.id, isConnectClientActive, language]);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
@@ -5264,8 +5430,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             themeMode === 'light' ? 'bg-white/98' : 'bg-[#0c0c14]/98'
           } ${
             isPlayerBarMinimized
-              ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[34px] sm:right-6 md:right-6'
-              : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[58px] sm:right-6 md:right-6'
+              ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[34px]'
+              : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[58px]'
+          } ${
+            showYoutubeVideo && currentTrack?.source === 'youtube'
+              ? 'sm:right-[344px] lg:right-[384px]'
+              : 'sm:right-6 md:right-6'
           } ${
             isNextTrackPopupCollapsed ? 'w-auto sm:w-80' : 'w-auto sm:w-88 max-w-full sm:max-w-[calc(100vw-3rem)]'
           }`}
@@ -5613,7 +5783,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
                   : (showYoutubeVideo
-                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[300px] md:sm:w-[320px] md:lg:w-[360px] md:h-[169px] md:sm:h-[180px] md:lg:h-[202px] md:min-h-[160px] md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
                       : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
                     ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
@@ -5660,7 +5830,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
           {/* Desktop Floating Header Bar (Overlay) */}
           {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1) && (
-            <div className="hidden md:flex absolute top-0 inset-x-0 p-2 bg-gradient-to-b from-black/95 via-black/75 to-transparent items-center justify-between z-10 opacity-80 hover:opacity-100 transition-opacity pointer-events-auto">
+            <div className="hidden md:flex absolute top-0 inset-x-0 px-3 py-1.5 bg-black/85 backdrop-blur-md border-b border-white/10 items-center justify-between z-10 transition-opacity pointer-events-auto shadow-md">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
                 <span className="text-[11px] font-bold text-white truncate drop-shadow">
@@ -5670,7 +5840,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               <button
                 type="button"
                 onClick={handleToggleYoutubeVideo}
-                className="p-1 rounded-full bg-black/70 hover:bg-white/25 text-white/90 hover:text-white transition-colors cursor-pointer border border-white/10"
+                className="p-1 rounded-full bg-white/10 hover:bg-white/25 text-white/90 hover:text-white transition-colors cursor-pointer border border-white/10"
                 title={language === 'vi' ? 'Thu nhỏ MV' : 'Minimize MV'}
               >
                 <X className="w-3.5 h-3.5" />
@@ -5701,7 +5871,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
                   : (showYoutubeVideo
-                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[280px] md:sm:w-[320px] md:lg:w-[360px] md:h-auto md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[300px] md:sm:w-[320px] md:lg:w-[360px] md:h-[169px] md:sm:h-[180px] md:lg:h-[202px] md:min-h-[160px] md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
                       : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
                     ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
@@ -5748,7 +5918,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
           {/* Desktop Floating Header Bar (Overlay) */}
           {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2) && (
-            <div className="hidden md:flex absolute top-0 inset-x-0 p-2 bg-gradient-to-b from-black/95 via-black/75 to-transparent items-center justify-between z-10 opacity-80 hover:opacity-100 transition-opacity pointer-events-auto">
+            <div className="hidden md:flex absolute top-0 inset-x-0 px-3 py-1.5 bg-black/85 backdrop-blur-md border-b border-white/10 items-center justify-between z-10 transition-opacity pointer-events-auto shadow-md">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
                 <span className="text-[11px] font-bold text-white truncate drop-shadow">
@@ -5758,7 +5928,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               <button
                 type="button"
                 onClick={handleToggleYoutubeVideo}
-                className="p-1 rounded-full bg-black/70 hover:bg-white/25 text-white/90 hover:text-white transition-colors cursor-pointer border border-white/10"
+                className="p-1 rounded-full bg-white/10 hover:bg-white/25 text-white/90 hover:text-white transition-colors cursor-pointer border border-white/10"
                 title={language === 'vi' ? 'Thu nhỏ MV' : 'Minimize MV'}
               >
                 <X className="w-3.5 h-3.5" />
@@ -6573,6 +6743,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         showMv={showYoutubeVideo}
         isMobilePlayerOpen={isMobilePlayerOpen}
         onToggleMobilePlayer={setIsMobilePlayerOpen}
+        isConnectHostActive={isConnectHostActive}
+        onToggleConnectHost={handleToggleConnectHost}
+        isConnectClientActive={isConnectClientActive}
+        isHostOnline={isHostOnline}
+        onToggleConnectClient={handleToggleConnectClient}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}
