@@ -4809,8 +4809,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       });
   }, [isTauriApp]);
 
-  // Monitor Host presence for the current user/account
+  // Monitor Host presence for the current user/account (Only for mobile/web listeners, Desktop is the Host)
   useEffect(() => {
+    if (isTauriApp) {
+      setIsHostOnline(true);
+      return;
+    }
     const effectiveUserId = currentUser?.id || 'guest_user';
     const unsub = spytifyConnect.monitorHostOnline(effectiveUserId, (online) => {
       setIsHostOnline(online);
@@ -4819,7 +4823,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
     });
     return unsub;
-  }, [currentUser?.id]);
+  }, [currentUser?.id, isTauriApp]);
 
   // Broadcast state to Supabase Realtime subscribers whenever host playback changes
   useEffect(() => {

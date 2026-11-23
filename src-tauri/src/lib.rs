@@ -1866,6 +1866,11 @@ pub fn run() {
             // Start local audio CORS streaming proxy for Web Audio & WebRTC broadcast
             proxy::start_audio_proxy();
 
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.open_devtools();
+            }
+
             // Setup System Tray
             let show_i = MenuItem::with_id(app, "show", "Hiện Spytify", true, None::<&str>)?;
             let toggle_play_i = MenuItem::with_id(app, "toggle_play", "Tạm dừng / Phát tiếp", true, None::<&str>)?;

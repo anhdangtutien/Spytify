@@ -19,7 +19,7 @@
         "minHeight": 640,
         "decorations": true,
         "transparent": false,
-        "additionalBrowserArgs": "--hide-media-capture-notification --disable-features=Translate,OptimizationHints,MediaRouter,TabCaptureNotification --disk-cache-size=16777216 --media-cache-size=16777216 --js-flags=--max-old-space-size=128"
+        "additionalBrowserArgs": "--hide-media-capture-notification --disable-features=Translate,OptimizationHints,MediaRouter,TabCaptureNotification --disk-cache-size=33554432 --media-cache-size=33554432"
       }
     ],
     "security": {
