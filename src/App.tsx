@@ -3675,7 +3675,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // ─── Core play function ──────────────────────────────────────────────────
   const playTrackInternal = async (rawTrack: Track, isBackOrForward = false, isCrossfade = false) => {
-    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'PLAY_TRACK', track: rawTrack });
       return;
     }
@@ -4522,7 +4522,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleTogglePlay = async () => {
-    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: isPlayingRef.current ? 'PAUSE' : 'PLAY' });
       return;
     }
@@ -4651,7 +4651,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [syncPlaybackStateNow]);
 
   const handleSeek = async (secs: number) => {
-    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'SEEK', time: secs });
       return;
     }
@@ -4688,7 +4688,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleVolumeChange = async (v: number) => {
     const clamped = Math.max(0, Math.min(1, isNaN(v) ? 0.8 : v));
-    if (isConnectClientActive) {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'SET_VOLUME', volume: clamped });
     }
     setVolume(clamped);
@@ -4715,7 +4715,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   
   const handleUserNext = () => {
-    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'NEXT' });
       return;
     }
@@ -4755,7 +4755,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleUserPrev = () => {
-    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'PREV' });
       return;
     }
@@ -4973,12 +4973,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     return ok;
   }, [currentUser?.id]);
 
-  // Auto-connect mobile client when Desktop Host is online
+  // Auto-connect mobile client
   useEffect(() => {
-    if (!isTauriApp && isHostOnline && !isConnectClientActive) {
+    if (!isTauriApp && !isConnectClientActive) {
       handleConnectAsClient();
     }
-  }, [isTauriApp, isHostOnline, isConnectClientActive, handleConnectAsClient]);
+  }, [isTauriApp, isConnectClientActive, handleConnectAsClient]);
 
   const handleToggleConnectClient = useCallback(async () => {
     if (isConnectClientActive) {

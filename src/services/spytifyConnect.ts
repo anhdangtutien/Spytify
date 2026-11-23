@@ -113,7 +113,7 @@ class SpytifyConnectService {
           }
         });
 
-      // Announce on global hub channel for zero-config auto-pairing
+      // Announce on global hub channel for zero-config auto-pairing and listen for commands
       const existingHub = client.getChannels().find((c: any) => c.topic === 'realtime:spytify_connect_hub');
       if (existingHub) {
         try { client.removeChannel(existingHub); } catch {}
@@ -122,21 +122,31 @@ class SpytifyConnectService {
         config: { broadcast: { self: false }, presence: { key: `hub_${userId}` } },
       });
 
-      this.hubChannel.subscribe(async (status: string) => {
-        if (status === 'SUBSCRIBED' && this.hubChannel) {
-          await this.hubChannel.track({
-            role: 'host',
-            hostId: userId,
-            name: hostDeviceName,
-            onlineAt: Date.now(),
-          });
-          this.hubChannel.send({
-            type: 'broadcast',
-            event: 'host_online',
-            payload: { hostId: userId, name: hostDeviceName, timestamp: Date.now() },
-          }).catch(() => {});
-        }
-      });
+      this.hubChannel
+        .on('broadcast', { event: 'remote_cmd' }, ({ payload }: { payload: ConnectCommand }) => {
+          if (!payload) return;
+          console.log('[Spytify Connect] Host received command via hub:', payload);
+          if (payload.type === 'REQUEST_STATE' && this.lastState) {
+            this.broadcastPlaybackState(this.lastState, true);
+            return;
+          }
+          this.onCommandCallbacks.forEach(cb => cb(payload));
+        })
+        .subscribe(async (status: string) => {
+          if (status === 'SUBSCRIBED' && this.hubChannel) {
+            await this.hubChannel.track({
+              role: 'host',
+              hostId: userId,
+              name: hostDeviceName,
+              onlineAt: Date.now(),
+            });
+            this.hubChannel.send({
+              type: 'broadcast',
+              event: 'host_online',
+              payload: { hostId: userId, name: hostDeviceName, timestamp: Date.now() },
+            }).catch(() => {});
+          }
+        });
 
       this.isHostRunning = true;
       this.notifyHostStatus(true);
@@ -171,19 +181,29 @@ class SpytifyConnectService {
    */
   public broadcastPlaybackState(state: ConnectPlaybackState, force = false): void {
     this.lastState = state;
-    if (!this.realtimeChannel || !this.isHostRunning) return;
+    if (!this.isHostRunning) return;
 
     const now = Date.now();
-    if (!force && (now - this.lastBroadcastTime < 900)) {
+    if (!force && (now - this.lastBroadcastTime < 800)) {
       return;
     }
     this.lastBroadcastTime = now;
 
-    this.realtimeChannel.send({
-      type: 'broadcast',
-      event: 'state_update',
-      payload: state,
-    }).catch(() => {});
+    if (this.realtimeChannel) {
+      this.realtimeChannel.send({
+        type: 'broadcast',
+        event: 'state_update',
+        payload: state,
+      }).catch(() => {});
+    }
+
+    if (this.hubChannel) {
+      this.hubChannel.send({
+        type: 'broadcast',
+        event: 'state_update',
+        payload: state,
+      }).catch(() => {});
+    }
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -198,13 +218,6 @@ class SpytifyConnectService {
     userId: string,
     onState?: StateCallback
   ): Promise<boolean> {
-    if (this.isClientConnected && this.activeUserId === userId) {
-      return true;
-    }
-
-    await this.disconnectClient();
-    this.activeUserId = userId;
-
     if (onState) {
       this.onStateCallbacks.add(onState);
     }
@@ -216,7 +229,12 @@ class SpytifyConnectService {
     }
 
     try {
+      this.activeUserId = userId;
       const targetUserId = (userId === 'guest_user' && this.discoveredHostId) ? this.discoveredHostId : userId;
+
+      await this.disconnectClient();
+
+      // Channel 1: Dedicated user channel
       const channelName = `spytify_remote_${targetUserId}`;
       const existing = client.getChannels().find((c: any) => c.topic === `realtime:${channelName}`);
       if (existing) {
@@ -231,6 +249,8 @@ class SpytifyConnectService {
         .on('broadcast', { event: 'state_update' }, ({ payload }: { payload: ConnectPlaybackState }) => {
           if (!payload) return;
           this.lastState = payload;
+          this.isHostOnline = true;
+          this.notifyHostStatus(true);
           this.onStateCallbacks.forEach(cb => cb(payload));
         })
         .subscribe((status: string) => {
@@ -238,6 +258,37 @@ class SpytifyConnectService {
             this.sendRemoteCommand({ type: 'REQUEST_STATE' });
           }
         });
+
+      // Channel 2: Shared discovery & control hub
+      let existingHub = client.getChannels().find((c: any) => c.topic === 'realtime:spytify_connect_hub');
+      if (!existingHub) {
+        this.hubChannel = client.channel('spytify_connect_hub', {
+          config: { broadcast: { self: false } },
+        });
+        this.hubChannel
+          .on('broadcast', { event: 'state_update' }, ({ payload }: { payload: ConnectPlaybackState }) => {
+            if (!payload) return;
+            this.lastState = payload;
+            this.isHostOnline = true;
+            this.notifyHostStatus(true);
+            this.onStateCallbacks.forEach(cb => cb(payload));
+          })
+          .on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string; name?: string } }) => {
+            if (payload?.hostId) {
+              this.discoveredHostId = payload.hostId;
+              if (payload.name) this.discoveredHostName = payload.name;
+              this.isHostOnline = true;
+              this.notifyHostStatus(true);
+            }
+          })
+          .subscribe((status: string) => {
+            if (status === 'SUBSCRIBED') {
+              this.sendRemoteCommand({ type: 'REQUEST_STATE' });
+            }
+          });
+      } else {
+        this.hubChannel = existingHub;
+      }
 
       this.isClientConnected = true;
       this.notifyClientStatus(true);
@@ -268,15 +319,50 @@ class SpytifyConnectService {
    * Sends a remote control command from Mobile to Desktop Host (Play, Pause, Next, Prev, Seek, Volume).
    */
   public sendRemoteCommand(cmd: ConnectCommand): void {
-    if (!this.realtimeChannel) return;
+    const client = getSupabaseClient();
+    if (!client) return;
 
-    this.realtimeChannel.send({
-      type: 'broadcast',
-      event: 'remote_cmd',
-      payload: cmd,
-    }).catch((err: any) => {
-      console.warn('[Spytify Connect] Send remote command failed:', err);
-    });
+    if (this.realtimeChannel) {
+      this.realtimeChannel.send({
+        type: 'broadcast',
+        event: 'remote_cmd',
+        payload: cmd,
+      }).catch((err: any) => {
+        console.warn('[Spytify Connect] Send remote command failed on user channel:', err);
+      });
+    }
+
+    if (this.hubChannel) {
+      this.hubChannel.send({
+        type: 'broadcast',
+        event: 'remote_cmd',
+        payload: cmd,
+      }).catch((err: any) => {
+        console.warn('[Spytify Connect] Send remote command failed on hub:', err);
+      });
+    } else {
+      let hub: any = client.getChannels().find((c: any) => c.topic === 'realtime:spytify_connect_hub');
+      if (!hub) {
+        const newHub = client.channel('spytify_connect_hub', {
+          config: { broadcast: { self: false } },
+        });
+        newHub.subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            newHub.send({
+              type: 'broadcast',
+              event: 'remote_cmd',
+              payload: cmd,
+            }).catch(() => {});
+          }
+        });
+      } else {
+        hub.send({
+          type: 'broadcast',
+          event: 'remote_cmd',
+          payload: cmd,
+        }).catch(() => {});
+      }
+    }
   }
 
   public sendCommand(cmd: ConnectCommand): void {
@@ -298,70 +384,59 @@ class SpytifyConnectService {
     if (!client) return () => {};
 
     try {
-      const monitorId = Math.random().toString(36).slice(2, 8);
-      const channelName = `spytify_mon_${userId}_${monitorId}`;
-      const channel = client.channel(channelName, {
-        config: { broadcast: { self: false }, presence: { key: `mon_${monitorId}` } },
-      });
+      // Connect to shared hub channel
+      let hub: any = client.getChannels().find((c: any) => c.topic === 'realtime:spytify_connect_hub');
+      if (!hub) {
+        const newHub = client.channel('spytify_connect_hub', {
+          config: { broadcast: { self: false } },
+        });
 
-      channel
-        .on('presence', { event: 'sync' }, () => {
-          try {
-            const state = channel.presenceState();
-            const hasHost = Object.values(state).some((presences: any) =>
-              Array.isArray(presences) && presences.some(p => p.role === 'host')
-            );
-            this.isHostOnline = hasHost;
-            this.notifyHostStatus(hasHost);
-          } catch {}
-        })
-        .subscribe();
-
-      // Also monitor global discovery hub so mobile can discover Desktop even with different/guest accounts
-      const hubName = `spytify_hub_${monitorId}`;
-      const hub = client.channel(hubName, {
-        config: { broadcast: { self: false }, presence: { key: `hub_${monitorId}` } },
-      });
-      hub
-        .on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string; name?: string } }) => {
-          if (payload?.hostId) {
-            this.discoveredHostId = payload.hostId;
-            if (payload.name) this.discoveredHostName = payload.name;
-            this.isHostOnline = true;
-            this.notifyHostStatus(true);
-          }
-        })
-        .on('presence', { event: 'sync' }, () => {
-          try {
-            const state = hub.presenceState();
-            let foundHostId: string | null = null;
-            let foundName = 'Spytify Desktop';
-            for (const presences of Object.values(state)) {
-              if (Array.isArray(presences)) {
-                const h = presences.find((p: any) => p && p.role === 'host') as any;
-                if (h) {
-                  foundHostId = h.hostId || h.userId;
-                  if (h.name) foundName = h.name;
-                  break;
-                }
-              }
-            }
-            if (foundHostId) {
-              this.discoveredHostId = foundHostId;
-              this.discoveredHostName = foundName;
+        newHub
+          .on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string; name?: string } }) => {
+            if (payload?.hostId) {
+              this.discoveredHostId = payload.hostId;
+              if (payload.name) this.discoveredHostName = payload.name;
               this.isHostOnline = true;
               this.notifyHostStatus(true);
             }
-          } catch {}
-        })
-        .subscribe();
+          })
+          .on('broadcast', { event: 'state_update' }, ({ payload }: { payload: ConnectPlaybackState }) => {
+            if (payload) {
+              this.lastState = payload;
+              this.isHostOnline = true;
+              this.notifyHostStatus(true);
+              this.onStateCallbacks.forEach(cb => cb(payload));
+            }
+          })
+          .on('presence', { event: 'sync' }, () => {
+            try {
+              const state = newHub.presenceState();
+              let foundHostId: string | null = null;
+              let foundName = 'Spytify Desktop';
+              for (const presences of Object.values(state)) {
+                if (Array.isArray(presences)) {
+                  const h = presences.find((p: any) => p && p.role === 'host') as any;
+                  if (h) {
+                    foundHostId = h.hostId || h.userId;
+                    if (h.name) foundName = h.name;
+                    break;
+                  }
+                }
+              }
+              const hasHost = !!foundHostId;
+              if (hasHost) {
+                this.discoveredHostId = foundHostId;
+                this.discoveredHostName = foundName;
+              }
+              this.isHostOnline = hasHost;
+              this.notifyHostStatus(hasHost);
+            } catch {}
+          })
+          .subscribe();
+      }
 
       return () => {
         this.onHostStatusCallbacks.delete(onHostStatus);
-        try {
-          client.removeChannel(channel);
-          client.removeChannel(hub);
-        } catch {}
       };
     } catch (err) {
       console.warn('[Spytify Connect] monitorHostOnline error:', err);
