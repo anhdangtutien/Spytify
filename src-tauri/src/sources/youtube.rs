@@ -264,10 +264,17 @@ pub async fn resolve_youtube_music_stream(
     let seven_clouds_query = format!("{} {} 7clouds rap", title, artist).trim().to_string();
     if !seven_clouds_query.is_empty() {
         if let Ok(seven_tracks) = search_innertube(&client, &seven_clouds_query).await {
+            let title_words: Vec<String> = title.to_lowercase()
+                .split_whitespace()
+                .filter(|w| w.len() > 2)
+                .map(|s| s.to_string())
+                .collect();
             for st in seven_tracks {
                 let author_low = st.artist.to_lowercase();
                 let title_low = st.title.to_lowercase();
-                if author_low.contains("7cloud") || author_low.contains("7 cloud") || title_low.contains("7cloud") || title_low.contains("7 cloud") {
+                let is_7cloud = author_low.contains("7cloud") || author_low.contains("7 cloud") || title_low.contains("7cloud") || title_low.contains("7 cloud");
+                let matches_title = title_words.is_empty() || title_words.iter().any(|w| title_low.contains(w));
+                if is_7cloud && matches_title {
                     candidate_ids.push(st.url_or_id);
                     break;
                 }

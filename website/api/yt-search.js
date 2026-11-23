@@ -66,16 +66,16 @@ export default async function handler(req, res) {
       } catch {}
     }
 
-    // Fallback regex if parsing was empty
+    // Fallback regex if structured parsing was empty: only extract video blocks with genuine title
     if (items.length === 0) {
-      const vids = [...new Set([...html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)].map(m => m[1]))];
-      for (const vid of vids.slice(0, 15)) {
+      const videoBlocks = [...html.matchAll(/"videoRenderer":\s*\{"videoId":"([A-Za-z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\]/g)];
+      for (const m of videoBlocks.slice(0, 15)) {
         items.push({
-          videoId: vid,
-          title: query,
+          videoId: m[1],
+          title: m[2],
           author: 'YouTube',
           duration_secs: 210,
-          thumbnail: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+          thumbnail: `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg`,
         });
       }
     }

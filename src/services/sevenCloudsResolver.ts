@@ -7,6 +7,27 @@ const sevenCloudsCache = new Map<string, string>();
 const unblockedAudioCache = new Map<string, string>();
 
 /**
+ * Clears in-memory and sessionStorage cache of unblocked video alternatives.
+ */
+export function clearUnblockedAudioCache(): void {
+  unblockedAudioCache.clear();
+  sevenCloudsCache.clear();
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (key && (key.startsWith('spytify_unblocked_') || key.startsWith('spytify_7c_'))) {
+          sessionStorage.removeItem(key);
+        }
+      }
+    }
+  } catch {}
+}
+
+// Automatically clear corrupted cache from previous sessions on startup
+clearUnblockedAudioCache();
+
+/**
  * Known high-quality lyric and audio channels on YouTube that do not block embedding
  * and do not include movie/MV intro/outro dialogues.
  */
@@ -89,6 +110,44 @@ export function isLyricChannelMatch(author?: string, title?: string): boolean {
   if (KNOWN_LYRIC_CHANNELS.some(c => a.includes(c) || t.includes(c))) return true;
   if (t.includes('(lyrics)') || t.includes('[lyrics]') || t.includes('(lyric video)') || t.includes('[lyric video]')) return true;
   return false;
+}
+
+/**
+ * Strictly verifies that a candidate video is actually the intended song
+ * and NOT an unrelated song (such as a trending recommendation, unrelated artist or ad).
+ */
+export function isSongRelevantMatch(
+  candidate: { title?: string; author?: string },
+  targetTitle: string,
+  targetArtist: string
+): boolean {
+  if (!candidate || !targetTitle) return false;
+  const cTitle = (candidate.title || '').toLowerCase();
+  const cAuthor = (candidate.author || '').toLowerCase();
+  const cleanT = cleanQueryTerm(targetTitle).toLowerCase();
+  const cleanA = cleanQueryTerm(targetArtist).toLowerCase();
+
+  // 1. Target title significant words matching
+  const tWords = cleanT.split(/\s+/).filter(w => w.length >= 3);
+  if (tWords.length > 0) {
+    const matchedCount = tWords.filter(w => cTitle.includes(w)).length;
+    const required = tWords.length <= 2 ? 1 : Math.max(1, Math.ceil(tWords.length * 0.4));
+    if (matchedCount < required) {
+      return false; // Title doesn't match at all -> REJECT!
+    }
+  }
+
+  // 2. Reject prominent Vietnamese artist videos if the target song is international / different artist
+  const vietnameseArtists = ['sơn tùng', 'son tung', 'm-tp', 'hieuthuhai', 'đen vâu', 'den vau', 'soobin', 'tang duy tan'];
+  const isTargetVietnamese = vietnameseArtists.some(va => cleanA.includes(va) || cleanT.includes(va));
+  if (!isTargetVietnamese) {
+    const candidateHasVietnamese = vietnameseArtists.some(va => cTitle.includes(va) || cAuthor.includes(va));
+    if (candidateHasVietnamese) {
+      return false; // Target is international (e.g. 88rising / Rich Brian) but candidate is Sơn Tùng / V-Pop!
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -236,8 +295,10 @@ export async function resolve7CloudsVideoId(
   const query = `${cleanT} ${cleanA} 7clouds rap`.trim();
   const items = await queryYtSearch(query);
 
-  // 1. First priority: exact 7clouds Rap or 7clouds channel
-  const sevenCloudsItem = items.find(i => is7CloudsMatch(i) && i.videoId);
+  // 1. First priority: exact 7clouds Rap or 7clouds channel that matches the song
+  const sevenCloudsItem = items.find(
+    i => is7CloudsMatch(i) && isSongRelevantMatch(i, title, artist) && i.videoId
+  );
 
   if (sevenCloudsItem?.videoId) {
     const foundVid = extractCleanYtId(sevenCloudsItem.videoId) || sevenCloudsItem.videoId;
@@ -289,17 +350,18 @@ export async function resolveUnblockedAudioVideoId(
     }
   } catch {}
 
-  // 0. Instant candidate evaluation from active search / playlist pool
+  // 0. Instant candidate evaluation from active search / playlist pool (strictly song relevant)
   if (candidateVideos && candidateVideos.length > 0) {
     const poolHit = candidateVideos.find(i => {
       const vid = extractCleanYtId(i.videoId) || i.videoId;
       if (!vid || vid === cleanBlocked) return false;
+      if (!isSongRelevantMatch(i, title, artist)) return false;
       const author = (i.author || '').toLowerCase();
       const t = (i.title || '').toLowerCase();
       return isTopicChannel(author) || is7CloudsMatch(i) || isLyricChannelMatch(author, t) || t.includes('official audio') || t.includes('audio');
     }) || candidateVideos.find(i => {
       const vid = extractCleanYtId(i.videoId) || i.videoId;
-      return Boolean(vid && vid !== cleanBlocked);
+      return Boolean(vid && vid !== cleanBlocked && isSongRelevantMatch(i, title, artist));
     });
 
     if (poolHit?.videoId) {
@@ -315,9 +377,10 @@ export async function resolveUnblockedAudioVideoId(
   const topicHit = topicItems.find(i => {
     const vid = extractCleanYtId(i.videoId) || i.videoId;
     if (!vid || vid === cleanBlocked) return false;
+    if (!isSongRelevantMatch(i, title, artist)) return false;
     const author = (i.author || '').toLowerCase();
-    const title = (i.title || '').toLowerCase();
-    return isTopicChannel(author) || title.includes('topic') || title.includes('official audio') || title.includes('audio');
+    const t = (i.title || '').toLowerCase();
+    return isTopicChannel(author) || t.includes('topic') || t.includes('official audio') || t.includes('audio');
   });
   if (topicHit?.videoId) {
     const found = extractCleanYtId(topicHit.videoId) || topicHit.videoId;
@@ -330,7 +393,9 @@ export async function resolveUnblockedAudioVideoId(
   const sevenCloudsItems = await queryYtSearch(`${cleanT} ${cleanA} 7clouds rap`);
   const sevenCloudsHit = sevenCloudsItems.find(i => {
     const vid = extractCleanYtId(i.videoId) || i.videoId;
-    return vid && vid !== cleanBlocked && is7CloudsMatch(i);
+    if (!vid || vid === cleanBlocked) return false;
+    if (!isSongRelevantMatch(i, title, artist)) return false;
+    return is7CloudsMatch(i);
   });
   if (sevenCloudsHit?.videoId) {
     const found = extractCleanYtId(sevenCloudsHit.videoId) || sevenCloudsHit.videoId;
@@ -343,7 +408,9 @@ export async function resolveUnblockedAudioVideoId(
   const lyricItems = await queryYtSearch(`${cleanT} ${cleanA} lyrics`);
   const recognizedLyricHit = lyricItems.find(i => {
     const vid = extractCleanYtId(i.videoId) || i.videoId;
-    return vid && vid !== cleanBlocked && isLyricChannelMatch(i.author, i.title);
+    if (!vid || vid === cleanBlocked) return false;
+    if (!isSongRelevantMatch(i, title, artist)) return false;
+    return isLyricChannelMatch(i.author, i.title);
   });
   if (recognizedLyricHit?.videoId) {
     const found = extractCleanYtId(recognizedLyricHit.videoId) || recognizedLyricHit.videoId;
@@ -352,10 +419,11 @@ export async function resolveUnblockedAudioVideoId(
     return found;
   }
 
-  // 4. Any alternative video with "Lyrics", "Audio", "Visualizer" or "Topic" in the title that is not the blocked one
+  // 4. Any alternative video with "Lyrics", "Audio", "Visualizer" or "Topic" in the title that matches the song
   const anyAudioHit = [...topicItems, ...sevenCloudsItems, ...lyricItems].find(i => {
     const vid = extractCleanYtId(i.videoId) || i.videoId;
     if (!vid || vid === cleanBlocked) return false;
+    if (!isSongRelevantMatch(i, title, artist)) return false;
     const t = (i.title || '').toLowerCase();
     return t.includes('lyric') || t.includes('audio') || t.includes('topic') || t.includes('visualizer');
   });
@@ -366,10 +434,10 @@ export async function resolveUnblockedAudioVideoId(
     return found;
   }
 
-  // 5. Ultimate Fallback: Any alternate upload of the song from search that is not the blocked ID
+  // 5. Ultimate Fallback: Any alternate upload of the song from search that matches the song
   const anyAlternateHit = [...topicItems, ...sevenCloudsItems, ...lyricItems].find(i => {
     const vid = extractCleanYtId(i.videoId) || i.videoId;
-    return Boolean(vid && vid !== cleanBlocked);
+    return Boolean(vid && vid !== cleanBlocked && isSongRelevantMatch(i, title, artist));
   });
   if (anyAlternateHit?.videoId) {
     const found = extractCleanYtId(anyAlternateHit.videoId) || anyAlternateHit.videoId;
