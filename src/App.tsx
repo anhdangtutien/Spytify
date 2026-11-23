@@ -1113,7 +1113,11 @@ export default function App() {
   const [mobileMvRect, setMobileMvRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
   // Spytify Connect state (WebRTC Live Stream to iPhone & Supabase Remote Control)
-  const [isConnectHostActive, setIsConnectHostActive] = useState(false);
+  // Host is ONLY available on Desktop Tauri App (Rust core backend)
+  const isTauriApp = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__) && !Boolean((window as any).__TAURI_WEB_SHIM__);
+  const [isConnectHostActive, setIsConnectHostActive] = useState(() => {
+    return isTauriApp && localStorage.getItem('spytify_connect_host_enabled') === 'true';
+  });
   const [isConnectClientActive, setIsConnectClientActive] = useState(false);
   const [isHostOnline, setIsHostOnline] = useState(false);
 
@@ -4801,10 +4805,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [isConnectHostActive, currentTrack, isPlaying, duration, volume]);
 
   const handleToggleConnectHost = useCallback(async () => {
-    const effectiveUserId = currentUser?.id || 'guest_user';
+    if (!isTauriApp) {
+      showNotification(language === 'vi' ? 'Trạm phát Host chỉ khả dụng trên Spytify Desktop App (Tauri Rust)' : 'Host Broadcaster is only available on Desktop Tauri App');
+      return;
+    }
+    const effectiveUserId = currentUser?.id || localStorage.getItem('spytify_active_user_id') || 'guest_user';
     if (isConnectHostActive) {
       await spytifyConnect.stopHost();
       setIsConnectHostActive(false);
+      try { localStorage.setItem('spytify_connect_host_enabled', 'false'); } catch {}
       showNotification(language === 'vi' ? 'Đã tắt trạm phát Spytify Connect' : 'Spytify Connect Broadcaster Stopped');
       return;
     }
@@ -4851,6 +4860,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     if (ok) {
       setIsConnectHostActive(true);
+      try { localStorage.setItem('spytify_connect_host_enabled', 'true'); } catch {}
       spytifyConnect.broadcastPlaybackState({
         currentTrack,
         isPlaying,
@@ -4863,7 +4873,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     } else {
       showNotification(language === 'vi' ? 'Không thể khởi động Spytify Connect' : 'Failed to start Spytify Connect');
     }
-  }, [currentUser?.id, isConnectHostActive, currentTrack, isPlaying, currentTime, duration, volume, language]);
+  }, [currentUser?.id, isConnectHostActive, currentTrack, isPlaying, currentTime, duration, volume, language, isTauriApp]);
 
   const handleToggleConnectClient = useCallback(async () => {
     const effectiveUserId = currentUser?.id || 'guest_user';
@@ -6783,7 +6793,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         isMobilePlayerOpen={isMobilePlayerOpen}
         onToggleMobilePlayer={setIsMobilePlayerOpen}
         isConnectHostActive={isConnectHostActive}
-        onToggleConnectHost={handleToggleConnectHost}
+        onToggleConnectHost={isTauriApp ? handleToggleConnectHost : undefined}
         isConnectClientActive={isConnectClientActive}
         isHostOnline={isHostOnline}
         onToggleConnectClient={handleToggleConnectClient}
