@@ -284,17 +284,6 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
           }`}>
             {sourceLabel}
           </span>
-          <span 
-            className="hidden xl:inline-flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded border transition-colors shrink-0"
-            style={{
-              color: accentColor,
-              backgroundColor: `${accentColor}18`,
-              borderColor: `${accentColor}35`,
-            }}
-          >
-            <Radio className="w-2.5 h-2.5 animate-pulse" style={{ color: accentColor }} />
-            60FPS
-          </span>
         </div>
       </div>
 

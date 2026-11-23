@@ -343,7 +343,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   }
 
   return (
-    <div ref={containerRef} className="w-full text-xs select-none">
+    <div ref={containerRef} className="w-full text-xs select-none pb-28 sm:pb-32">
       {/* Top Fast Filter & Status Bar */}
       {tracks.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 py-2 mb-2 bg-[#09090c] rounded-xl border border-[#161620]">
@@ -404,7 +404,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
       )}
 
       {/* Header — Spy Minimalist with Rust native sorting */}
-      <div className="grid grid-cols-[32px_1fr_auto] sm:grid-cols-[36px_1fr_76px_96px] md:grid-cols-[40px_1fr_1fr_90px_110px] px-2 sm:px-3 py-2 border-b border-[#141418] text-[10px] font-bold text-[#666677] uppercase tracking-wider sticky top-0 bg-black/90 backdrop-blur z-10 font-mono">
+      <div className="grid grid-cols-[36px_minmax(0,1fr)_auto] sm:grid-cols-[36px_minmax(0,1fr)_76px_96px] md:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_90px_110px] px-2 sm:px-3 py-2 border-b border-[#141418] text-[10px] font-bold text-[#666677] uppercase tracking-wider sticky top-0 bg-black/90 backdrop-blur z-10 font-mono">
         <span 
           onClick={() => { setSortBy('default'); setSortAsc(true); }}
           className="text-center cursor-pointer hover:text-white transition-colors"
@@ -488,7 +488,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 borderLeftColor: isSelected ? accentColor : 'transparent',
                 backgroundColor: isSelected ? `${accentColor}18` : undefined,
               }}
-              className={`grid grid-cols-[28px_minmax(0,1fr)_auto] sm:grid-cols-[36px_minmax(0,1fr)_76px_96px] md:grid-cols-[40px_1fr_1fr_90px_110px] items-center px-2 sm:px-3 rounded-md transition-all group select-none relative ${
+              className={`grid grid-cols-[36px_minmax(0,1fr)_auto] sm:grid-cols-[36px_minmax(0,1fr)_76px_96px] md:grid-cols-[40px_minmax(0,1fr)_minmax(0,1fr)_90px_110px] items-center px-2 sm:px-3 rounded-md transition-all group select-none relative ${
                 canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
               } ${
                 draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5 pointer-events-none' : ''

@@ -3507,7 +3507,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       // Ensure user hasn't switched to another track while resolving
       if (currentTrackRef.current?.id !== track.id) return true;
 
-      const streamUrl = res.stream_url || res.proxy_url;
+      const streamUrl = (isTauriApp && res.proxy_url) ? res.proxy_url : (res.stream_url || res.proxy_url);
       if (streamUrl && onlineAudioRef.current) {
         if (ytUnavailableTimerRef.current) clearTimeout(ytUnavailableTimerRef.current);
         clearYtLoadTimers();
@@ -3533,6 +3533,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onlineAudioRef.current.setAttribute('webkit-playsinline', 'true');
         onlineAudioRef.current.src = streamUrl;
         onlineAudioRef.current.volume = volumeRef.current;
+        attachAudioElementToEqualizer(onlineAudioRef.current);
 
         if (res.duration_secs > 0) {
           durationRef.current = res.duration_secs;
@@ -6796,7 +6797,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onToggleConnectHost={isTauriApp ? handleToggleConnectHost : undefined}
         isConnectClientActive={isConnectClientActive}
         isHostOnline={isHostOnline}
-        onToggleConnectClient={handleToggleConnectClient}
+        onToggleConnectClient={!isTauriApp ? handleToggleConnectClient : undefined}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}

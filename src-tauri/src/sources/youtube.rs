@@ -6,6 +6,7 @@ use std::collections::HashSet;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct YoutubeAudioStream {
     pub stream_url: Option<String>,
+    pub proxy_url: Option<String>,
     pub resolved_video_id: String,
     pub duration_secs: u64,
 }
@@ -286,8 +287,10 @@ pub async fn resolve_youtube_music_stream(
     // 2. Try extracting direct audio stream via VISIONOS Innertube player endpoint
     for cid in &candidate_ids {
         if let Ok(Some((stream_url, dur))) = fetch_visionos_audio_stream(&client, cid, &visitor_data).await {
+            let proxy_url = Some(crate::proxy::get_cors_proxy_url(&stream_url));
             return Ok(YoutubeAudioStream {
                 stream_url: Some(stream_url),
+                proxy_url,
                 resolved_video_id: cid.clone(),
                 duration_secs: dur,
             });
@@ -298,6 +301,7 @@ pub async fn resolve_youtube_music_stream(
     if let Some(first_ytm) = ytm_tracks.first() {
         return Ok(YoutubeAudioStream {
             stream_url: None,
+            proxy_url: None,
             resolved_video_id: first_ytm.url_or_id.clone(),
             duration_secs: first_ytm.duration_secs,
         });

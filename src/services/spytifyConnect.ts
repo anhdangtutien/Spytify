@@ -42,7 +42,9 @@ class SpytifyConnectService {
   private clientRoom: Room | null = null;
   private localAudioTrack: LocalAudioTrack | null = null;
   private realtimeChannel: any = null;
+  private hubChannel: any = null;
   private activeUserId: string | null = null;
+  private discoveredHostId: string | null = null;
 
   private isHostRunning = false;
   private isClientConnected = false;
@@ -150,6 +152,16 @@ class SpytifyConnectService {
       } catch {}
       this.realtimeChannel = null;
     }
+
+    if (this.hubChannel) {
+      try {
+        const client = getSupabaseClient();
+        if (client) {
+          client.removeChannel(this.hubChannel);
+        }
+      } catch {}
+      this.hubChannel = null;
+    }
   }
 
   /**
@@ -196,6 +208,27 @@ class SpytifyConnectService {
           });
         }
       });
+
+    // Also register on global discovery hub so any mobile client can auto-pair
+    try {
+      this.hubChannel = client.channel('spytify_connect_hub', {
+        config: { broadcast: { self: false }, presence: { key: `hub_${userId}` } },
+      });
+      this.hubChannel.subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED' && this.hubChannel) {
+          await this.hubChannel.track({
+            role: 'host',
+            hostId: userId,
+            onlineAt: Date.now(),
+          });
+          this.hubChannel.send({
+            type: 'broadcast',
+            event: 'host_online',
+            payload: { hostId: userId, timestamp: Date.now() },
+          }).catch(() => {});
+        }
+      });
+    } catch {}
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -227,7 +260,8 @@ class SpytifyConnectService {
     }
 
     try {
-      const roomName = `spytify_connect_${userId}`;
+      const targetUserId = (userId === 'guest_user' && this.discoveredHostId) ? this.discoveredHostId : userId;
+      const roomName = `spytify_connect_${targetUserId}`;
       const { token, serverUrl } = await createLiveKitToken(
         roomName,
         `mobile_${Date.now()}`,
@@ -288,7 +322,7 @@ class SpytifyConnectService {
       await room.startAudio().catch(() => {});
 
       // Connect to Supabase Realtime for remote control
-      this.initClientRealtime(userId);
+      this.initClientRealtime(targetUserId);
 
       this.isClientConnected = true;
       this.notifyClientStatus(true);
@@ -424,10 +458,43 @@ class SpytifyConnectService {
       })
       .subscribe();
 
+    // Also monitor global discovery hub so mobile can discover Desktop even with different/guest accounts
+    const hub = client.channel('spytify_connect_hub', {
+      config: { broadcast: { self: false } },
+    });
+    hub
+      .on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string } }) => {
+        if (payload?.hostId) {
+          this.discoveredHostId = payload.hostId;
+          this.isHostOnline = true;
+          this.notifyHostStatus(true);
+        }
+      })
+      .on('presence', { event: 'sync' }, () => {
+        const state = hub.presenceState();
+        let foundHostId: string | null = null;
+        for (const presences of Object.values(state)) {
+          if (Array.isArray(presences)) {
+            const h = presences.find((p: any) => p && p.role === 'host') as any;
+            if (h) {
+              foundHostId = h.hostId || h.userId;
+              break;
+            }
+          }
+        }
+        if (foundHostId) {
+          this.discoveredHostId = foundHostId;
+          this.isHostOnline = true;
+          this.notifyHostStatus(true);
+        }
+      })
+      .subscribe();
+
     return () => {
       this.onHostStatusCallbacks.delete(onHostStatus);
       try {
         client.removeChannel(channel);
+        client.removeChannel(hub);
       } catch {}
     };
   }

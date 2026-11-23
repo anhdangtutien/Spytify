@@ -746,9 +746,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   <span className="leading-none">MIX</span>
                 </>
               ) : (
-                <>
-                  <Radio className="w-3.5 h-3.5 opacity-50" />
-                </>
+                <Sparkles className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
               )}
             </button>
           )}
@@ -1164,16 +1162,14 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           >
             <Radio className={`w-4 h-4 ${isConnectHostActive ? 'animate-pulse text-emerald-400' : ''}`} />
             <Cast className="w-3.5 h-3.5 -ml-0.5" />
-            {isConnectHostActive && (
-              <span className="hidden xl:inline text-[9px] font-mono font-bold tracking-tight text-emerald-400">
-                HOST
-              </span>
-            )}
+            <span className="hidden xl:inline text-[9px] font-mono font-bold tracking-tight text-emerald-400">
+              {isConnectHostActive ? 'HOST ON' : 'CAST'}
+            </span>
           </button>
         )}
 
-        {/* Spytify Connect (Mobile Client Listener & Remote) */}
-        {onToggleConnectClient && (
+        {/* Spytify Connect (Mobile Client Listener & Remote) — Only render on Web/Mobile when not Host */}
+        {!onToggleConnectHost && onToggleConnectClient && (
           <button
             type="button"
             onClick={onToggleConnectClient}

@@ -4,6 +4,7 @@ pub mod db;
 pub mod downloader;
 pub mod models;
 pub mod oauth;
+pub mod proxy;
 pub mod rust_ui;
 pub mod scanner;
 pub mod sources;
@@ -1857,6 +1858,9 @@ pub fn run() {
             }
         }))
         .setup(|app| {
+            // Start local audio CORS streaming proxy for Web Audio & WebRTC broadcast
+            proxy::start_audio_proxy();
+
             // Setup System Tray
             let show_i = MenuItem::with_id(app, "show", "Hiện Spytify", true, None::<&str>)?;
             let toggle_play_i = MenuItem::with_id(app, "toggle_play", "Tạm dừng / Phát tiếp", true, None::<&str>)?;
