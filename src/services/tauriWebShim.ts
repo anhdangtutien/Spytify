@@ -717,20 +717,37 @@ async function searchYoutubeWeb(query: string, apiTimeoutMs = 1800): Promise<Sea
   const raced = await raceFirstSuccess([...pipedPromises, ...invidiousPromises]);
   if (raced && raced.length > 0) return raced;
 
-  // Token-based curated fallback so partial queries like "Sơn Tùng Đừng Làm Trái Tim" match accurately
+  // Token-based curated fallback strictly matching artist or genuine title
   const qLower = query.trim().toLowerCase();
-  const tokens = qLower.split(/[\s\-_.,&()]+/).filter(t => t.length >= 2);
+  const stopWords = new Set(['ft', 'feat', 'prod', 'official', 'audio', 'video', 'mv', 'lyrics', 'remix', 'music', 'the', 'in', 'on', 'at', 'to', 'is', 'a', 'an', 'and', 'or', 'of', 'by', 'topic']);
+  const tokens = qLower.split(/[\s\-_.,&()]+/).filter(t => t.length >= 3 && !stopWords.has(t));
   const allCurated = getAllCuratedTracks();
   const scoredCurated = allCurated
     .map(track => {
-      const haystack = `${track.title} ${track.artist} ${track.album}`.toLowerCase();
-      let score = haystack.includes(qLower) ? 10 : 0;
-      for (const tok of tokens) {
-        if (haystack.includes(tok)) score += 1;
+      const haystack = `${track.title} ${track.artist}`.toLowerCase();
+      const normArtist = track.artist.toLowerCase();
+      const normTitle = track.title.toLowerCase();
+
+      // Direct exact match
+      if (haystack.includes(qLower) || qLower.includes(normTitle)) {
+        return { track, score: 100 };
       }
+
+      // Check artist match + title match
+      const artistMatches = tokens.some(tok => normArtist.includes(tok));
+      const titleMatches = tokens.filter(tok => normTitle.includes(tok)).length;
+
+      // Must match artist AND at least 1 title word, OR match at least 60% of significant query words
+      let score = 0;
+      if (artistMatches && titleMatches >= 1) {
+        score = 50 + titleMatches * 10;
+      } else if (tokens.length > 0 && titleMatches / tokens.length >= 0.6) {
+        score = titleMatches * 10;
+      }
+
       return { track, score };
     })
-    .filter(x => x.score > 0)
+    .filter(x => x.score >= 10)
     .sort((a, b) => b.score - a.score)
     .map(x => x.track);
   if (scoredCurated.length > 0) return scoredCurated;

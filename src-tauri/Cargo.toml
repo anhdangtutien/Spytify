@@ -1,6 +1,6 @@
 [package]
 name = "snutify"
-version = "1.1.5"
+version = "1.1.6"
 description = "Spytify - Spy Music"
 authors = ["Spytify Team", "anhdangtutien"]
 edition = "2021"

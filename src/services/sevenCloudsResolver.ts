@@ -211,23 +211,34 @@ async function queryYtSearch(query: string): Promise<Array<{ videoId: string; ti
 /**
  * Synchronously retrieves a cached unblocked alternative video ID if available in memory or sessionStorage.
  */
+const SONTUNG_SAMPLE_IDS = new Set(['abPmZCZZrFA', 'cp8ec_4vh_c', 'FN7ALfpGxiI', 'Llw9Q6akRo4', 'knW7-x7Y7RE', '6t-MjBazs3o', 'xypzmu5mMPY', 'psZ1g9fMfeo']);
+
 export function getCachedUnblockedVideoId(title: string, artist: string, blockedId?: string): string | null {
   if (!title) return null;
   const cleanT = cleanQueryTerm(title);
   const cleanA = cleanQueryTerm(artist);
   if (!cleanT) return null;
   const cleanBlocked = blockedId ? (extractCleanYtId(blockedId) || blockedId.trim()) : '';
+  const isSonTung = cleanA.includes('sơn tùng') || cleanA.includes('son tung') || cleanA.includes('m-tp');
   const unblockKey = `${cleanT.toLowerCase()}___${cleanA.toLowerCase()}`;
   if (unblockedAudioCache.has(unblockKey)) {
     const hit = unblockedAudioCache.get(unblockKey)!;
-    if (hit && hit !== cleanBlocked) return hit;
+    if (!isSonTung && SONTUNG_SAMPLE_IDS.has(hit)) {
+      unblockedAudioCache.delete(unblockKey);
+    } else if (hit && hit !== cleanBlocked) {
+      return hit;
+    }
   }
   try {
     if (typeof sessionStorage !== 'undefined') {
       const stored = sessionStorage.getItem(`spytify_unblocked_${unblockKey}`);
-      if (stored && stored !== cleanBlocked) {
-        unblockedAudioCache.set(unblockKey, stored);
-        return stored;
+      if (stored) {
+        if (!isSonTung && SONTUNG_SAMPLE_IDS.has(stored)) {
+          sessionStorage.removeItem(`spytify_unblocked_${unblockKey}`);
+        } else if (stored !== cleanBlocked) {
+          unblockedAudioCache.set(unblockKey, stored);
+          return stored;
+        }
       }
     }
   } catch {}
@@ -243,16 +254,26 @@ export function getCached7CloudsVideoId(title: string, artist: string): string |
   const cleanT = cleanQueryTerm(title);
   const cleanA = cleanQueryTerm(artist);
   if (!cleanT) return null;
+  const isSonTung = cleanA.includes('sơn tùng') || cleanA.includes('son tung') || cleanA.includes('m-tp');
   const cacheKey = `${cleanT.toLowerCase()}___${cleanA.toLowerCase()}`;
   if (sevenCloudsCache.has(cacheKey)) {
-    return sevenCloudsCache.get(cacheKey)!;
+    const hit = sevenCloudsCache.get(cacheKey)!;
+    if (!isSonTung && SONTUNG_SAMPLE_IDS.has(hit)) {
+      sevenCloudsCache.delete(cacheKey);
+    } else {
+      return hit;
+    }
   }
   try {
     if (typeof sessionStorage !== 'undefined') {
       const stored = sessionStorage.getItem(`spytify_7c_${cacheKey}`);
       if (stored) {
-        sevenCloudsCache.set(cacheKey, stored);
-        return stored;
+        if (!isSonTung && SONTUNG_SAMPLE_IDS.has(stored)) {
+          sessionStorage.removeItem(`spytify_7c_${cacheKey}`);
+        } else {
+          sevenCloudsCache.set(cacheKey, stored);
+          return stored;
+        }
       }
     }
   } catch {}

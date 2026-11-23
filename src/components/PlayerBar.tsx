@@ -4,7 +4,7 @@ import {
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio, Cast,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
   ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv,
-  Laptop, Smartphone
+  Laptop, Smartphone, AudioLines
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -747,11 +747,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </>
               ) : recommendMode === 'mix' ? (
                 <>
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <AudioLines className="w-3.5 h-3.5" />
                   <span className="leading-none">MIX</span>
                 </>
               ) : (
-                <Sparkles className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                <AudioLines className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
               )}
             </button>
           )}
@@ -925,7 +925,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
-            <Sparkles className={`w-4 h-4 ${isNextTrackPopupEnabled ? '' : 'opacity-50'}`} />
+            <AudioLines className={`w-4 h-4 ${isNextTrackPopupEnabled ? '' : 'opacity-50'}`} />
           </button>
         )}
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap, GripVertical, Tv } from 'lucide-react';
+import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap, GripVertical, Tv, AudioLines } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
 import { HoverMarquee } from './HoverMarquee';
@@ -546,19 +546,8 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                   </div>
                 )}
                 {isSelected && isPlaying ? (
-                  <div className="flex items-end justify-center gap-[2.5px] h-3.5 group-hover:hidden">
-                    <span 
-                      className="w-[3px] rounded-full animate-[pulse_0.8s_ease-in-out_infinite] h-3.5"
-                      style={{ backgroundColor: accentColor }} 
-                    />
-                    <span 
-                      className="w-[3px] rounded-full animate-[pulse_1.2s_ease-in-out_infinite_200ms] h-2" 
-                      style={{ backgroundColor: accentColor }} 
-                    />
-                    <span 
-                      className="w-[3px] rounded-full animate-[pulse_0.9s_ease-in-out_infinite_400ms] h-3" 
-                      style={{ backgroundColor: accentColor }} 
-                    />
+                  <div className="flex items-center justify-center h-3.5 group-hover:hidden">
+                    <AudioLines className="w-3.5 h-3.5 animate-pulse" style={{ color: accentColor }} />
                   </div>
                 ) : (
                   <span 

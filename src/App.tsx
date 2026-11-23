@@ -1215,6 +1215,7 @@ export default function App() {
   // Dual-channel YouTube players
   const ytIframe1Ref = useRef<HTMLIFrameElement | null>(null);
   const ytIframe2Ref = useRef<HTMLIFrameElement | null>(null);
+  const [activeYtChannel, setActiveYtChannel] = useState<1 | 2>(1);
   const activeYtChannelRef = useRef<1 | 2>(1);
   const ytIframeRef = useRef<HTMLIFrameElement | null>(null);
   const ytIframeReady1Ref = useRef(false);
@@ -1230,7 +1231,7 @@ export default function App() {
   const ytLoadTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const ytLastSwitchAtRef = useRef<number>(0);
 
-  const ytVideoId = activeYtChannelRef.current === 1 ? ytVideoId1 : ytVideoId2;
+  const ytVideoId = activeYtChannel === 1 ? ytVideoId1 : ytVideoId2;
   const setYtVideoId = (vid: string | null) => {
     if (activeYtChannelRef.current === 1) {
       latestYtVideoId1Ref.current = vid;
@@ -4176,10 +4177,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
         activeYtChannelRef.current = 1;
+        setActiveYtChannel(1);
         sendYtCmd('pauseVideo', [], 2);
         sendYtCmd('stopVideo', [], 2);
         latestYtVideoId2Ref.current = null;
         setYtVideoId2(null);
+        ytIframeSrc2Ref.current = null;
+        setYtIframeSrc2(null);
 
         const curVol = volumeRef.current;
         ytHasStartedPlayingRef.current = false;
@@ -4404,6 +4408,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     } else if (track.source === 'youtube') {
       activeYtChannelRef.current = inYtChannel;
+      setActiveYtChannel(inYtChannel);
       const rawVid = extractCleanYtId(track.path_or_url || track.id);
       const cachedUnblocked = getCachedUnblockedVideoId(track.title, track.artist, rawVid);
       const cached7c = getCached7CloudsVideoId(track.title, track.artist);
@@ -4534,9 +4539,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             if (outYtChannel === 1) {
               latestYtVideoId1Ref.current = null;
               setYtVideoId1(null);
+              ytIframeSrc1Ref.current = null;
+              setYtIframeSrc1(null);
             } else {
               latestYtVideoId2Ref.current = null;
               setYtVideoId2(null);
+              ytIframeSrc2Ref.current = null;
+              setYtIframeSrc2(null);
             }
           } else if (outSc) {
             sendScCmd('pause', undefined, outScChannel);
@@ -4879,13 +4888,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       });
   }, [isTauriApp]);
 
+  // Helper to isolate Spytify Connect Remote channels strictly by User Account
+  const getEffectiveRemoteUserId = useCallback(() => {
+    if (currentUser?.id) return currentUser.id;
+    let saved = localStorage.getItem('spytify_active_user_id') || localStorage.getItem('spytify_guest_remote_id');
+    if (!saved || saved === 'guest_user') {
+      saved = 'guest_' + Math.random().toString(36).substring(2, 10);
+      try { localStorage.setItem('spytify_guest_remote_id', saved); } catch {}
+    }
+    return saved;
+  }, [currentUser?.id]);
+
   // Monitor Host presence for the current user/account (Only for mobile/web listeners, Desktop is the Host)
   useEffect(() => {
     if (isTauriApp) {
       setIsHostOnline(true);
       return;
     }
-    const effectiveUserId = currentUser?.id || 'guest_user';
+    const effectiveUserId = getEffectiveRemoteUserId();
     const unsub = spytifyConnect.monitorHostOnline(effectiveUserId, (online) => {
       setIsHostOnline(online);
       if (online) {
@@ -4893,7 +4913,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
     });
     return unsub;
-  }, [currentUser?.id, isTauriApp]);
+  }, [currentUser?.id, isTauriApp, getEffectiveRemoteUserId]);
 
   // Broadcast state to Supabase Realtime subscribers whenever host playback changes
   useEffect(() => {
@@ -4913,7 +4933,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const startConnectHost = useCallback(async () => {
     if (!isTauriApp) return;
-    const effectiveUserId = currentUser?.id || localStorage.getItem('spytify_active_user_id') || 'guest_user';
+    const effectiveUserId = getEffectiveRemoteUserId();
     const ok = await spytifyConnect.startHost(
       effectiveUserId,
       (cmd: ConnectCommand) => {
@@ -4973,21 +4993,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         timestamp: Date.now(),
       }, true);
     }
-  }, [isTauriApp, currentUser?.id]);
+  }, [isTauriApp, getEffectiveRemoteUserId]);
 
-  // Auto-start host on Desktop app launch
+  // Auto-start host on Desktop app launch, and re-bind if user logs in
   useEffect(() => {
     if (isTauriApp) {
       startConnectHost();
     }
-  }, [isTauriApp, startConnectHost]);
+  }, [isTauriApp, startConnectHost, currentUser?.id]);
 
   const handleToggleConnectHost = useCallback(async () => {
     if (!isTauriApp) {
       showNotification(language === 'vi' ? 'Trạm phát Host chỉ khả dụng trên Spytify Desktop App (Tauri Rust)' : 'Host Broadcaster is only available on Desktop Tauri App');
       return;
     }
-    const effectiveUserId = currentUser?.id || localStorage.getItem('spytify_active_user_id') || 'guest_user';
     if (isConnectHostActive) {
       await spytifyConnect.stopHost();
       setIsConnectHostActive(false);
@@ -4996,11 +5015,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       return;
     }
     await startConnectHost();
-    showNotification(language === 'vi' ? 'Trạm phát Spytify Connect đã bật! Sẵn sàng kết nối với iPhone' : 'Spytify Connect is live! Ready for iPhone remote control');
-  }, [currentUser?.id, isConnectHostActive, language, isTauriApp, startConnectHost]);
+    const accountInfo = currentUser ? ` (${currentUser.username || currentUser.email})` : '';
+    showNotification(language === 'vi' ? `Trạm phát Spytify Connect đã bật theo tài khoản${accountInfo}! Sẵn sàng kết nối với iPhone` : `Spytify Connect is live for your account${accountInfo}! Ready for iPhone remote control`);
+  }, [currentUser, isConnectHostActive, language, isTauriApp, startConnectHost]);
 
   const handleConnectAsClient = useCallback(async () => {
-    const effectiveUserId = currentUser?.id || 'guest_user';
+    const effectiveUserId = getEffectiveRemoteUserId();
     const ok = await spytifyConnect.connectAsClient(
       effectiveUserId,
       (remoteState: ConnectPlaybackState) => {
@@ -5041,14 +5061,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       setIsConnectClientActive(true);
     }
     return ok;
-  }, [currentUser?.id]);
+  }, [getEffectiveRemoteUserId]);
 
-  // Auto-connect mobile client
+  // Auto-connect mobile client, and re-connect when account logs in
   useEffect(() => {
-    if (!isTauriApp && !isConnectClientActive) {
+    if (!isTauriApp) {
       handleConnectAsClient();
     }
-  }, [isTauriApp, isConnectClientActive, handleConnectAsClient]);
+  }, [isTauriApp, currentUser?.id, handleConnectAsClient]);
 
   const handleToggleConnectClient = useCallback(async () => {
     if (isConnectClientActive) {
@@ -5710,7 +5730,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               {/* Header */}
               <div className="flex items-center justify-between border-b border-[#1c1c28] pb-1.5">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: activeAccentColor }}>
-                  <Sparkles className="w-3 h-3 animate-spin" />
+                  <AudioLines className="w-3.5 h-3.5 animate-pulse" />
                   {getTranslation(language, 'popup.aiAnalyzing')}
                 </span>
                 <button 
@@ -5762,7 +5782,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               <div className="flex items-center justify-between border-b border-[#1c1c28] pb-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: activeAccentColor }}>
-                    <span className="animate-pulse">{currentTrack ? '⏭' : '✨'}</span>{' '}
+                    <span className="animate-pulse flex items-center">{currentTrack ? '⏭' : <AudioLines className="w-3 h-3 inline" />}</span>{' '}
                     {currentTrack ? getTranslation(language, 'popup.nextTrack') : getTranslation(language, 'popup.aiMixRecommend')}
                   </span>
                   {nextTrackPopup.isCountdown && typeof nextTrackPopup.remainingSecs === 'number' && (
@@ -6009,7 +6029,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc1 && (
         <div
           className={
-            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1
+            currentTrack?.source === 'youtube' && activeYtChannel === 1
               ? (isMobilePlayerOpen
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
@@ -6021,7 +6041,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1 && isMobilePlayerOpen
+            currentTrack?.source === 'youtube' && activeYtChannel === 1 && isMobilePlayerOpen
               ? (mobileMvRect
                   ? {
                       top: `${mobileMvRect.top}px`,
@@ -6044,7 +6064,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           }
         >
           {/* Mobile Cover Art Overlay in "Ảnh bìa" mode */}
-          {!showYoutubeVideo && isMobilePlayerOpen && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1 && (
+          {!showYoutubeVideo && isMobilePlayerOpen && currentTrack?.source === 'youtube' && activeYtChannel === 1 && (
             <div className="absolute inset-0 z-20 bg-black flex items-center justify-center pointer-events-none select-none rounded-3xl overflow-hidden">
               {currentTrack?.cover_art ? (
                 <img
@@ -6061,7 +6081,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
 
           {/* Desktop Floating Header Bar (Overlay) */}
-          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 1) && (
+          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannel === 1) && (
             <div className="hidden md:flex absolute top-0 inset-x-0 px-3 py-1.5 bg-black/85 backdrop-blur-md border-b border-white/10 items-center justify-between z-10 transition-opacity pointer-events-auto shadow-md">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
@@ -6097,7 +6117,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc2 && (
         <div
           className={
-            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2
+            currentTrack?.source === 'youtube' && activeYtChannel === 2
               ? (isMobilePlayerOpen
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
@@ -6109,7 +6129,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2 && isMobilePlayerOpen
+            currentTrack?.source === 'youtube' && activeYtChannel === 2 && isMobilePlayerOpen
               ? (mobileMvRect
                   ? {
                       top: `${mobileMvRect.top}px`,
@@ -6132,7 +6152,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           }
         >
           {/* Mobile Cover Art Overlay in "Ảnh bìa" mode */}
-          {!showYoutubeVideo && isMobilePlayerOpen && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2 && (
+          {!showYoutubeVideo && isMobilePlayerOpen && currentTrack?.source === 'youtube' && activeYtChannel === 2 && (
             <div className="absolute inset-0 z-20 bg-black flex items-center justify-center pointer-events-none select-none rounded-3xl overflow-hidden">
               {currentTrack?.cover_art ? (
                 <img
@@ -6149,7 +6169,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
 
           {/* Desktop Floating Header Bar (Overlay) */}
-          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannelRef.current === 2) && (
+          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannel === 2) && (
             <div className="hidden md:flex absolute top-0 inset-x-0 px-3 py-1.5 bg-black/85 backdrop-blur-md border-b border-white/10 items-center justify-between z-10 transition-opacity pointer-events-auto shadow-md">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
