@@ -1,8 +1,8 @@
-# 🕵️‍♂️ Spytify — Spy Music (v1.1.4)
+# 🕵️‍♂️ Spytify — Spy Music (v1.1.5)
 
 <div align="center">
 
-![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.1.4-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
+![Spytify Badge](https://img.shields.io/badge/SPYTIFY-v1.1.5-FF2A55?style=for-the-badge&logo=shield&logoColor=white)
 ![Tauri v2](https://img.shields.io/badge/TAURI-v2-FFC131?style=for-the-badge&logo=tauri&logoColor=black)
 ![React 19](https://img.shields.io/badge/REACT_19-CYBER_HUD-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![Rust Engine](https://img.shields.io/badge/RUST_ENGINE-NATIVE_AUDIO_&_OTA-DEA584?style=for-the-badge&logo=rust&logoColor=black)
@@ -16,27 +16,37 @@
 
 ---
 
-## 🇻🇳 Tiếng Việt — Điểm mới trong v1.1.4 (Bản phát hành & Vá lỗi OTA)
+## 🇻🇳 Tiếng Việt — Điểm mới trong v1.1.5 (Bản phát hành chính thức)
 
-Spytify **v1.1.4** nâng cấp toàn diện hệ thống cập nhật trực tuyến (OTA Hotfix), quản lý tải xuống Album và giao diện khám phá nghệ sĩ trên Trang chủ:
+Spytify **v1.1.5** mang đến trải nghiệm cập nhật hoàn toàn tự động, rạp chiếu MV trên Desktop, và hệ thống kết nối phòng nghe Spytify Connect:
 
-- **⚡ Cập nhật tự động & Vá lỗi nóng (Realtime OTA & Hotfix)**:
-  - Hỗ trợ nhận bản cập nhật mới và **bản vá lỗi nóng (Hotfix)** ngay trên cùng phiên bản hiện tại theo thời gian thực từ **Spytify Admin Dashboard** mà không cần tải thủ công qua trình duyệt.
-  - Đồng bộ 3 lớp (**Supabase Realtime Broadcast** + **Postgres Changes** + **Background Poll**) giúp nhận thông báo hệ thống và bản vá tức thì đối với mọi phiên bản từ `v1.0.0` trở lên.
-- **💿 Quản lý Album & Trạng thái tải xuống thông minh**:
-  - **Kí hiệu Đã tải (`✓ Đã tải`)**: Tự động hiển thị huy hiệu `✓ Đã tải` và `ĐÃ TẢI • LOSSLESS` trên từng bài hát đã tải trong Album, trên Banner chi tiết Album (`✓ ĐÃ TẢI XUỐNG X/X`) và trên thẻ Album ngoài danh sách.
-  - **Dừng tải Album tức thì**: Bổ sung nút **"Dừng tải album"** cho phép hủy hàng đợi tải bất kỳ lúc nào khi album có nhiều bài hát.
-  - **Pop-up xác nhận xóa Album**: Hộp thoại xác nhận xóa Album đồng bộ giao diện Spytify (kèm thông tin ảnh bìa, số lượng bài hát và giữ nguyên các file nhạc đã tải về máy).
-- **🎤 Trang chủ & Chân dung Nghệ sĩ chính chủ**:
-  - **Màn hình lớn giới thiệu Nghệ sĩ (Hero Showcase Billboard)**: Tự động chuyển cảnh cross-fade mượt mà giữa các nghệ sĩ hay nghe.
-  - **Auto-Slideshow Nghệ sĩ đề xuất & Bảng xếp hạng Top 10**: Tự động trượt ngang danh sách nghệ sĩ (tạm dừng khi di chuột) và thiết kế lại bảng xếp hạng Trending Top 10 hiện đại.
-  - **Chân dung Nghệ sĩ độ phân giải cao**: Đồng bộ ảnh chân dung chính chủ từ CDN âm nhạc với thuật toán ưu tiên lượng người hâm mộ (`max(nb_fan)`), loại bỏ hoàn toàn ảnh stock và viền đen.
+- **⚡ Tự động cập nhật không cần gỡ cài đặt (Silent In-Place Updater)**:
+  - Tự động tải file cài đặt `.exe` trực tiếp và chạy cập nhật ngầm (`/S /UPDATE`), tự khởi động lại app mượt mà mà không bắt người dùng phải gỡ cài đặt trước.
+  - Khắc phục triệt để lỗi tương thích hệ điều hành Windows `os error 216` bằng cơ chế kiểm tra Header thực thi PE (MZ) và giải mã URL nhị phân trực tiếp từ GitHub Releases.
+- **🎙️ Spytify Connect & LiveKit WebRTC Audio Streaming**:
+  - Tích hợp Spytify Connect phát nhạc đồng bộ và truyền âm thanh chất lượng cao theo thời gian thực qua LiveKit WebRTC.
+- **🎬 Desktop MV Theater & Dynamic Search**:
+  - Bố cục xem Music Video (MV) rạp hát thu gọn và cửa sổ nổi mượt mà trên Desktop.
+  - Gợi ý tìm kiếm động thông minh dựa trên lịch sử nghe và nghệ sĩ yêu thích.
+- **💿 Quản lý Album & Kí hiệu Đã tải**:
+  - Hiển thị kí hiệu `✓ Đã tải` và `ĐÃ TẢI • LOSSLESS` trên bài hát, thẻ album và banner chi tiết album.
+  - Bổ sung nút Dừng tải Album tức thì và Hộp thoại xác nhận xóa Album an toàn.
 
 ---
 
-## 🇬🇧 English — What's New in v1.1.4 (OTA Hotfix & Album Enhancements)
+## 🇬🇧 English — What's New in v1.1.5
 
-Spytify **v1.1.4** upgrades the real-time OTA Hotfix system, Album download tracking, and Home artist discovery:
+Spytify **v1.1.5** delivers seamless in-place silent updates, Desktop theater MV mode, and Spytify Connect streaming:
+
+- **⚡ Silent In-Place Auto Updater**:
+  - Automatically downloads direct `.exe` binaries and executes silent in-place installation (`/S /UPDATE`), relaunching Spytify smoothly without requiring manual uninstallation.
+  - Fully resolves Windows `os error 216` via PE (MZ) binary header validation and direct installer URL resolution.
+- **🎙️ Spytify Connect & LiveKit Streaming**:
+  - Real-time room audio synchronization and high-fidelity WebRTC streaming powered by LiveKit SFU.
+- **🎬 Desktop MV Cinema Player & Dynamic Search Suggestions**:
+  - Seamless desktop MV theater mode and contextual search suggestions based on recently searched tracks and artists.
+- **💿 Album Download Badges & Queue Cancellation**:
+  - Downloaded status badges (`✓ Đã tải • LOSSLESS`) and prompt confirmation modal when removing saved albums.
 
 - **⚡ Real-time OTA Updates & Same-Version Hotfixes**:
   - Receive new releases and **same-version Hotfix patches** in real time from **Spytify Admin Dashboard** with 1-click auto-install—no manual browser downloads required.
