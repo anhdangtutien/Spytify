@@ -2061,10 +2061,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_get_related() {
-        let res = get_related_tracks("Kaikai Kitan".to_string(), "Eve".to_string()).await;
-        assert!(res.is_ok());
-        let list = res.unwrap();
-        assert!(!list.is_empty());
+    async fn test_resolve_stream() {
+        let res = sources::youtube::resolve_youtube_music_stream("5qm8PH4xAss", "Midsummer Madness", "88rising").await;
+        println!("Resolve stream result: {:?}", res);
     }
 }

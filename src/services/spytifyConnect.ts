@@ -276,32 +276,39 @@ class SpytifyConnectService {
       room.on(RoomEvent.TrackSubscribed, async (track: RemoteTrack, publication, participant: RemoteParticipant) => {
         if (track.kind === LKTrack.Kind.Audio) {
           console.log('[Spytify Connect] Audio track received from Host:', participant.identity);
-          if (this.audioAttachedElement) {
-            track.attach(this.audioAttachedElement);
+          track.detach();
+
+          let el = this.audioAttachedElement;
+          if (el) {
             try {
-              this.audioAttachedElement.muted = false;
-              this.audioAttachedElement.volume = 1.0;
-              await this.audioAttachedElement.play();
-            } catch (e) {
-              console.warn('[Spytify Connect] audioAttachedElement.play() warning:', e);
-            }
+              el.pause();
+              el.removeAttribute('src');
+              el.src = '';
+              el.load();
+            } catch {}
           } else {
-            const el = track.attach();
+            el = new Audio();
+            (el as any).playsInline = true;
             el.setAttribute('playsinline', 'true');
             el.setAttribute('webkit-playsinline', 'true');
-            el.setAttribute('autoplay', 'true');
-            el.muted = false;
-            el.volume = 1.0;
+            el.autoplay = true;
             if (typeof document !== 'undefined' && document.body) {
               document.body.appendChild(el);
             }
             this.audioAttachedElement = el;
-            try {
-              await el.play();
-            } catch (e) {
-              console.warn('[Spytify Connect] Fallback element play warning:', e);
-            }
           }
+
+          el.muted = false;
+          el.volume = 1.0;
+          track.attach(el);
+
+          try {
+            await el.play();
+            console.log('[Spytify Connect] Remote audio playback active!');
+          } catch (e) {
+            console.warn('[Spytify Connect] audio play warning (waiting for tap):', e);
+          }
+
           await room.startAudio().catch(() => {});
         }
       });
@@ -401,8 +408,12 @@ class SpytifyConnectService {
     if (this.clientRoom) {
       await this.clientRoom.startAudio().catch(() => {});
     }
-    if (this.audioAttachedElement && this.audioAttachedElement.paused) {
-      await this.audioAttachedElement.play().catch(() => {});
+    if (this.audioAttachedElement) {
+      this.audioAttachedElement.muted = false;
+      this.audioAttachedElement.volume = 1.0;
+      if (this.audioAttachedElement.paused) {
+        await this.audioAttachedElement.play().catch(() => {});
+      }
     }
   }
 

@@ -4067,6 +4067,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       } else if (track.source === 'youtube') {
         if (isConnectHostActive) {
+          ytMusicFallbackTriedRef.current = false;
           const directOk = await fallbackToYoutubeMusicStream(track);
           if (directOk) return;
         }
@@ -4820,10 +4821,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     // If Desktop is playing a YouTube track via iframe, switch it to direct stream so Web Audio captures it
+    ytMusicFallbackTriedRef.current = false;
     if (currentTrackRef.current?.source === 'youtube' && !ytMusicFallbackActiveRef.current) {
-      fallbackToYoutubeMusicStream(currentTrackRef.current).catch(() => {});
+      await fallbackToYoutubeMusicStream(currentTrackRef.current).catch(() => {});
     }
 
+    ensureAudioContextRunning();
     const masterStream = getOrCreateMasterAudioStream();
     const ok = await spytifyConnect.startHost(
       effectiveUserId,
@@ -4885,6 +4888,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       return;
     }
 
+    // Synchronously prime iOS Safari WebKit audio during user tap
+    ensureAudioContextRunning();
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const dummy = new AudioCtx();
+        dummy.resume().catch(() => {});
+      }
+    } catch {}
+
     if (!connectAudioRef.current) {
       const el = new Audio();
       (el as any).playsInline = true;
@@ -4897,7 +4910,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
     }
     if (connectAudioRef.current) {
-      connectAudioRef.current.src = createSilentKeepAliveWavUri();
+      connectAudioRef.current.muted = false;
       connectAudioRef.current.play().catch(() => {});
     }
 
