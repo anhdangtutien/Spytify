@@ -533,7 +533,7 @@ export default function App() {
       const label = getLanguageAiPopupLabel(newLang);
       preloadedNextTrackRef.current = seeds[0];
       setPreloadedNextTrack(seeds[0]);
-      preloadedAlternativesRef.current = seeds.slice(1, 4);
+      preloadedAlternativesRef.current = seeds.slice(1, 11);
       if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
         setNextTrackPopup({
           title: seeds[0].title,
@@ -542,7 +542,7 @@ export default function App() {
           source: seeds[0].source,
           modeLabel: label,
           isCountdown: false,
-          alternatives: seeds.slice(1, 4),
+          alternatives: seeds.slice(1, 11),
         });
       }
     }
@@ -1352,9 +1352,9 @@ export default function App() {
     if (!nextToUse || (cur && nextToUse.id === cur.id)) return null;
 
     const altList = (useNewDiscovery && preloadedAlternativesRef.current.length > 0)
-      ? preloadedAlternativesRef.current.slice(0, 3)
+      ? preloadedAlternativesRef.current.slice(0, 10)
       : (!useNewDiscovery
-          ? allList.filter(t => t.id !== cur?.id && t.id !== nextToUse.id).slice(0, 3)
+          ? allList.filter(t => t.id !== cur?.id && t.id !== nextToUse.id).slice(0, 10)
           : []);
 
     return {
@@ -1421,7 +1421,7 @@ export default function App() {
         getTranslation(language, 'mode.queuePopup')
       ),
       isCountdown: false,
-      alternatives: preloadedAlternativesRef.current.slice(0, 3),
+      alternatives: preloadedAlternativesRef.current.slice(0, 10),
     });
   };
 
@@ -1731,6 +1731,46 @@ const getLanguageAiSeeds = (lang: LanguageCode): Track[] => {
           cover_art: 'https://i.ytimg.com/vi/suAR1PYFNYA/hqdefault.jpg',
           source: 'youtube',
         },
+        {
+          id: 'aimix_seed_en_8',
+          title: 'As It Was',
+          artist: 'Harry Styles',
+          album: 'AI Mix • Synthpop',
+          duration_secs: 167,
+          path_or_url: 'H5v3kku4y6Q',
+          cover_art: 'https://i.ytimg.com/vi/H5v3kku4y6Q/hqdefault.jpg',
+          source: 'youtube',
+        },
+        {
+          id: 'aimix_seed_en_9',
+          title: 'Good Luck, Babe!',
+          artist: 'Chappell Roan',
+          album: 'AI Mix • Viral Alternative',
+          duration_secs: 218,
+          path_or_url: '1KI9XCGkzOM',
+          cover_art: 'https://i.ytimg.com/vi/1KI9XCGkzOM/hqdefault.jpg',
+          source: 'youtube',
+        },
+        {
+          id: 'aimix_seed_en_10',
+          title: 'Stay',
+          artist: 'The Kid LAROI & Justin Bieber',
+          album: 'AI Mix • Pop Hit',
+          duration_secs: 141,
+          path_or_url: 'kTJczUoc56U',
+          cover_art: 'https://i.ytimg.com/vi/kTJczUoc56U/hqdefault.jpg',
+          source: 'youtube',
+        },
+        {
+          id: 'aimix_seed_en_11',
+          title: 'Flowers',
+          artist: 'Miley Cyrus',
+          album: 'AI Mix • Disco Pop',
+          duration_secs: 200,
+          path_or_url: 'G7KNmW9a75Y',
+          cover_art: 'https://i.ytimg.com/vi/G7KNmW9a75Y/hqdefault.jpg',
+          source: 'youtube',
+        },
       ];
       break;
     case 'vi':
@@ -1816,6 +1856,36 @@ const getLanguageAiSeeds = (lang: LanguageCode): Track[] => {
           cover_art: 'https://i.ytimg.com/vi/GgQFO8dL5XQ/hqdefault.jpg',
           source: 'youtube',
         },
+        {
+          id: 'aimix_seed_vi_9',
+          title: 'Waiting For You',
+          artist: 'MONO',
+          album: 'AI Mix • 80s Synthpop',
+          duration_secs: 265,
+          path_or_url: 'H4rDquc_t88',
+          cover_art: 'https://i.ytimg.com/vi/H4rDquc_t88/hqdefault.jpg',
+          source: 'youtube',
+        },
+        {
+          id: 'aimix_seed_vi_10',
+          title: 'Ngày Đầu Tiên',
+          artist: 'Đức Phúc',
+          album: 'AI Mix • Pop Ballad',
+          duration_secs: 205,
+          path_or_url: '4bW_OaW0rYw',
+          cover_art: 'https://i.ytimg.com/vi/4bW_OaW0rYw/hqdefault.jpg',
+          source: 'youtube',
+        },
+        {
+          id: 'aimix_seed_vi_11',
+          title: 'Bật Tình Yêu Lên',
+          artist: 'Tăng Duy Tân & Hòa Minzy',
+          album: 'AI Mix • Duo Hit',
+          duration_secs: 205,
+          path_or_url: '1J7wQf0z-1Y',
+          cover_art: 'https://i.ytimg.com/vi/1J7wQf0z-1Y/hqdefault.jpg',
+          source: 'youtube',
+        },
       ];
       break;
   }
@@ -1843,11 +1913,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       // Immediately show AI Mix popup tailored to selected language
       preloadedNextTrackRef.current = initialAiMixSeeds[0];
       setPreloadedNextTrack(initialAiMixSeeds[0]);
-      preloadedAlternativesRef.current = initialAiMixSeeds.slice(1, 4);
+      preloadedAlternativesRef.current = initialAiMixSeeds.slice(1, 11);
 
       if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
         const topPick = initialAiMixSeeds[0];
-        const alts = initialAiMixSeeds.slice(1, 4);
+        const alts = initialAiMixSeeds.slice(1, 11);
         setNextTrackPopup({
           title: topPick.title,
           artist: topPick.artist,
@@ -1918,7 +1988,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         if (candidates.length > 0) {
           preloadedNextTrackRef.current = candidates[0];
           setPreloadedNextTrack(candidates[0]);
-          preloadedAlternativesRef.current = candidates.slice(1, 6);
+          preloadedAlternativesRef.current = candidates.slice(1, 11);
           if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
             const popupLabel = recommendModeRef.current === 'fresh'
               ? getTranslation(language, 'mode.freshPopup')
@@ -1933,7 +2003,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               source: candidates[0].source,
               modeLabel: popupLabel,
               isCountdown: false,
-              alternatives: candidates.slice(1, 4),
+              alternatives: candidates.slice(1, 11),
             });
           }
         }
@@ -2238,8 +2308,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const allList = getEffectiveQueue();
     const cur = currentTrackRef.current;
     const altList = (useNew && preloadedAlternativesRef.current.length > 0)
-      ? preloadedAlternativesRef.current.slice(0, 3)
-      : (!useNew ? allList.filter(t => t.id !== cur?.id && t.id !== effectiveUpcomingTrack.id).slice(0, 3) : []);
+      ? preloadedAlternativesRef.current.slice(0, 10)
+      : (!useNew ? allList.filter(t => t.id !== cur?.id && t.id !== effectiveUpcomingTrack.id).slice(0, 10) : []);
 
     setNextTrackPopup(prev => ({
       title: effectiveUpcomingTrack.title,
@@ -2602,7 +2672,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 modeLabel: getPlaylistModeLabel(activeQueueContextRef.current),
                 isCountdown: true,
                 remainingSecs: Math.round(remaining),
-                alternatives: prev?.alternatives || preloadedAlternativesRef.current.slice(0, 3),
+                alternatives: prev?.alternatives || preloadedAlternativesRef.current.slice(0, 10),
               }));
             }
           }
@@ -5458,7 +5528,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       const nextIdx = curIndex >= 0 ? (curIndex + 1) % allConverted.length : 0;
       preloadedNextTrackRef.current = allConverted[nextIdx];
       setPreloadedNextTrack(allConverted[nextIdx]);
-      preloadedAlternativesRef.current = allConverted.slice(nextIdx + 1, nextIdx + 6);
+      preloadedAlternativesRef.current = allConverted.slice(nextIdx + 1, nextIdx + 11);
     }
     activeQueueRef.current = queueFromResults;
     setActiveQueue(queueFromResults);
@@ -5521,7 +5591,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const nextIdx = (targetIndex + 1) % albumTracks.length;
     preloadedNextTrackRef.current = albumTracks[nextIdx];
     setPreloadedNextTrack(albumTracks[nextIdx]);
-    preloadedAlternativesRef.current = albumTracks.slice(nextIdx + 1, nextIdx + 6);
+    preloadedAlternativesRef.current = albumTracks.slice(nextIdx + 1, nextIdx + 11);
 
     playTrackInternal(currentTrackToPlay);
     showNotification(`▶ Đang phát Album Mix: ${mix.title} • Bài ${targetIndex + 1}/${albumTracks.length}`);
@@ -5778,7 +5848,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     <span>{getTranslation(language, 'popup.sameGenre')}</span>
                     <span className="text-[9px] text-[#555]">{getTranslation(language, 'popup.clickToChoose')}</span>
                   </div>
-                  <div className="space-y-1 max-h-24 sm:max-h-32 overflow-y-auto pr-0.5">
+                  <div className="space-y-1 max-h-[44px] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                     {nextTrackPopup.alternatives.map((alt) => (
                       <div
                         key={alt.id}
@@ -5912,6 +5982,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             onUpdateCrossfadeDuration={setCrossfadeDuration}
             showVisualizer={showVisualizer}
             onToggleVisualizer={() => setShowVisualizer(p => !p)}
+            sleepTimerMinutes={sleepTimerMinutes}
+            sleepTimerRemainingSecs={sleepTimerRemainingSecs}
+            onSetSleepTimer={handleSetSleepTimer}
           />
 
           {/* Spytify Connect Device Switcher Modal */}

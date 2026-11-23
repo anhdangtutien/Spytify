@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, RotateCcw, Power, Sliders, Volume2, Sparkles, 
   Headphones, Flame, Check, AlertCircle, CheckCircle2, Music, Activity,
-  BookmarkPlus, Trash2, Bookmark, ChevronLeft, ChevronRight
+  BookmarkPlus, Trash2, Bookmark, ChevronLeft, ChevronRight, Moon, Clock, Minus, Plus
 } from 'lucide-react';
 import { 
   EQ_FREQUENCIES, EQ_LABELS, EQ_PRESETS, EqualizerState, CustomEqualizerPreset,
@@ -36,6 +36,9 @@ interface EqualizerModalProps {
   onUpdateCrossfadeDuration?: (durationSecs: number) => void;
   showVisualizer?: boolean;
   onToggleVisualizer?: () => void;
+  sleepTimerMinutes?: number | null;
+  sleepTimerRemainingSecs?: number | null;
+  onSetSleepTimer?: (minutes: number | null) => void;
 }
 
 export const EqualizerModal: React.FC<EqualizerModalProps> = ({
@@ -49,6 +52,9 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   onUpdateCrossfadeDuration,
   showVisualizer = false,
   onToggleVisualizer,
+  sleepTimerMinutes = null,
+  sleepTimerRemainingSecs = null,
+  onSetSleepTimer,
 }) => {
   const isLight = themeMode === 'light';
   const [eqState, setEqState] = useState<EqualizerState>(() => loadEqualizerState());
@@ -693,6 +699,61 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Sleep Timer (Hẹn giờ tắt nhạc) */}
+            {onSetSleepTimer && (
+              <div className={`p-2.5 rounded-xl border ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'
+              }`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-mono font-semibold text-slate-300 flex items-center gap-1">
+                    <Moon className="w-2.5 h-2.5" style={{ color: accentColor }} />
+                    {language === 'vi' ? 'Hẹn giờ tắt nhạc' : 'Sleep Timer'}
+                  </span>
+                  <span className="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
+                    {sleepTimerMinutes === 0
+                      ? (language === 'vi' ? 'Hết bài' : 'End of track')
+                      : sleepTimerRemainingSecs !== null && sleepTimerRemainingSecs > 0
+                      ? `⏳ ${Math.floor(sleepTimerRemainingSecs / 60)}:${(sleepTimerRemainingSecs % 60).toString().padStart(2, '0')}`
+                      : (language === 'vi' ? 'Tắt' : 'Off')}
+                  </span>
+                </div>
+                <div className="grid grid-cols-6 gap-1 w-full">
+                  {[
+                    { mins: null, label: language === 'vi' ? 'Tắt' : 'Off' },
+                    { mins: 15, label: '15m' },
+                    { mins: 30, label: '30m' },
+                    { mins: 45, label: '45m' },
+                    { mins: 60, label: '60m' },
+                    { mins: 0, label: language === 'vi' ? 'Hết bài' : 'End' },
+                  ].map(opt => {
+                    const isSelected = opt.mins === null 
+                      ? sleepTimerMinutes === null 
+                      : sleepTimerMinutes === opt.mins;
+                    return (
+                      <button
+                        key={String(opt.mins)}
+                        type="button"
+                        onClick={() => onSetSleepTimer(opt.mins)}
+                        className={`py-1 sm:py-0.5 rounded text-[9.5px] font-mono transition-all cursor-pointer border text-center w-full ${
+                          isSelected
+                            ? 'border-transparent font-bold text-white shadow-sm'
+                            : isLight
+                            ? 'bg-slate-200/60 border-slate-300/60 text-slate-600 hover:bg-slate-200'
+                            : 'bg-[#181824] border-[#272738] text-slate-400 hover:text-white hover:bg-[#202030]'
+                        }`}
+                        style={isSelected ? { 
+                          backgroundColor: accentColor,
+                          color: getContrastTextColor(accentColor),
+                        } : undefined}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Auxiliary Sliders: Preamp, Bass Boost, 3D Spatial */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

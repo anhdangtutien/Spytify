@@ -904,14 +904,14 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Desktop Utils Group */}
         <div className={`hidden sm:flex items-center ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
-        {/* Next Track Preview / Auto Suggestion Toggle */}
+        {/* Next Track Preview / Smart DJ Auto Suggestion Toggle */}
         {onToggleNextTrackPopupEnabled && (
           <button
             onClick={onToggleNextTrackPopupEnabled}
             title={
               isNextTrackPopupEnabled
-                ? getTranslation(language, 'popup.disableAuto')
-                : getTranslation(language, 'popup.enableAuto')
+                ? (language === 'vi' ? 'Smart DJ • Tắt gợi ý bài tiếp theo' : 'Smart DJ • Disable Next Track Popup')
+                : (language === 'vi' ? 'Smart DJ • Bật gợi ý bài tiếp theo' : 'Smart DJ • Enable Next Track Popup')
             }
             style={isNextTrackPopupEnabled ? {
               color: accentColor,
@@ -925,217 +925,46 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
-            {isNextTrackPopupEnabled ? (
-              <Eye className="w-4 h-4" />
-            ) : (
-              <EyeOff className="w-4 h-4 opacity-50" />
-            )}
+            <Sparkles className={`w-4 h-4 ${isNextTrackPopupEnabled ? '' : 'opacity-50'}`} />
           </button>
         )}
 
-        {/* Sleep Timer Toggle & Menu */}
-        {onSetSleepTimer && (
-          <div className="relative shrink-0">
-            <button
-              onClick={() => setShowTimerMenu(p => !p)}
-              title={getTranslation(language, 'timer.title')}
-              style={sleepTimerMinutes !== null ? {
-                color: accentColor,
-                backgroundColor: `${accentColor}18`,
-                borderColor: `${accentColor}50`,
-                boxShadow: `0 0 10px ${accentColor}30`,
-              } : undefined}
-              className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 shrink-0 ${
-                sleepTimerMinutes !== null
-                  ? ''
-                  : 'text-[#666] hover:text-white border-transparent'
-              }`}
-            >
-              <Moon className="w-4 h-4" />
-              {sleepTimerMinutes !== null && (
-                <span className="text-[10px] font-mono font-bold">
-                  {formatTimerRemaining()}
-                </span>
-              )}
-            </button>
-
-            {/* Popup Menu */}
-            {showTimerMenu && (
-              <div 
-                className="absolute bottom-12 right-0 w-52 p-2.5 rounded-xl bg-[#0c0c12] border border-[#22222e] shadow-2xl z-50 select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#1c1c28]">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5 font-mono">
-                    <Moon className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                    {getTranslation(language, 'timer.title')}
-                  </span>
-                  {sleepTimerMinutes !== null && (
-                    <span className="text-[10px] font-mono font-bold" style={{ color: accentColor }}>
-                      {formatTimerRemaining()}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  {[15, 30, 45, 60].map((mins) => {
-                    const isSelected = sleepTimerMinutes === mins;
-                    return (
-                      <button
-                        key={mins}
-                        onClick={() => {
-                          onSetSleepTimer(mins);
-                          setShowTimerMenu(false);
-                        }}
-                        className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
-                          isSelected ? 'bg-white/10 text-white font-bold' : 'text-[#888] hover:text-white hover:bg-[#161622]'
-                        }`}
-                      >
-                        <span>{getTranslation(language, `timer.${mins}m` as any)}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    onClick={() => {
-                      onSetSleepTimer(0);
-                      setShowTimerMenu(false);
-                    }}
-                    className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center justify-between transition-colors cursor-pointer ${
-                      sleepTimerMinutes === 0 ? 'bg-white/10 text-white font-bold' : 'text-[#888] hover:text-white hover:bg-[#161622]'
-                    }`}
-                  >
-                    <span>{getTranslation(language, 'timer.endOfTrack')}</span>
-                    {sleepTimerMinutes === 0 && <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />}
-                  </button>
-
-                  {/* Active Custom Option if not in presets */}
-                  {sleepTimerMinutes !== null && ![0, 15, 30, 45, 60].includes(sleepTimerMinutes) && (
-                    <div className="w-full px-2.5 py-1.5 rounded-lg text-xs font-bold text-left flex items-center justify-between bg-white/10 text-white">
-                      <span>{getTranslation(language, 'timer.custom')}: {sleepTimerMinutes} {getTranslation(language, 'timer.minutes')}</span>
-                      <Check className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                    </div>
-                  )}
-
-                  {/* Custom minutes input */}
-                  <div className="pt-2 mt-1 border-t border-[#1c1c28]">
-                    <div className="text-[11px] text-[#888] font-medium mb-1.5 px-0.5 flex items-center justify-between">
-                      <span>{getTranslation(language, 'timer.custom')}</span>
-                      <span className="text-[10px] text-[#666]">1 - 720 {getTranslation(language, 'timer.minutes')}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {/* Stepper container */}
-                      <div className="flex-1 flex items-center bg-[#151520] rounded-lg border border-[#2a2a3e] px-1 py-0.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const cur = parseInt(customMinutesInput, 10) || 15;
-                            const next = Math.max(1, cur > 5 ? cur - 5 : 1);
-                            setCustomMinutesInput(next.toString());
-                          }}
-                          className="w-6 h-6 flex items-center justify-center text-[#888] hover:text-white hover:bg-white/10 rounded transition-colors cursor-pointer"
-                          title="-5 phút"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-
-                        <div className="flex-1 flex items-center justify-center gap-0.5">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            placeholder="30"
-                            value={customMinutesInput}
-                            onChange={(e) => {
-                              const val = e.target.value.replace(/[^0-9]/g, '');
-                              setCustomMinutesInput(val);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleApplyCustomTimer();
-                              }
-                            }}
-                            className="w-10 bg-transparent text-center text-white text-xs font-mono font-bold focus:outline-none"
-                          />
-                          <span className="text-[10px] text-[#777] font-mono select-none">
-                            {getTranslation(language, 'timer.minutes')}
-                          </span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const cur = parseInt(customMinutesInput, 10) || 0;
-                            const next = Math.min(720, cur + 5);
-                            setCustomMinutesInput(next.toString());
-                          }}
-                          className="w-6 h-6 flex items-center justify-center text-[#888] hover:text-white hover:bg-white/10 rounded transition-colors cursor-pointer"
-                          title="+5 phút"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleApplyCustomTimer}
-                        disabled={!customMinutesInput || parseInt(customMinutesInput, 10) <= 0}
-                        style={{
-                          backgroundColor: accentColor,
-                          color: '#fff',
-                        }}
-                        className="px-3 py-1.5 text-xs font-bold rounded-lg hover:brightness-110 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer shadow-md"
-                      >
-                        {getTranslation(language, 'timer.set')}
-                      </button>
-                    </div>
-                  </div>
-
-                  {sleepTimerMinutes !== null && (
-                    <div className="pt-1.5 mt-1 border-t border-[#1c1c28]">
-                      <button
-                        onClick={() => {
-                          onSetSleepTimer(null);
-                          setShowTimerMenu(false);
-                        }}
-                        className="w-full px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-400 hover:bg-red-500/10 text-left transition-colors cursor-pointer"
-                      >
-                        {getTranslation(language, 'timer.turnOff')}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Unified Audio Settings (Equalizer, Crossfade & Visualizer) */}
+        {/* Unified Audio Settings (Equalizer, Crossfade, Visualizer & Sleep Timer) */}
         {onOpenEqualizer && (
           <button
             onClick={onOpenEqualizer}
-            title={language === 'vi' ? 'Cài đặt âm thanh (EQ, Crossfade, Sóng nhạc)' : 'Audio Settings (EQ, Crossfade, Visualizer)'}
-            style={(isEqualizerActive || crossfadeDuration > 0 || showVisualizer) ? {
-              color: accentColor,
-              backgroundColor: `${accentColor}18`,
-              borderColor: `${accentColor}50`,
-              boxShadow: `0 0 10px ${accentColor}30`,
+            title={
+              sleepTimerMinutes !== null
+                ? (language === 'vi' ? `Hẹn giờ: ${formatTimerRemaining()} • Cài đặt âm thanh (EQ, Crossfade)` : `Sleep Timer: ${formatTimerRemaining()} • Audio Settings`)
+                : (language === 'vi' ? 'Cài đặt âm thanh (EQ, Crossfade, Sóng nhạc, Hẹn giờ)' : 'Audio Settings (EQ, Crossfade, Visualizer, Timer)')
+            }
+            style={(isEqualizerActive || crossfadeDuration > 0 || showVisualizer || sleepTimerMinutes !== null) ? {
+              color: sleepTimerMinutes !== null ? '#fbbf24' : accentColor,
+              backgroundColor: sleepTimerMinutes !== null ? '#fbbf2418' : `${accentColor}18`,
+              borderColor: sleepTimerMinutes !== null ? '#fbbf2450' : `${accentColor}50`,
+              boxShadow: sleepTimerMinutes !== null ? '0 0 10px rgba(251, 191, 36, 0.3)' : `0 0 10px ${accentColor}30`,
             } : undefined}
             className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 relative shrink-0 ${
-              (isEqualizerActive || crossfadeDuration > 0 || showVisualizer)
+              (isEqualizerActive || crossfadeDuration > 0 || showVisualizer || sleepTimerMinutes !== null)
                 ? ''
                 : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
             <SlidersHorizontal className="w-4 h-4" />
-            {crossfadeDuration > 0 && (
+            {sleepTimerMinutes !== null ? (
+              <span className="text-[10px] font-mono font-bold leading-none text-amber-400 flex items-center gap-0.5">
+                <Clock className="w-2.5 h-2.5 animate-pulse" />
+                {sleepTimerMinutes === 0
+                  ? (language === 'vi' ? 'Hết bài' : 'End')
+                  : sleepTimerRemainingSecs !== null && sleepTimerRemainingSecs > 0
+                  ? `${Math.floor(sleepTimerRemainingSecs / 60)}:${(sleepTimerRemainingSecs % 60).toString().padStart(2, '0')}`
+                  : `${sleepTimerMinutes}m`}
+              </span>
+            ) : crossfadeDuration > 0 ? (
               <span className="text-[10px] font-mono font-bold leading-none">
                 {crossfadeDuration}s
               </span>
-            )}
+            ) : null}
             {showVisualizer && (
               <span 
                 className="w-1.5 h-1.5 rounded-full"
@@ -1161,15 +990,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               borderColor: '#10b98150',
               boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)',
             } : undefined}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
               isConnectHostActive ? '' : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
-            <Radio className={`w-4 h-4 ${isConnectHostActive ? 'animate-pulse text-emerald-400' : ''}`} />
-            <Cast className="w-3.5 h-3.5 -ml-0.5" />
-            <span className="hidden xl:inline text-[9px] font-mono font-bold tracking-tight text-emerald-400">
-              {isConnectHostActive ? 'HOST ON' : 'CAST'}
-            </span>
+            <Cast className={`w-4 h-4 ${isConnectHostActive ? 'text-emerald-400' : ''}`} />
           </button>
         )}
 
@@ -1193,22 +1018,17 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               backgroundColor: '#38bdf818',
               borderColor: '#38bdf850',
             } : undefined)}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 shrink-0 ${
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
               isConnectClientActive || isHostOnline ? '' : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
             {playbackTarget === 'desktop' ? (
-              <Laptop className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+              <Laptop className="w-4 h-4 text-sky-400 animate-pulse" />
             ) : playbackTarget === 'this_device' ? (
-              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <Smartphone className="w-4 h-4 text-emerald-400" />
             ) : (
-              <Radio className={`w-3.5 h-3.5 ${isHostOnline ? 'animate-bounce text-sky-400' : ''}`} />
+              <Cast className={`w-4 h-4 ${isHostOnline ? 'text-sky-400' : ''}`} />
             )}
-            <span className="text-[10px] font-mono font-bold">
-              {isConnectClientActive
-                ? (playbackTarget === 'desktop' ? 'DESKTOP' : 'IPHONE')
-                : (isHostOnline ? 'DESKTOP' : 'CONNECT')}
-            </span>
           </button>
         )}
 
