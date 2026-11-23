@@ -3,7 +3,8 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio, Cast,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
-  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv
+  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv,
+  Laptop, Smartphone
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -67,7 +68,9 @@ interface PlayerBarProps {
   onToggleConnectHost?: () => void;
   isConnectClientActive?: boolean;
   isHostOnline?: boolean;
+  playbackTarget?: 'desktop' | 'this_device';
   onToggleConnectClient?: () => void;
+  onOpenConnectModal?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -106,7 +109,9 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onToggleConnectHost,
   isConnectClientActive = false,
   isHostOnline = false,
+  playbackTarget = 'desktop',
   onToggleConnectClient,
+  onOpenConnectModal,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -1169,32 +1174,40 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         )}
 
         {/* Spytify Connect (Mobile Client Listener & Remote) — Only render on Web/Mobile when not Host */}
-        {!onToggleConnectHost && onToggleConnectClient && (
+        {!onToggleConnectHost && (onToggleConnectClient || onOpenConnectModal) && (
           <button
             type="button"
-            onClick={onToggleConnectClient}
+            onClick={onOpenConnectModal || onToggleConnectClient}
             title={
-              isConnectClientActive
-                ? (language === 'vi' ? 'Đang nghe trực tiếp từ Desktop (WebRTC)' : 'Listening live from Desktop (WebRTC)')
-                : (language === 'vi' ? 'Kết nối & nghe từ Desktop của bạn' : 'Connect & listen to Desktop')
+              playbackTarget === 'desktop'
+                ? (language === 'vi' ? 'Đang điều khiển Spytify Desktop' : 'Controlling Spytify Desktop')
+                : (language === 'vi' ? 'Thiết bị phát nhạc (Connect)' : 'Connect Devices')
             }
             style={isConnectClientActive ? {
-              color: '#10b981',
-              backgroundColor: '#10b98120',
-              borderColor: '#10b98160',
-              boxShadow: '0 0 12px rgba(16, 185, 129, 0.4)',
+              color: playbackTarget === 'desktop' ? '#38bdf8' : '#10b981',
+              backgroundColor: playbackTarget === 'desktop' ? '#38bdf820' : '#10b98120',
+              borderColor: playbackTarget === 'desktop' ? '#38bdf860' : '#10b98160',
+              boxShadow: playbackTarget === 'desktop' ? '0 0 12px rgba(56, 189, 248, 0.4)' : '0 0 12px rgba(16, 185, 129, 0.4)',
             } : (isHostOnline ? {
               color: '#38bdf8',
               backgroundColor: '#38bdf818',
               borderColor: '#38bdf850',
             } : undefined)}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1 shrink-0 ${
+            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center gap-1.5 shrink-0 ${
               isConnectClientActive || isHostOnline ? '' : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
-            <Radio className={`w-3.5 h-3.5 ${isConnectClientActive ? 'animate-pulse text-emerald-400' : (isHostOnline ? 'animate-bounce text-sky-400' : '')}`} />
+            {playbackTarget === 'desktop' ? (
+              <Laptop className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+            ) : playbackTarget === 'this_device' ? (
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+            ) : (
+              <Radio className={`w-3.5 h-3.5 ${isHostOnline ? 'animate-bounce text-sky-400' : ''}`} />
+            )}
             <span className="text-[10px] font-mono font-bold">
-              {isConnectClientActive ? 'LIVE' : (isHostOnline ? 'DESKTOP' : 'CONNECT')}
+              {isConnectClientActive
+                ? (playbackTarget === 'desktop' ? 'DESKTOP' : 'IPHONE')
+                : (isHostOnline ? 'DESKTOP' : 'CONNECT')}
             </span>
           </button>
         )}
@@ -1290,18 +1303,20 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             <div className="mt-0.5">{currentTrack ? getSourceBadge(currentTrack.source) : null}</div>
           </div>
           <div className="flex items-center gap-1.5">
-            {onToggleConnectClient && (
+            {(onOpenConnectModal || onToggleConnectClient) && (
               <button
                 type="button"
-                onClick={onToggleConnectClient}
+                onClick={onOpenConnectModal || onToggleConnectClient}
                 className={`p-2 rounded-full cursor-pointer transition-colors ${
                   isConnectClientActive 
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' 
+                    ? (playbackTarget === 'desktop'
+                        ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40'
+                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40')
                     : (isHostOnline ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 animate-pulse' : 'bg-white/5 text-zinc-400 hover:text-white')
                 }`}
                 title="Spytify Connect"
               >
-                <Radio className="w-4 h-4" />
+                {playbackTarget === 'desktop' ? <Laptop className="w-4 h-4" /> : <Radio className="w-4 h-4" />}
               </button>
             )}
             {onOpenEqualizer ? (

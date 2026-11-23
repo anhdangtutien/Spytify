@@ -1,13 +1,3 @@
-import {
-  Room,
-  RoomEvent,
-  LocalAudioTrack,
-  Track as LKTrack,
-  RemoteTrack,
-  RemoteAudioTrack,
-  RemoteParticipant,
-} from 'livekit-client';
-import { createLiveKitToken } from './livekit';
 import { getSupabaseClient } from './supabase';
 import { Track } from '../types';
 
@@ -19,6 +9,9 @@ export interface ConnectPlaybackState {
   volume: number;
   repeatMode?: 'off' | 'all' | 'one';
   isShuffle?: boolean;
+  activeDeviceId?: string;
+  activeDeviceName?: string;
+  lanStreamBaseUrl?: string | null;
   timestamp: number;
 }
 
@@ -31,6 +24,7 @@ export type ConnectCommand =
   | { type: 'SEEK'; time: number }
   | { type: 'SET_VOLUME'; volume: number }
   | { type: 'PLAY_TRACK'; track: Track }
+  | { type: 'TRANSFER_PLAYBACK'; target: 'desktop' | 'mobile'; currentTime?: number }
   | { type: 'REQUEST_STATE' };
 
 export type StateCallback = (state: ConnectPlaybackState) => void;
@@ -38,13 +32,11 @@ export type CommandCallback = (cmd: ConnectCommand) => void;
 export type StatusCallback = (active: boolean) => void;
 
 class SpytifyConnectService {
-  private hostRoom: Room | null = null;
-  private clientRoom: Room | null = null;
-  private localAudioTrack: LocalAudioTrack | null = null;
   private realtimeChannel: any = null;
   private hubChannel: any = null;
   private activeUserId: string | null = null;
   private discoveredHostId: string | null = null;
+  private discoveredHostName: string = 'Spytify Desktop';
 
   private isHostRunning = false;
   private isClientConnected = false;
@@ -56,21 +48,20 @@ class SpytifyConnectService {
   private onClientStatusCallbacks: Set<StatusCallback> = new Set();
 
   private lastState: ConnectPlaybackState | null = null;
-  private audioAttachedElement: HTMLAudioElement | null = null;
+  private lastBroadcastTime = 0;
 
   // ──────────────────────────────────────────────────────────────────────────
-  // DESKTOP HOST METHODS
+  // DESKTOP HOST METHODS (Direction 1 & 3: Master Broadcaster & Sync Engine)
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Starts the Desktop Host:
-   * 1. Publishes the master audio stream into LiveKit room `spytify_connect_${userId}`.
-   * 2. Listens for remote control commands on Supabase Realtime channel `connect_${userId}`.
+   * Starts the Desktop Host on Supabase Realtime channel.
+   * Enables instant remote control from iPhone with sub-50ms latency.
    */
   public async startHost(
     userId: string,
-    audioStream: MediaStream | null,
-    onCommand?: CommandCallback
+    onCommand?: CommandCallback,
+    hostDeviceName = 'Spytify Desktop'
   ): Promise<boolean> {
     if (this.isHostRunning && this.activeUserId === userId) {
       return true;
@@ -78,39 +69,65 @@ class SpytifyConnectService {
 
     await this.stopHost();
     this.activeUserId = userId;
+    this.discoveredHostName = hostDeviceName;
 
     if (onCommand) {
       this.onCommandCallbacks.add(onCommand);
     }
 
-    try {
-      const roomName = `spytify_connect_${userId}`;
-      const { token, serverUrl } = await createLiveKitToken(roomName, `desktop_${userId}`, 'Desktop Host');
+    const client = getSupabaseClient();
+    if (!client) {
+      console.warn('[Spytify Connect] Supabase client is not available');
+      return false;
+    }
 
-      const room = new Room({
-        adaptiveStream: true,
-        dynacast: true,
+    try {
+      const channelName = `spytify_remote_${userId}`;
+      this.realtimeChannel = client.channel(channelName, {
+        config: { broadcast: { self: false }, presence: { key: `desktop_${userId}` } },
       });
 
-      await room.connect(serverUrl, token);
-      this.hostRoom = room;
-
-      // Extract master audio track from MediaStream and publish as High-Fidelity Music Track
-      const audioTrack = audioStream ? audioStream.getAudioTracks()[0] : null;
-      if (audioTrack) {
-        this.localAudioTrack = new LocalAudioTrack(audioTrack);
-        await room.localParticipant.publishTrack(this.localAudioTrack, {
-          name: 'spytify-master-music',
-          source: LKTrack.Source.Microphone,
-          simulcast: false,
+      this.realtimeChannel
+        .on('broadcast', { event: 'remote_cmd' }, ({ payload }: { payload: ConnectCommand }) => {
+          if (!payload) return;
+          console.log('[Spytify Connect] Host received command:', payload);
+          if (payload.type === 'REQUEST_STATE' && this.lastState) {
+            this.broadcastPlaybackState(this.lastState, true);
+            return;
+          }
+          this.onCommandCallbacks.forEach(cb => cb(payload));
+        })
+        .subscribe(async (status: string) => {
+          if (status === 'SUBSCRIBED' && this.realtimeChannel) {
+            await this.realtimeChannel.track({
+              role: 'host',
+              userId,
+              name: hostDeviceName,
+              onlineAt: Date.now(),
+            });
+          }
         });
-        console.log('[Spytify Connect] Published master audio track to LiveKit room:', roomName);
-      } else {
-        console.warn('[Spytify Connect] Host started without audio track, signaling is active.');
-      }
 
-      // Connect to Supabase Realtime for control signaling
-      this.initHostRealtime(userId);
+      // Announce on global hub channel for zero-config auto-pairing
+      this.hubChannel = client.channel('spytify_connect_hub', {
+        config: { broadcast: { self: false }, presence: { key: `hub_${userId}` } },
+      });
+
+      this.hubChannel.subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED' && this.hubChannel) {
+          await this.hubChannel.track({
+            role: 'host',
+            hostId: userId,
+            name: hostDeviceName,
+            onlineAt: Date.now(),
+          });
+          this.hubChannel.send({
+            type: 'broadcast',
+            event: 'host_online',
+            payload: { hostId: userId, name: hostDeviceName, timestamp: Date.now() },
+          }).catch(() => {});
+        }
+      });
 
       this.isHostRunning = true;
       this.notifyHostStatus(true);
@@ -122,54 +139,36 @@ class SpytifyConnectService {
     }
   }
 
-  /**
-   * Stops Desktop Host and cleans up LiveKit + Supabase channels.
-   */
   public async stopHost(): Promise<void> {
     this.isHostRunning = false;
     this.notifyHostStatus(false);
 
-    if (this.localAudioTrack) {
-      try {
-        this.localAudioTrack.stop();
-      } catch {}
-      this.localAudioTrack = null;
-    }
-
-    if (this.hostRoom) {
-      try {
-        await this.hostRoom.disconnect();
-      } catch {}
-      this.hostRoom = null;
-    }
-
-    if (this.realtimeChannel) {
-      try {
-        const client = getSupabaseClient();
-        if (client) {
-          client.removeChannel(this.realtimeChannel);
-        }
-      } catch {}
-      this.realtimeChannel = null;
-    }
-
-    if (this.hubChannel) {
-      try {
-        const client = getSupabaseClient();
-        if (client) {
-          client.removeChannel(this.hubChannel);
-        }
-      } catch {}
-      this.hubChannel = null;
+    const client = getSupabaseClient();
+    if (client) {
+      if (this.realtimeChannel) {
+        try { client.removeChannel(this.realtimeChannel); } catch {}
+        this.realtimeChannel = null;
+      }
+      if (this.hubChannel) {
+        try { client.removeChannel(this.hubChannel); } catch {}
+        this.hubChannel = null;
+      }
     }
   }
 
   /**
    * Broadcasts the current playback state from Desktop to Mobile clients.
+   * Throttles regular time ticks to reduce network traffic, but sends state changes immediately.
    */
-  public broadcastPlaybackState(state: ConnectPlaybackState): void {
+  public broadcastPlaybackState(state: ConnectPlaybackState, force = false): void {
     this.lastState = state;
     if (!this.realtimeChannel || !this.isHostRunning) return;
+
+    const now = Date.now();
+    if (!force && (now - this.lastBroadcastTime < 900)) {
+      return;
+    }
+    this.lastBroadcastTime = now;
 
     this.realtimeChannel.send({
       type: 'broadcast',
@@ -178,72 +177,17 @@ class SpytifyConnectService {
     }).catch(() => {});
   }
 
-  private initHostRealtime(userId: string) {
-    const client = getSupabaseClient();
-    if (!client) return;
-
-    const channelName = `spytify_remote_${userId}`;
-    this.realtimeChannel = client.channel(channelName, {
-      config: { broadcast: { self: false }, presence: { key: `desktop_${userId}` } },
-    });
-
-    this.realtimeChannel
-      .on('broadcast', { event: 'remote_cmd' }, ({ payload }: { payload: ConnectCommand }) => {
-        if (!payload) return;
-        if (payload.type === 'REQUEST_STATE' && this.lastState) {
-          this.broadcastPlaybackState(this.lastState);
-          return;
-        }
-        this.onCommandCallbacks.forEach(cb => cb(payload));
-      })
-      .on('presence', { event: 'sync' }, () => {
-        // Track presence
-      })
-      .subscribe(async (status: string) => {
-        if (status === 'SUBSCRIBED' && this.realtimeChannel) {
-          await this.realtimeChannel.track({
-            role: 'host',
-            userId,
-            onlineAt: Date.now(),
-          });
-        }
-      });
-
-    // Also register on global discovery hub so any mobile client can auto-pair
-    try {
-      this.hubChannel = client.channel('spytify_connect_hub', {
-        config: { broadcast: { self: false }, presence: { key: `hub_${userId}` } },
-      });
-      this.hubChannel.subscribe(async (status: string) => {
-        if (status === 'SUBSCRIBED' && this.hubChannel) {
-          await this.hubChannel.track({
-            role: 'host',
-            hostId: userId,
-            onlineAt: Date.now(),
-          });
-          this.hubChannel.send({
-            type: 'broadcast',
-            event: 'host_online',
-            payload: { hostId: userId, timestamp: Date.now() },
-          }).catch(() => {});
-        }
-      });
-    } catch {}
-  }
-
   // ──────────────────────────────────────────────────────────────────────────
-  // MOBILE / IPHONE CLIENT METHODS
+  // MOBILE / IPHONE CLIENT METHODS (Remote Control & Playback Handover)
   // ──────────────────────────────────────────────────────────────────────────
 
   /**
-   * Connects as a Mobile Client:
-   * 1. Subscribes to Supabase Realtime channel to receive state and send commands.
-   * 2. Connects to LiveKit room to receive and play the high-fidelity audio stream.
+   * Connects as Mobile Client:
+   * Instantly binds to Desktop Host for remote control and state sync.
    */
   public async connectAsClient(
     userId: string,
-    onState?: StateCallback,
-    targetAudioElement?: HTMLAudioElement
+    onState?: StateCallback
   ): Promise<boolean> {
     if (this.isClientConnected && this.activeUserId === userId) {
       return true;
@@ -255,130 +199,60 @@ class SpytifyConnectService {
     if (onState) {
       this.onStateCallbacks.add(onState);
     }
-    if (targetAudioElement) {
-      this.audioAttachedElement = targetAudioElement;
+
+    const client = getSupabaseClient();
+    if (!client) {
+      console.warn('[Spytify Connect] Supabase client is not available');
+      return false;
     }
 
     try {
       const targetUserId = (userId === 'guest_user' && this.discoveredHostId) ? this.discoveredHostId : userId;
-      const roomName = `spytify_connect_${targetUserId}`;
-      const { token, serverUrl } = await createLiveKitToken(
-        roomName,
-        `mobile_${Date.now()}`,
-        'iPhone Client'
-      );
+      const channelName = `spytify_remote_${targetUserId}`;
 
-      const room = new Room({
-        adaptiveStream: true,
-        dynacast: true,
+      this.realtimeChannel = client.channel(channelName, {
+        config: { broadcast: { self: false } },
       });
 
-      room.on(RoomEvent.TrackSubscribed, async (track: RemoteTrack, publication, participant: RemoteParticipant) => {
-        if (track.kind === LKTrack.Kind.Audio) {
-          console.log('[Spytify Connect] Audio track received from Host:', participant.identity);
-          track.detach();
-
-          let el = this.audioAttachedElement;
-          if (el) {
-            try {
-              el.pause();
-              el.removeAttribute('src');
-              el.src = '';
-              el.load();
-            } catch {}
-          } else {
-            el = new Audio();
-            (el as any).playsInline = true;
-            el.setAttribute('playsinline', 'true');
-            el.setAttribute('webkit-playsinline', 'true');
-            el.autoplay = true;
-            if (typeof document !== 'undefined' && document.body) {
-              document.body.appendChild(el);
-            }
-            this.audioAttachedElement = el;
+      this.realtimeChannel
+        .on('broadcast', { event: 'state_update' }, ({ payload }: { payload: ConnectPlaybackState }) => {
+          if (!payload) return;
+          this.lastState = payload;
+          this.onStateCallbacks.forEach(cb => cb(payload));
+        })
+        .subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            this.sendRemoteCommand({ type: 'REQUEST_STATE' });
           }
-
-          el.muted = false;
-          el.volume = 1.0;
-          track.attach(el);
-
-          try {
-            await el.play();
-            console.log('[Spytify Connect] Remote audio playback active!');
-          } catch (e) {
-            console.warn('[Spytify Connect] audio play warning (waiting for tap):', e);
-          }
-
-          await room.startAudio().catch(() => {});
-        }
-      });
-
-      room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
-        track.detach();
-      });
-
-      room.on(RoomEvent.Disconnected, () => {
-        this.isClientConnected = false;
-        this.notifyClientStatus(false);
-      });
-
-      await room.connect(serverUrl, token);
-      this.clientRoom = room;
-
-      // Start audio context on iOS Safari / mobile browsers
-      await room.startAudio().catch(() => {});
-
-      // Connect to Supabase Realtime for remote control
-      this.initClientRealtime(targetUserId);
+        });
 
       this.isClientConnected = true;
       this.notifyClientStatus(true);
-
-      // Request immediate state from Host
-      this.sendRemoteCommand({ type: 'REQUEST_STATE' });
       return true;
     } catch (err) {
-      console.error('[Spytify Connect] Failed to connect as Client:', err);
+      console.error('[Spytify Connect] Failed to connect as client:', err);
       await this.disconnectClient();
       return false;
     }
   }
 
-  /**
-   * Disconnects Mobile Client from LiveKit and Supabase channels.
-   */
+  public async connectClient(userId: string, onState?: StateCallback): Promise<boolean> {
+    return this.connectAsClient(userId, onState);
+  }
+
   public async disconnectClient(): Promise<void> {
     this.isClientConnected = false;
     this.notifyClientStatus(false);
 
-    if (this.audioAttachedElement) {
-      try {
-        this.audioAttachedElement.pause();
-        this.audioAttachedElement.src = '';
-      } catch {}
-      this.audioAttachedElement = null;
-    }
-
-    if (this.clientRoom) {
-      try {
-        await this.clientRoom.disconnect();
-      } catch {}
-      this.clientRoom = null;
-    }
-
-    if (this.realtimeChannel) {
-      try {
-        const client = getSupabaseClient();
-        if (client) {
-          client.removeChannel(this.realtimeChannel);
-        }
-      } catch {}
+    const client = getSupabaseClient();
+    if (client && this.realtimeChannel) {
+      try { client.removeChannel(this.realtimeChannel); } catch {}
       this.realtimeChannel = null;
     }
   }
 
   /**
-   * Sends a remote control command from Mobile to Desktop Host.
+   * Sends a remote control command from Mobile to Desktop Host (Play, Pause, Next, Prev, Seek, Volume).
    */
   public sendRemoteCommand(cmd: ConnectCommand): void {
     if (!this.realtimeChannel) return;
@@ -396,55 +270,12 @@ class SpytifyConnectService {
     this.sendRemoteCommand(cmd);
   }
 
-  public async connectClient(
-    userId: string,
-    onState?: StateCallback,
-    targetAudioElement?: HTMLAudioElement
-  ): Promise<boolean> {
-    return this.connectAsClient(userId, onState, targetAudioElement);
-  }
-
-  public async resumeAudio(): Promise<void> {
-    if (this.clientRoom) {
-      await this.clientRoom.startAudio().catch(() => {});
-    }
-    if (this.audioAttachedElement) {
-      this.audioAttachedElement.muted = false;
-      this.audioAttachedElement.volume = 1.0;
-      if (this.audioAttachedElement.paused) {
-        await this.audioAttachedElement.play().catch(() => {});
-      }
-    }
-  }
-
-  private initClientRealtime(userId: string) {
-    const client = getSupabaseClient();
-    if (!client) return;
-
-    const channelName = `spytify_remote_${userId}`;
-    this.realtimeChannel = client.channel(channelName, {
-      config: { broadcast: { self: false } },
-    });
-
-    this.realtimeChannel
-      .on('broadcast', { event: 'state_update' }, ({ payload }: { payload: ConnectPlaybackState }) => {
-        if (!payload) return;
-        this.lastState = payload;
-        this.onStateCallbacks.forEach(cb => cb(payload));
-      })
-      .on('presence', { event: 'sync' }, () => {
-        const state = this.realtimeChannel.presenceState();
-        const hasHost = Object.values(state).some((presences: any) =>
-          Array.isArray(presences) && presences.some(p => p.role === 'host')
-        );
-        this.isHostOnline = hasHost;
-        this.notifyHostStatus(hasHost);
-      })
-      .subscribe();
+  public resumeAudio(): void {
+    // Kept for backward compatibility
   }
 
   /**
-   * Subscribes to host presence updates (to know if Desktop is online without connecting audio).
+   * Subscribes to host presence updates (to know if Desktop is online without connecting).
    */
   public monitorHostOnline(userId: string, onHostStatus: StatusCallback): () => void {
     this.onHostStatusCallbacks.add(onHostStatus);
@@ -474,9 +305,10 @@ class SpytifyConnectService {
       config: { broadcast: { self: false } },
     });
     hub
-      .on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string } }) => {
+      .on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string; name?: string } }) => {
         if (payload?.hostId) {
           this.discoveredHostId = payload.hostId;
+          if (payload.name) this.discoveredHostName = payload.name;
           this.isHostOnline = true;
           this.notifyHostStatus(true);
         }
@@ -484,17 +316,20 @@ class SpytifyConnectService {
       .on('presence', { event: 'sync' }, () => {
         const state = hub.presenceState();
         let foundHostId: string | null = null;
+        let foundName = 'Spytify Desktop';
         for (const presences of Object.values(state)) {
           if (Array.isArray(presences)) {
             const h = presences.find((p: any) => p && p.role === 'host') as any;
             if (h) {
               foundHostId = h.hostId || h.userId;
+              if (h.name) foundName = h.name;
               break;
             }
           }
         }
         if (foundHostId) {
           this.discoveredHostId = foundHostId;
+          this.discoveredHostName = foundName;
           this.isHostOnline = true;
           this.notifyHostStatus(true);
         }
@@ -524,6 +359,10 @@ class SpytifyConnectService {
 
   public getIsHostOnline(): boolean {
     return this.isHostOnline;
+  }
+
+  public getHostName(): string {
+    return this.discoveredHostName || 'Spytify Desktop';
   }
 
   public getLastState(): ConnectPlaybackState | null {

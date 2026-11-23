@@ -213,6 +213,11 @@ async fn resolve_youtube_music_stream(
 }
 
 #[tauri::command]
+fn get_lan_stream_info() -> Option<String> {
+    proxy::get_local_ip().map(|ip| format!("http://{}:{}", ip, proxy::PROXY_PORT))
+}
+
+#[tauri::command]
 async fn resolve_audius_stream(url_or_id: String) -> Result<String, String> {
     if url_or_id.contains("/tracks/cidstream/") && url_or_id.contains("signature=") {
         return Ok(url_or_id);
@@ -2021,6 +2026,7 @@ pub fn run() {
             get_default_download_directory,
             download_track,
             trim_memory,
+            get_lan_stream_info,
             resolve_youtube_music_stream,
             resolve_audius_stream,
             rust_ui_get_snapshot,

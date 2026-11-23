@@ -17,6 +17,7 @@ import { AlbumsView } from './components/AlbumsView';
 import { AddToAlbumModal } from './components/AddToAlbumModal';
 import { CreateAlbumFromSelectionModal } from './components/CreateAlbumFromSelectionModal';
 import { EqualizerModal } from './components/EqualizerModal';
+import { ConnectModal } from './components/ConnectModal';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
 import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
@@ -1120,6 +1121,14 @@ export default function App() {
   });
   const [isConnectClientActive, setIsConnectClientActive] = useState(false);
   const [isHostOnline, setIsHostOnline] = useState(false);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [connectPlaybackTarget, setConnectPlaybackTarget] = useState<'desktop' | 'this_device'>('desktop');
+  const connectPlaybackTargetRef = useRef<'desktop' | 'this_device'>('desktop');
+  connectPlaybackTargetRef.current = connectPlaybackTarget;
+  const [connectHostName, setConnectHostName] = useState('Spytify Desktop');
+  const [lanStreamBaseUrl, setLanStreamBaseUrl] = useState<string | null>(null);
+  const lanStreamBaseUrlRef = useRef<string | null>(null);
+  lanStreamBaseUrlRef.current = lanStreamBaseUrl;
 
   useEffect(() => {
     if (!isMobilePlayerOpen) {
@@ -3666,7 +3675,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // ─── Core play function ──────────────────────────────────────────────────
   const playTrackInternal = async (rawTrack: Track, isBackOrForward = false, isCrossfade = false) => {
-    if (isConnectClientActive) {
+    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'PLAY_TRACK', track: rawTrack });
       return;
     }
@@ -3789,7 +3798,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             rawPath.startsWith('/') ||
             /\.(mp3|flac|wav|m4a|ogg|aac|opus|wma)$/i.test(rawPath)));
 
-      if (!isValidDirectLocalStream && (track.source === 'local' || isMachineFilePath)) {
+      if (lanStreamBaseUrlRef.current && isMachineFilePath && rawPath && !isIndexedDbMissing) {
+        const lanStreamUrl = `${lanStreamBaseUrlRef.current}/local?path=${encodeURIComponent(rawPath)}`;
+        track = {
+          ...track,
+          path_or_url: lanStreamUrl,
+          source: 'local',
+        };
+      } else if (!isValidDirectLocalStream && (track.source === 'local' || isMachineFilePath)) {
         const idYtMatch = `${track.id} ${rawPath}`.match(/(?:youtube_|yt_)([A-Za-z0-9_-]{11})(?:$|[^A-Za-z0-9_-])/);
         const directYtId = /^[A-Za-z0-9_-]{11}$/.test(rawPath) ? rawPath : null;
         const extractedVid = idYtMatch?.[1] || directYtId;
@@ -4506,11 +4522,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleTogglePlay = async () => {
-    if (isConnectClientActive) {
-      if (connectAudioRef.current && connectAudioRef.current.paused) {
-        connectAudioRef.current.play().catch(() => {});
-      }
-      spytifyConnect.resumeAudio();
+    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: isPlayingRef.current ? 'PAUSE' : 'PLAY' });
       return;
     }
@@ -4639,8 +4651,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [syncPlaybackStateNow]);
 
   const handleSeek = async (secs: number) => {
-    if (isConnectClientActive) {
-      spytifyConnect.resumeAudio();
+    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'SEEK', time: secs });
       return;
     }
@@ -4704,8 +4715,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   
   const handleUserNext = () => {
-    if (isConnectClientActive) {
-      spytifyConnect.resumeAudio();
+    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'NEXT' });
       return;
     }
@@ -4745,8 +4755,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   };
 
   const handleUserPrev = () => {
-    if (isConnectClientActive) {
-      spytifyConnect.resumeAudio();
+    if (isConnectClientActive && connectPlaybackTargetRef.current === 'desktop') {
       spytifyConnect.sendCommand({ type: 'PREV' });
       return;
     }
@@ -4784,16 +4793,35 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   handleSeekRef.current = handleSeek;
 
   // ─── SPYTIFY CONNECT (Host Broadcaster & Mobile Listener) ──────────────
+  // Query LAN stream info on Tauri Desktop for local audio proxy
+  useEffect(() => {
+    if (!isTauriApp) return;
+    invoke('get_lan_stream_info')
+      .then((url: any) => {
+        if (typeof url === 'string') {
+          setLanStreamBaseUrl(url);
+          lanStreamBaseUrlRef.current = url;
+          console.log('[LAN Stream] Local server base URL:', url);
+        }
+      })
+      .catch((err) => {
+        console.warn('[LAN Stream] Failed to get LAN stream info:', err);
+      });
+  }, [isTauriApp]);
+
   // Monitor Host presence for the current user/account
   useEffect(() => {
     const effectiveUserId = currentUser?.id || 'guest_user';
     const unsub = spytifyConnect.monitorHostOnline(effectiveUserId, (online) => {
       setIsHostOnline(online);
+      if (online) {
+        setConnectHostName(spytifyConnect.getHostName());
+      }
     });
     return unsub;
   }, [currentUser?.id]);
 
-  // Broadcast state to LiveKit / Supabase subscribers whenever host playback changes
+  // Broadcast state to Supabase Realtime subscribers whenever host playback changes
   useEffect(() => {
     if (!isConnectHostActive) return;
     spytifyConnect.broadcastPlaybackState({
@@ -4802,37 +4830,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       currentTime,
       duration,
       volume,
+      lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+      activeDeviceId: 'desktop',
+      activeDeviceName: 'Spytify Desktop',
       timestamp: Date.now(),
     });
   }, [isConnectHostActive, currentTrack, isPlaying, duration, volume]);
 
-  const handleToggleConnectHost = useCallback(async () => {
-    if (!isTauriApp) {
-      showNotification(language === 'vi' ? 'Trạm phát Host chỉ khả dụng trên Spytify Desktop App (Tauri Rust)' : 'Host Broadcaster is only available on Desktop Tauri App');
-      return;
-    }
+  const startConnectHost = useCallback(async () => {
+    if (!isTauriApp) return;
     const effectiveUserId = currentUser?.id || localStorage.getItem('spytify_active_user_id') || 'guest_user';
-    if (isConnectHostActive) {
-      await spytifyConnect.stopHost();
-      setIsConnectHostActive(false);
-      try { localStorage.setItem('spytify_connect_host_enabled', 'false'); } catch {}
-      showNotification(language === 'vi' ? 'Đã tắt trạm phát Spytify Connect' : 'Spytify Connect Broadcaster Stopped');
-      return;
-    }
-
-    // If Desktop is playing a YouTube track via iframe, switch it to direct stream so Web Audio captures it
-    ytMusicFallbackTriedRef.current = false;
-    if (currentTrackRef.current?.source === 'youtube' && !ytMusicFallbackActiveRef.current) {
-      await fallbackToYoutubeMusicStream(currentTrackRef.current).catch(() => {});
-    }
-
-    ensureAudioContextRunning();
-    const masterStream = getOrCreateMasterAudioStream();
     const ok = await spytifyConnect.startHost(
       effectiveUserId,
-      masterStream,
       (cmd: ConnectCommand) => {
-        console.log('[Spytify Connect] Received remote command from mobile:', cmd);
+        console.log('[Spytify Connect] Host received remote command:', cmd);
         switch (cmd.type) {
           case 'PLAY':
             if (!isPlayingRef.current) handleTogglePlayRef.current();
@@ -4858,99 +4869,164 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           case 'PLAY_TRACK':
             if (cmd.track) playTrackInternal(cmd.track);
             break;
+          case 'TRANSFER_PLAYBACK':
+            if (cmd.target === 'desktop') {
+              if (!isPlayingRef.current) handleTogglePlayRef.current();
+              if (typeof cmd.currentTime === 'number') {
+                handleSeekRef.current(cmd.currentTime);
+              }
+            } else if (cmd.target === 'mobile') {
+              if (isPlayingRef.current) handleTogglePlayRef.current();
+            }
+            break;
         }
-      }
+      },
+      'Spytify Desktop'
     );
 
     if (ok) {
       setIsConnectHostActive(true);
       try { localStorage.setItem('spytify_connect_host_enabled', 'true'); } catch {}
       spytifyConnect.broadcastPlaybackState({
-        currentTrack,
-        isPlaying,
-        currentTime,
-        duration,
-        volume,
+        currentTrack: currentTrackRef.current,
+        isPlaying: isPlayingRef.current,
+        currentTime: currentTimeRef.current,
+        duration: durationRef.current,
+        volume: volumeRef.current,
+        lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+        activeDeviceId: 'desktop',
+        activeDeviceName: 'Spytify Desktop',
         timestamp: Date.now(),
-      });
-      showNotification(language === 'vi' ? 'Trạm phát Spytify Connect đã sẵn sàng! Mở Spytify trên iPhone để nghe live' : 'Spytify Connect is live! Connect on iPhone to listen');
-    } else {
-      showNotification(language === 'vi' ? 'Không thể khởi động Spytify Connect' : 'Failed to start Spytify Connect');
+      }, true);
     }
-  }, [currentUser?.id, isConnectHostActive, currentTrack, isPlaying, currentTime, duration, volume, language, isTauriApp]);
+  }, [isTauriApp, currentUser?.id]);
+
+  // Auto-start host on Desktop app launch
+  useEffect(() => {
+    if (isTauriApp) {
+      startConnectHost();
+    }
+  }, [isTauriApp, startConnectHost]);
+
+  const handleToggleConnectHost = useCallback(async () => {
+    if (!isTauriApp) {
+      showNotification(language === 'vi' ? 'Trạm phát Host chỉ khả dụng trên Spytify Desktop App (Tauri Rust)' : 'Host Broadcaster is only available on Desktop Tauri App');
+      return;
+    }
+    const effectiveUserId = currentUser?.id || localStorage.getItem('spytify_active_user_id') || 'guest_user';
+    if (isConnectHostActive) {
+      await spytifyConnect.stopHost();
+      setIsConnectHostActive(false);
+      try { localStorage.setItem('spytify_connect_host_enabled', 'false'); } catch {}
+      showNotification(language === 'vi' ? 'Đã tắt trạm phát Spytify Connect' : 'Spytify Connect Broadcaster Stopped');
+      return;
+    }
+    await startConnectHost();
+    showNotification(language === 'vi' ? 'Trạm phát Spytify Connect đã bật! Sẵn sàng kết nối với iPhone' : 'Spytify Connect is live! Ready for iPhone remote control');
+  }, [currentUser?.id, isConnectHostActive, language, isTauriApp, startConnectHost]);
+
+  const handleConnectAsClient = useCallback(async () => {
+    const effectiveUserId = currentUser?.id || 'guest_user';
+    const ok = await spytifyConnect.connectAsClient(
+      effectiveUserId,
+      (remoteState: ConnectPlaybackState) => {
+        if (remoteState.lanStreamBaseUrl) {
+          lanStreamBaseUrlRef.current = remoteState.lanStreamBaseUrl;
+          setLanStreamBaseUrl(remoteState.lanStreamBaseUrl);
+        }
+        if (remoteState.activeDeviceName) {
+          setConnectHostName(remoteState.activeDeviceName);
+        }
+
+        if (connectPlaybackTargetRef.current === 'desktop') {
+          if (remoteState.currentTrack) {
+            setCurrentTrack(remoteState.currentTrack);
+            currentTrackRef.current = remoteState.currentTrack;
+          }
+          if (typeof remoteState.isPlaying === 'boolean') {
+            setIsPlaying(remoteState.isPlaying);
+            isPlayingRef.current = remoteState.isPlaying;
+          }
+          if (typeof remoteState.currentTime === 'number') {
+            setCurrentTime(remoteState.currentTime);
+            currentTimeRef.current = remoteState.currentTime;
+          }
+          if (typeof remoteState.duration === 'number') {
+            setDuration(remoteState.duration);
+            durationRef.current = remoteState.duration;
+          }
+          if (typeof remoteState.volume === 'number') {
+            setVolume(remoteState.volume);
+            volumeRef.current = remoteState.volume;
+          }
+        }
+      }
+    );
+
+    if (ok) {
+      setIsConnectClientActive(true);
+    }
+    return ok;
+  }, [currentUser?.id]);
+
+  // Auto-connect mobile client when Desktop Host is online
+  useEffect(() => {
+    if (!isTauriApp && isHostOnline && !isConnectClientActive) {
+      handleConnectAsClient();
+    }
+  }, [isTauriApp, isHostOnline, isConnectClientActive, handleConnectAsClient]);
 
   const handleToggleConnectClient = useCallback(async () => {
-    const effectiveUserId = currentUser?.id || 'guest_user';
     if (isConnectClientActive) {
       await spytifyConnect.disconnectClient();
       setIsConnectClientActive(false);
       showNotification(language === 'vi' ? 'Đã ngắt kết nối với Desktop' : 'Disconnected from Desktop');
       return;
     }
-
-    // Synchronously prime iOS Safari WebKit audio during user tap
-    ensureAudioContextRunning();
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        const dummy = new AudioCtx();
-        dummy.resume().catch(() => {});
-      }
-    } catch {}
-
-    if (!connectAudioRef.current) {
-      const el = new Audio();
-      (el as any).playsInline = true;
-      el.setAttribute('playsinline', 'true');
-      el.setAttribute('webkit-playsinline', 'true');
-      el.autoplay = true;
-      connectAudioRef.current = el;
-      if (typeof document !== 'undefined' && document.body) {
-        document.body.appendChild(el);
-      }
-    }
-    if (connectAudioRef.current) {
-      connectAudioRef.current.muted = false;
-      connectAudioRef.current.play().catch(() => {});
-    }
-
-    const ok = await spytifyConnect.connectClient(
-      effectiveUserId,
-      (remoteState: ConnectPlaybackState) => {
-        if (remoteState.currentTrack) {
-          setCurrentTrack(remoteState.currentTrack);
-          currentTrackRef.current = remoteState.currentTrack;
-        }
-        if (typeof remoteState.isPlaying === 'boolean') {
-          setIsPlaying(remoteState.isPlaying);
-          isPlayingRef.current = remoteState.isPlaying;
-          if (remoteState.isPlaying) {
-            spytifyConnect.resumeAudio();
-          }
-        }
-        if (typeof remoteState.currentTime === 'number') {
-          setCurrentTime(remoteState.currentTime);
-          currentTimeRef.current = remoteState.currentTime;
-        }
-        if (typeof remoteState.duration === 'number') {
-          setDuration(remoteState.duration);
-          durationRef.current = remoteState.duration;
-        }
-        if (typeof remoteState.volume === 'number') {
-          setVolume(remoteState.volume);
-          volumeRef.current = remoteState.volume;
-        }
-      },
-      connectAudioRef.current || undefined
-    );
-
+    const ok = await handleConnectAsClient();
     if (ok) {
-      setIsConnectClientActive(true);
-      showNotification(language === 'vi' ? 'Đã kết nối! Đang nghe trực tiếp âm thanh từ Desktop (WebRTC)' : 'Connected! Streaming live master audio from Desktop');
+      showNotification(language === 'vi' ? 'Đã kết nối! Đang điều khiển Spytify Desktop từ xa' : 'Connected! Controlling Spytify Desktop remotely');
     } else {
-      showNotification(language === 'vi' ? 'Không thể kết nối tới Desktop. Hãy chắc chắn Desktop đã bật Host!' : 'Failed to connect. Ensure Desktop host is active!');
+      showNotification(language === 'vi' ? 'Không thể kết nối tới Desktop. Hãy chắc chắn Desktop đã mở Spytify!' : 'Failed to connect. Ensure Spytify Desktop is open!');
     }
-  }, [currentUser?.id, isConnectClientActive, language]);
+  }, [isConnectClientActive, language, handleConnectAsClient]);
+
+  const handleSelectConnectTarget = useCallback((target: 'desktop' | 'this_device') => {
+    setConnectPlaybackTarget(target);
+    connectPlaybackTargetRef.current = target;
+
+    if (target === 'this_device') {
+      spytifyConnect.sendCommand({ type: 'PAUSE' });
+      const trackToPlay = currentTrackRef.current;
+      if (trackToPlay) {
+        playTrackInternal(trackToPlay);
+        if (currentTimeRef.current > 0) {
+          setTimeout(() => {
+            handleSeekRef.current(currentTimeRef.current);
+          }, 300);
+        }
+      }
+      showNotification(language === 'vi' ? 'Đã chuyển phát nhạc sang iPhone' : 'Transferred playback to iPhone');
+    } else {
+      onlineAudioRef.current?.pause();
+      sendYtCmd('pauseVideo');
+      const trackToPlay = currentTrackRef.current;
+      if (trackToPlay) {
+        spytifyConnect.sendCommand({ type: 'PLAY_TRACK', track: trackToPlay });
+        if (currentTimeRef.current > 0) {
+          spytifyConnect.sendCommand({ type: 'SEEK', time: currentTimeRef.current });
+        }
+      }
+      spytifyConnect.sendCommand({ type: 'PLAY' });
+      showNotification(language === 'vi' ? 'Đã chuyển phát nhạc sang Desktop' : 'Transferred playback to Desktop');
+    }
+  }, [language]);
+
+  const handleDisconnectConnectClient = useCallback(async () => {
+    await spytifyConnect.disconnectClient();
+    setIsConnectClientActive(false);
+    showNotification(language === 'vi' ? 'Đã ngắt kết nối Spytify Connect' : 'Disconnected from Spytify Connect');
+  }, [language]);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !currentTrack) return;
@@ -5832,6 +5908,22 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             onUpdateCrossfadeDuration={setCrossfadeDuration}
             showVisualizer={showVisualizer}
             onToggleVisualizer={() => setShowVisualizer(p => !p)}
+          />
+
+          {/* Spytify Connect Device Switcher Modal */}
+          <ConnectModal
+            isOpen={isConnectModalOpen}
+            onClose={() => setIsConnectModalOpen(false)}
+            isHostOnline={isHostOnline}
+            hostName={connectHostName}
+            playbackTarget={connectPlaybackTarget}
+            onSelectTarget={handleSelectConnectTarget}
+            onDisconnect={handleDisconnectConnectClient}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            accentColor={activeAccentColor}
+            themeMode={themeMode}
+            language={language}
           />
         </>
       )}
@@ -6810,7 +6902,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onToggleConnectHost={isTauriApp ? handleToggleConnectHost : undefined}
         isConnectClientActive={isConnectClientActive}
         isHostOnline={isHostOnline}
+        playbackTarget={connectPlaybackTarget}
         onToggleConnectClient={!isTauriApp ? handleToggleConnectClient : undefined}
+        onOpenConnectModal={!isTauriApp ? () => setIsConnectModalOpen(true) : undefined}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}
