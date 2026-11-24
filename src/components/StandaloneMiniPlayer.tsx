@@ -11,11 +11,41 @@ function formatTime(secs: number): string {
 }
 
 export const StandaloneMiniPlayer: React.FC = () => {
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [accentColor, setAccentColor] = useState('#ff2a55');
+  const [currentTrack, setCurrentTrack] = useState<Track | null>(() => {
+    try {
+      const cached = localStorage.getItem('spytify_last_playback_sync');
+      if (cached) return JSON.parse(cached).track || null;
+    } catch {}
+    return null;
+  });
+  const [isPlaying, setIsPlaying] = useState(() => {
+    try {
+      const cached = localStorage.getItem('spytify_last_playback_sync');
+      if (cached) return Boolean(JSON.parse(cached).isPlaying);
+    } catch {}
+    return false;
+  });
+  const [currentTime, setCurrentTime] = useState(() => {
+    try {
+      const cached = localStorage.getItem('spytify_last_playback_sync');
+      if (cached) return Number(JSON.parse(cached).currentTime) || 0;
+    } catch {}
+    return 0;
+  });
+  const [duration, setDuration] = useState(() => {
+    try {
+      const cached = localStorage.getItem('spytify_last_playback_sync');
+      if (cached) return Number(JSON.parse(cached).duration) || 0;
+    } catch {}
+    return 0;
+  });
+  const [accentColor, setAccentColor] = useState(() => {
+    try {
+      const cached = localStorage.getItem('spytify_last_playback_sync');
+      if (cached) return JSON.parse(cached).accentColor || '#ff2a55';
+    } catch {}
+    return '#ff2a55';
+  });
 
   const channelRef = useRef<BroadcastChannel | null>(null);
 

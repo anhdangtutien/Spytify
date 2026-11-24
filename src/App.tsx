@@ -3512,21 +3512,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const handleToggleMiniWidget = useCallback(async () => {
     setIsMiniWidget(true);
 
-    // If on Desktop Tauri:
-    if (isTauriApp) {
-      try {
-        await invoke('open_mini_player_window');
-        return;
-      } catch (e) {
-        console.warn('Rust open_mini_player_window error, trying WebviewWindow API:', e);
-      }
+    const miniUrl = window.location.href.split('#')[0].split('?')[0] + '#mini';
 
+    // 1. If on Desktop Tauri, create/show WebviewWindow with the exact runtime URL
+    if (isTauriApp) {
       try {
         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         let mini = await WebviewWindow.getByLabel('mini');
         if (!mini) {
           mini = new WebviewWindow('mini', {
-            url: '/#mini',
+            url: miniUrl,
             title: 'Spytify Mini Player',
             width: 360,
             height: 130,
@@ -3541,15 +3536,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
         return;
       } catch (err) {
-        console.warn('WebviewWindow API error:', err);
+        console.warn('WebviewWindow API error, falling back to window.open:', err);
       }
     }
 
-    // On Web Browser (Chrome/Edge): open native popup window
+    // 2. On Web Browser (Chrome/Edge): open native popup window
     const popup = window.open(
-      '/#mini',
+      miniUrl,
       'SpytifyMini',
-      'width=360,height=140,menubar=no,toolbar=no,location=no,status=no,resizable=no'
+      'width=360,height=130,menubar=no,toolbar=no,location=no,status=no,resizable=no'
     );
     if (popup) {
       popup.focus();
