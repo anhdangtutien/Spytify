@@ -34,7 +34,16 @@ export function cleanArtistName(artist: string): string {
     .replace(/ - Topic$/i, '')
     .replace(/VEVO$/i, '')
     .replace(/Official$/i, '')
-    .replace(/\s*[,&/]\s*.*$/, '') // take primary artist if multiple
+    .trim();
+}
+
+/**
+ * Extracts primary artist if multiple are separated by comma, ampersand, or slash.
+ */
+export function extractPrimaryArtist(artist: string): string {
+  if (!artist) return '';
+  return cleanArtistName(artist)
+    .replace(/\s*[,&/]\s*.*$/, '')
     .trim();
 }
 
@@ -76,43 +85,56 @@ export async function fetchLyrics(
 ): Promise<LyricsData | null> {
   const cleanT = cleanTrackTitle(title);
   const cleanA = cleanArtistName(artist);
-  const cacheKey = `${cleanT.toLowerCase()}__${cleanA.toLowerCase()}`;
+  const primaryA = extractPrimaryArtist(artist);
+  const targetDuration = durationSecs && durationSecs > 0 && durationSecs < 86400 ? Math.round(durationSecs) : undefined;
+  const cacheKey = `${cleanT.toLowerCase()}__${cleanA.toLowerCase()}__${targetDuration || 0}`;
 
   if (lyricsCache.has(cacheKey)) {
     return lyricsCache.get(cacheKey) || null;
   }
 
+  const userAgentHeaders = { 'User-Agent': 'SpytifyMusicPlayer/1.1 (https://github.com/anhdangtutien/Spytify)' };
+
+  const tryGetExact = async (t: string, a: string, dur?: number): Promise<any | null> => {
+    try {
+      const params = new URLSearchParams({ track_name: t, artist_name: a });
+      if (dur && dur > 0) params.append('duration', String(dur));
+      const res = await fetch(`https://lrclib.net/api/get?${params.toString()}`, { headers: userAgentHeaders });
+      if (res.ok) return await res.json();
+    } catch {}
+    return null;
+  };
+
   try {
-    // 1. Try exact match on LRCLIB
-    const params = new URLSearchParams({
-      track_name: cleanT,
-      artist_name: cleanA,
-    });
-    if (durationSecs && durationSecs > 0) {
-      params.append('duration', String(Math.round(durationSecs)));
+    // 1. Exact match attempt with duration
+    let exactData = targetDuration ? await tryGetExact(cleanT, cleanA, targetDuration) : null;
+    
+    // 1b. If exact match with duration failed (often 404 due to slight YouTube duration mismatch), try exact match WITHOUT duration
+    if (!exactData) {
+      exactData = await tryGetExact(cleanT, cleanA);
     }
 
-    const res = await fetch(`https://lrclib.net/api/get?${params.toString()}`, {
-      headers: { 'User-Agent': 'SpytifyMusicPlayer/1.1 (https://github.com/anhdangtutien/Spytify)' },
-    });
+    // 1c. If still failed and multiple artists were given, try with primary artist alone
+    if (!exactData && primaryA && primaryA.toLowerCase() !== cleanA.toLowerCase()) {
+      exactData = await tryGetExact(cleanT, primaryA, targetDuration) || await tryGetExact(cleanT, primaryA);
+    }
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data.syncedLyrics) {
-        const lines = parseLrc(data.syncedLyrics);
+    if (exactData) {
+      if (exactData.syncedLyrics) {
+        const lines = parseLrc(exactData.syncedLyrics);
         const result: LyricsData = {
           synced: true,
           lines,
-          plainText: data.plainLyrics,
+          plainText: exactData.plainLyrics,
           source: 'LRCLIB',
         };
         lyricsCache.set(cacheKey, result);
         return result;
-      } else if (data.plainLyrics) {
+      } else if (exactData.plainLyrics) {
         const result: LyricsData = {
           synced: false,
-          lines: data.plainLyrics.split('\n').filter(Boolean).map((t: string) => ({ time: 0, text: t.trim() })),
-          plainText: data.plainLyrics,
+          lines: exactData.plainLyrics.split('\n').filter(Boolean).map((t: string) => ({ time: 0, text: t.trim() })),
+          plainText: exactData.plainLyrics,
           source: 'LRCLIB',
         };
         lyricsCache.set(cacheKey, result);
@@ -120,44 +142,67 @@ export async function fetchLyrics(
       }
     }
 
-    // 2. Fallback to broad search on LRCLIB
-    const searchRes = await fetch(
-      `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanT} ${cleanA}`)}`,
-      {
-        headers: { 'User-Agent': 'SpytifyMusicPlayer/1.1 (https://github.com/anhdangtutien/Spytify)' },
-      }
-    );
+    // 2. Broad search fallback on LRCLIB
+    const searchQueries = [
+      `${cleanT} ${cleanA}`,
+      primaryA && primaryA.toLowerCase() !== cleanA.toLowerCase() ? `${cleanT} ${primaryA}` : null,
+      cleanT,
+    ].filter(Boolean) as string[];
 
-    if (searchRes.ok) {
-      const searchData = await searchRes.json();
-      if (Array.isArray(searchData) && searchData.length > 0) {
-        // Find best match with synced lyrics first
-        const bestSynced = searchData.find((item: any) => Boolean(item.syncedLyrics));
-        const chosen = bestSynced || searchData[0];
-        if (chosen.syncedLyrics) {
-          const lines = parseLrc(chosen.syncedLyrics);
-          const result: LyricsData = {
-            synced: true,
-            lines,
-            plainText: chosen.plainLyrics,
-            source: 'LRCLIB',
-          };
-          lyricsCache.set(cacheKey, result);
-          return result;
-        } else if (chosen.plainLyrics) {
-          const result: LyricsData = {
-            synced: false,
-            lines: chosen.plainLyrics.split('\n').filter(Boolean).map((t: string) => ({ time: 0, text: t.trim() })),
-            plainText: chosen.plainLyrics,
-            source: 'LRCLIB',
-          };
-          lyricsCache.set(cacheKey, result);
-          return result;
+    for (const q of searchQueries) {
+      const searchRes = await fetch(
+        `https://lrclib.net/api/search?q=${encodeURIComponent(q)}`,
+        { headers: userAgentHeaders }
+      );
+
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (Array.isArray(searchData) && searchData.length > 0) {
+          // Filter candidates that have synced lyrics
+          const syncedCandidates = searchData.filter((item: any) => Boolean(item.syncedLyrics));
+          
+          if (syncedCandidates.length > 0) {
+            // If we know track duration, rank candidates by closest duration to eliminate radio/acoustic/live mismatches
+            if (targetDuration) {
+              syncedCandidates.sort(
+                (a: any, b: any) => Math.abs((a.duration || 0) - targetDuration) - Math.abs((b.duration || 0) - targetDuration)
+              );
+            }
+            const chosen = syncedCandidates[0];
+            const lines = parseLrc(chosen.syncedLyrics);
+            const result: LyricsData = {
+              synced: true,
+              lines,
+              plainText: chosen.plainLyrics,
+              source: 'LRCLIB',
+            };
+            lyricsCache.set(cacheKey, result);
+            return result;
+          }
+
+          // If no synced lyrics, fallback to closest plainLyrics item
+          const plainCandidates = searchData.filter((item: any) => Boolean(item.plainLyrics));
+          if (plainCandidates.length > 0) {
+            if (targetDuration) {
+              plainCandidates.sort(
+                (a: any, b: any) => Math.abs((a.duration || 0) - targetDuration) - Math.abs((b.duration || 0) - targetDuration)
+              );
+            }
+            const chosen = plainCandidates[0];
+            const result: LyricsData = {
+              synced: false,
+              lines: chosen.plainLyrics.split('\n').filter(Boolean).map((t: string) => ({ time: 0, text: t.trim() })),
+              plainText: chosen.plainLyrics,
+              source: 'LRCLIB',
+            };
+            lyricsCache.set(cacheKey, result);
+            return result;
+          }
         }
       }
     }
 
-    // Cache negative lookup for 60s
+    // Cache negative lookup
     lyricsCache.set(cacheKey, null);
     return null;
   } catch (err) {

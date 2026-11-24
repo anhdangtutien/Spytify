@@ -6,6 +6,7 @@ interface MarqueeTextProps {
   style?: React.CSSProperties;
   speed?: number; // pixels per second
   wrapperClassName?: string;
+  title?: string;
 }
 
 export const MarqueeText: React.FC<MarqueeTextProps> = ({
@@ -14,6 +15,7 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
   style,
   speed = 36,
   wrapperClassName = '',
+  title,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
@@ -35,19 +37,27 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
     const handleResize = () => checkOverflow();
     window.addEventListener('resize', handleResize);
 
+    // Font load handler
+    if (typeof document !== 'undefined' && (document as any).fonts) {
+      (document as any).fonts.ready.then(() => checkOverflow());
+    }
+
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
       ro = new ResizeObserver(() => checkOverflow());
       ro.observe(containerRef.current);
     }
 
+    const t = setTimeout(() => checkOverflow(), 150);
+
     return () => {
+      clearTimeout(t);
       window.removeEventListener('resize', handleResize);
       ro?.disconnect();
     };
   }, [text, checkOverflow]);
 
-  const animationDuration = Math.max(3.2, (offset / speed) * 2.2);
+  const animationDuration = Math.max(3.5, (offset / speed) * 1.8);
 
   return (
     <div
@@ -57,41 +67,24 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
         setIsHovered(true);
       }}
       onMouseLeave={() => setIsHovered(false)}
-      className={`overflow-hidden whitespace-nowrap min-w-0 select-none cursor-default leading-normal ${wrapperClassName}`}
-      title={text || ''}
+      className={`spytify-marquee-container ${offset > 0 ? 'is-overflowing' : ''} ${wrapperClassName}`}
+      title={title !== undefined ? title : text || ''}
+      style={{
+        '--marquee-offset': `-${offset}px`,
+        '--marquee-duration': `${animationDuration.toFixed(2)}s`,
+      } as React.CSSProperties}
     >
-      {offset > 0 && (
-        <style>{`
-          @keyframes spytifyMarquee_${offset} {
-            0%, 15% {
-              transform: translateX(0px);
-            }
-            50%, 65% {
-              transform: translateX(-${offset}px);
-            }
-            95%, 100% {
-              transform: translateX(0px);
-            }
-          }
-        `}</style>
-      )}
       <span
         ref={textRef}
+        className={`spytify-marquee-content ${className}`}
         style={{
-          display: 'inline-block',
-          width: 'max-content',
-          maxWidth: 'none',
+          ...style,
           ...(isHovered && offset > 0
             ? {
-                animation: `spytifyMarquee_${offset} ${animationDuration.toFixed(2)}s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
+                animation: `marquee-ping-pong ${animationDuration.toFixed(2)}s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
               }
-            : {
-                transform: 'translateX(0px)',
-                transition: 'transform 0.3s ease-out',
-              }),
-          ...style,
-        } as React.CSSProperties}
-        className={className}
+            : undefined),
+        }}
       >
         {text}
       </span>

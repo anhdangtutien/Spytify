@@ -42,9 +42,42 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
   const [lyricsData, setLyricsData] = useState<LyricsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [syncOffset, setSyncOffset] = useState<number>(0);
   const scrollTimeoutRef = useRef<any>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
   const activeLineElRef = useRef<HTMLDivElement | null>(null);
+
+  // Load saved offset for this track
+  useEffect(() => {
+    if (!currentTrack) {
+      setSyncOffset(0);
+      return;
+    }
+    const saved = localStorage.getItem(`spytify_lyrics_offset_${currentTrack.id}`);
+    if (saved !== null) {
+      const parsed = parseFloat(saved);
+      setSyncOffset(isNaN(parsed) ? 0 : parsed);
+    } else {
+      setSyncOffset(0);
+    }
+  }, [currentTrack?.id]);
+
+  const handleAdjustOffset = (delta: number) => {
+    if (!currentTrack) return;
+    const nextOffset = Math.round((syncOffset + delta) * 10) / 10;
+    setSyncOffset(nextOffset);
+    if (nextOffset === 0) {
+      localStorage.removeItem(`spytify_lyrics_offset_${currentTrack.id}`);
+    } else {
+      localStorage.setItem(`spytify_lyrics_offset_${currentTrack.id}`, String(nextOffset));
+    }
+  };
+
+  const handleResetOffset = () => {
+    if (!currentTrack) return;
+    setSyncOffset(0);
+    localStorage.removeItem(`spytify_lyrics_offset_${currentTrack.id}`);
+  };
 
   // Fetch lyrics whenever currentTrack changes
   useEffect(() => {
@@ -71,19 +104,20 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
     };
   }, [isOpen, currentTrack?.id, currentTrack?.title, currentTrack?.artist]);
 
-  // Determine active lyric line index based on currentTime
+  // Determine active lyric line index based on currentTime + syncOffset
   const activeIndex = useMemo(() => {
     if (!lyricsData || !lyricsData.synced || !lyricsData.lines.length) return -1;
     const lines = lyricsData.lines;
-    // Current time with a tiny 0.2s lead-in for human perception
-    const leadTime = currentTime + 0.15;
+    // Current time with sync offset and a tiny 0.15s lead-in for human perception
+    const leadTime = currentTime + syncOffset + 0.15;
     for (let i = lines.length - 1; i >= 0; i--) {
       if (leadTime >= lines[i].time) {
         return i;
       }
     }
-    return 0;
-  }, [lyricsData, currentTime]);
+    // Return -1 if track is still in intro before first lyric
+    return -1;
+  }, [lyricsData, currentTime, syncOffset]);
 
   // Auto-scroll active lyric line to center of view when not manually scrolling
   useEffect(() => {
@@ -108,7 +142,7 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-x-0 top-0 bottom-0 md:bottom-[52px] z-[80] flex flex-col bg-[#050508] text-white select-none animate-fadeIn">
+    <div className="fixed inset-x-0 top-0 bottom-0 md:bottom-[52px] z-[100] flex flex-col bg-[#050508] text-white select-none animate-fadeIn">
       {/* Dynamic Ambient Background Blur */}
       {currentTrack?.cover_art && (
         <div
@@ -142,6 +176,40 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Real-time Lyrics Sync Offset Calibration */}
+          {lyricsData?.synced && (
+            <div
+              className="flex items-center gap-0.5 bg-[#12121a] border border-white/15 rounded-full px-2 py-0.5 text-xs shadow-inner"
+              title={language === 'vi' ? 'Hiệu chỉnh độ lệch thời gian lời bài hát (Nhanh/Chậm)' : 'Adjust lyrics synchronization offset'}
+            >
+              <button
+                type="button"
+                onClick={() => handleAdjustOffset(-0.5)}
+                className="px-1.5 py-0.5 rounded-full hover:bg-white/10 text-zinc-300 hover:text-white font-mono text-[11px] cursor-pointer transition-colors"
+                title={language === 'vi' ? 'Chạy sớm hơn 0.5 giây (-0.5s)' : 'Earlier by 0.5s'}
+              >
+                -0.5s
+              </button>
+              <button
+                type="button"
+                onClick={handleResetOffset}
+                className="px-1.5 py-0.5 font-mono text-[11px] font-bold cursor-pointer transition-colors"
+                style={{ color: syncOffset !== 0 ? accentColor : '#a1a1aa' }}
+                title={language === 'vi' ? `Độ lệch: ${syncOffset > 0 ? `+${syncOffset.toFixed(1)}s` : `${syncOffset.toFixed(1)}s`} (Nhấn để đặt lại 0s)` : `Offset: ${syncOffset.toFixed(1)}s (Click to reset)`}
+              >
+                {syncOffset > 0 ? `+${syncOffset.toFixed(1)}s` : `${syncOffset.toFixed(1)}s`}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAdjustOffset(+0.5)}
+                className="px-1.5 py-0.5 rounded-full hover:bg-white/10 text-zinc-300 hover:text-white font-mono text-[11px] cursor-pointer transition-colors"
+                title={language === 'vi' ? 'Chạy trễ hơn 0.5 giây (+0.5s)' : 'Later by 0.5s'}
+              >
+                +0.5s
+              </button>
+            </div>
+          )}
+
           <div
             className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold"
             style={{

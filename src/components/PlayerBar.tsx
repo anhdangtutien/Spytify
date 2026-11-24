@@ -403,7 +403,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   setIsMobileSheetOpen(true);
                 }
               }}
-              className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 cursor-pointer sm:cursor-default"
+              className="group/track-info flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 cursor-pointer sm:cursor-default"
             >
               <div className={`${isCompact ? 'w-8 h-8 rounded-md' : 'w-12 h-12 rounded-lg'} overflow-hidden bg-[#101014] flex-shrink-0 border border-[#202028] relative group shadow-sm transition-all`}>
                 {currentTrack.cover_art ? (
@@ -916,7 +916,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             onClick={onToggleNextTrackPopupEnabled}
             title={
               isNextTrackPopupEnabled
-                ? (language === 'vi' ? 'Smart DJ • Tắt gợi ý bài tiếp theo' : 'Smart DJ • Disable Next Track Popup')
+                ? (language === 'vi' ? 'Smart DJ • Gợi ý bài tiếp theo (Đang bật)' : 'Smart DJ • Next Track Popup (Enabled)')
                 : (language === 'vi' ? 'Smart DJ • Bật gợi ý bài tiếp theo' : 'Smart DJ • Enable Next Track Popup')
             }
             style={isNextTrackPopupEnabled ? {
@@ -931,7 +931,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
-            <AudioLines className={`w-4 h-4 ${isNextTrackPopupEnabled ? '' : 'opacity-50'}`} />
+            <Sparkles className={`w-4 h-4 ${isNextTrackPopupEnabled ? 'animate-pulse' : 'opacity-50'}`} />
           </button>
         )}
 

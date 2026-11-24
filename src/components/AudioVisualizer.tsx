@@ -263,7 +263,7 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
         >
           <Activity className={`w-3.5 h-3.5 ${isPlaying ? 'animate-pulse' : ''}`} />
         </div>
-        <div className="flex items-center gap-2 min-w-0 truncate">
+        <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <span className={`text-xs font-bold tracking-tight shrink-0 ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>
             {isPlaying ? getTranslation(language, 'visualizer.playing') : getTranslation(language, 'visualizer.idle')}
           </span>

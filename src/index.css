@@ -133,6 +133,30 @@ input[type="range"] {
   }
 }
 
+.spytify-marquee-container {
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
+  width: 100%;
+  display: block;
+  position: relative;
+}
+
+.spytify-marquee-content {
+  display: inline-block;
+  white-space: nowrap;
+  width: max-content;
+  max-width: none;
+  transform: translateX(0px);
+  transition: transform 0.3s ease-out;
+}
+
+.spytify-marquee-container.is-overflowing:hover .spytify-marquee-content,
+.group:hover .spytify-marquee-container.is-overflowing .spytify-marquee-content,
+.group\/track-info:hover .spytify-marquee-container.is-overflowing .spytify-marquee-content {
+  animation: marquee-ping-pong var(--marquee-duration, 4.5s) cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 .card-hover-accent:hover {
   border-color: var(--accent-color) !important;
   box-shadow: 0 0 16px rgba(var(--accent-color-rgb, 0, 229, 255), 0.35) !important;
