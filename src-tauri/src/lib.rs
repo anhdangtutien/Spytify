@@ -1909,8 +1909,11 @@ pub fn run() {
             // Start local audio CORS streaming proxy for Web Audio & WebRTC broadcast
             proxy::start_audio_proxy();
 
-            #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+                #[cfg(debug_assertions)]
                 let _ = window.open_devtools();
             }
 

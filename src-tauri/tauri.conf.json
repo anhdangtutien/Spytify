@@ -16,8 +16,8 @@
         "title": "Spytify",
         "width": 1280,
         "height": 820,
-        "minWidth": 800,
-        "minHeight": 520,
+        "minWidth": 360,
+        "minHeight": 200,
         "decorations": false,
         "transparent": false,
         "additionalBrowserArgs": "--hide-media-capture-notification --disable-features=Translate,OptimizationHints,MediaRouter,TabCaptureNotification --disk-cache-size=33554432 --media-cache-size=33554432"

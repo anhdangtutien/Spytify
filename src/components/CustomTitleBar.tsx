@@ -106,25 +106,42 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
 
   const handleMinimize = async () => {
     try {
-      const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      await getCurrentWebviewWindow().minimize();
-    } catch {}
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().minimize();
+    } catch {
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        await getCurrentWebviewWindow().minimize();
+      } catch {}
+    }
   };
 
   const handleToggleMaximize = async () => {
     try {
-      const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const appWindow = getCurrentWebviewWindow();
-      await appWindow.toggleMaximize();
-      setIsMaximized(await appWindow.isMaximized());
-    } catch {}
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      await win.toggleMaximize();
+      setIsMaximized(await win.isMaximized());
+    } catch {
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        const win = getCurrentWebviewWindow();
+        await win.toggleMaximize();
+        setIsMaximized(await win.isMaximized());
+      } catch {}
+    }
   };
 
   const handleClose = async () => {
     try {
-      const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      await getCurrentWebviewWindow().close();
-    } catch {}
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      await getCurrentWindow().close();
+    } catch {
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        await getCurrentWebviewWindow().close();
+      } catch {}
+    }
   };
 
   const handleSearchFocus = () => {

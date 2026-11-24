@@ -771,15 +771,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           )}
         </div>
 
-        {/* Compact Mode Inline Time Display */}
-        {isCompact && (
-          <div className="hidden lg:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none pl-1 shrink-0 whitespace-nowrap">
-            <span className="font-semibold text-white/90">{formatTime(displayTime)}</span>
-            <span className="text-[#555]">/</span>
-            <span>{isLive ? 'LIVE' : formatTime(effectiveDuration)}</span>
-          </div>
-        )}
-
         {/* Seekbar Area — Adapts to Live Stream, Buffering, or Regular Track (standard mode) */}
         {!isCompact && (
           isLive ? (
@@ -912,7 +903,16 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Desktop Utils Group */}
         <div className={`hidden sm:flex items-center ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
-        {/* Next Track Preview / Smart DJ Auto Suggestion Toggle */}
+          {/* Compact Mode Inline Time Display (Inside Right Container to prevent absolute overlap) */}
+          {isCompact && (
+            <div className="hidden md:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none mr-1.5 shrink-0 whitespace-nowrap">
+              <span className="font-semibold text-white/90">{formatTime(displayTime)}</span>
+              <span className="text-[#555]">/</span>
+              <span>{isLive ? 'LIVE' : formatTime(effectiveDuration)}</span>
+            </div>
+          )}
+
+          {/* Next Track Preview / Smart DJ Auto Suggestion Toggle */}
         {onToggleNextTrackPopupEnabled && (
           <button
             onClick={onToggleNextTrackPopupEnabled}

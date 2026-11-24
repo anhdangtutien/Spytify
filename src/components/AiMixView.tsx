@@ -876,7 +876,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
             <p className="text-xs">{getTranslation(language, 'aimix.noGenreTracks')}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3 w-full">
             {genreTracks.map((track) => {
               const isLiveItem = track.source === 'youtube' && (!track.duration_secs || track.duration_secs <= 0);
               const mins = Math.floor(track.duration_secs / 60);
@@ -887,9 +887,9 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                 <div
                   key={track.id}
                   onClick={() => onPlayTrack(track)}
-                  className="p-3 rounded-xl bg-[#0e0e13] hover:bg-[#15151e] border border-[#1a1a24] hover:border-[#2a2a38] transition-all flex items-center justify-between gap-3 cursor-pointer group shadow-sm w-full min-w-0"
+                  className="p-2.5 sm:p-3 rounded-xl bg-[#0e0e13] hover:bg-[#15151e] border border-[#1a1a24] hover:border-[#2a2a38] transition-all flex items-center justify-between gap-2.5 cursor-pointer group shadow-sm w-full min-w-0"
                 >
-                  <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
+                  <div className="flex items-center gap-2.5 overflow-hidden min-w-0 flex-1">
                     <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#161620] flex-shrink-0 relative">
                       {track.cover_art ? (
                         <img
@@ -908,27 +908,27 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
                         <Play className="w-4 h-4 fill-current text-white" />
                       </div>
                     </div>
-                    <div className="overflow-hidden min-w-0">
+                    <div className="overflow-hidden min-w-0 flex-1">
                       <p className="text-xs font-semibold text-white truncate group-hover:text-cyan-300 transition-colors" title={track.title}>
                         {track.title}
                       </p>
-                      <p className="text-[11px] text-[#8e8e9f] truncate">{track.artist}</p>
+                      <div className="flex items-center gap-1.5 text-[11px] text-[#8e8e9f] truncate">
+                        <span className="truncate">{track.artist}</span>
+                        {durStr && <span className="text-[10px] text-[#777] font-mono shrink-0">• {durStr}</span>}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
                     {isLiveItem ? (
                       <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
                         LIVE
                       </span>
                     ) : (
-                      <>
-                        {durStr && <span className="text-[10px] text-[#555] font-mono">{durStr}</span>}
-                        <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#181822] text-[#888] border border-[#22222e]">
-                          {track.source === 'youtube' ? 'YT Stream' : track.source === 'soundcloud' ? 'SoundCloud' : track.source === 'audius' ? 'Audius' : 'Local'}
-                        </span>
-                      </>
+                      <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#181822] text-[#888] border border-[#22222e]">
+                        {track.source === 'youtube' ? 'YT' : track.source === 'soundcloud' ? 'SC' : track.source === 'audius' ? 'Audius' : 'Local'}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -961,7 +961,7 @@ export const AiMixView: React.FC<AiMixViewProps> = ({
             <p className="text-[11px] text-[#555] mt-1">{getTranslation(language, 'aimix.noRecsHint')}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
             {recommendations.map((rec, i) => (
               <div
                 key={i}
