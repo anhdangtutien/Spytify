@@ -318,14 +318,17 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         className="h-7 bg-[#060608] hover:bg-[#0c0c12] border-t border-[#14141a] px-4 flex items-center justify-between select-none cursor-pointer group/minibar transition-colors z-50 text-xs flex-shrink-0"
       >
         {/* Left: Mini Track Status */}
-        <div className="flex items-center gap-2 truncate max-w-[75%]">
+        <div className="flex items-center gap-2 max-w-[75%] min-w-0 flex-1">
           <Disc 
             className={`w-3.5 h-3.5 flex-shrink-0 ${isPlaying ? 'animate-spin' : 'text-[#666]'}`} 
             style={{ color: isPlaying ? accentColor : undefined }} 
           />
-          <span className="font-mono text-[11px] text-zinc-300 group-hover/minibar:text-white truncate">
-            {currentTrack ? `${currentTrack.title} — ${currentTrack.artist}` : getTranslation(language, 'player.noTrack')}
-          </span>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <MarqueeText
+              text={currentTrack ? `${currentTrack.title} — ${currentTrack.artist}` : getTranslation(language, 'player.noTrack')}
+              className="font-mono text-[11px] text-zinc-300 group-hover/minibar:text-white"
+            />
+          </div>
         </div>
 
         {/* Right: Expand Button */}
@@ -414,13 +417,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 <MarqueeText
                   text={currentTrack.title}
                   wrapperClassName="leading-none"
-                  className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight leading-none block`}
+                  className={`${isCompact ? 'text-[11px]' : 'text-xs'} font-bold tracking-tight leading-none`}
                   style={{ color: themeMode === 'light' ? '#0f172a' : '#ffffff' }}
                 />
                 <MarqueeText
                   text={currentTrack.artist}
                   wrapperClassName="leading-none -mt-0.5"
-                  className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} leading-none block`}
+                  className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} leading-none`}
                   style={{ color: themeMode === 'light' ? '#64748b' : '#8e8e9f' }}
                 />
               </div>
@@ -1223,10 +1226,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         {/* Title, Favorite & Actions */}
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-extrabold truncate">
-                {currentTrack ? currentTrack.title : getTranslation(language, 'player.noTrack')}
-              </h2>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <MarqueeText
+                text={currentTrack ? currentTrack.title : getTranslation(language, 'player.noTrack')}
+                className="text-lg font-extrabold"
+              />
               <p className="text-xs text-zinc-400 truncate mt-0.5">
                 {currentTrack ? currentTrack.artist : 'Spytify Hi-Fi'}
               </p>

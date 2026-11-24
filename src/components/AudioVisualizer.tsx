@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Activity, Radio } from 'lucide-react';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 import { Track } from '../types';
+import { MarqueeText } from './MarqueeText';
 
 interface AudioVisualizerProps {
   isPlaying: boolean;
@@ -267,12 +268,15 @@ export const AudioVisualizer: React.FC<AudioVisualizerProps> = ({
             {isPlaying ? getTranslation(language, 'visualizer.playing') : getTranslation(language, 'visualizer.idle')}
           </span>
           {currentTrack && (
-            <div className="flex items-center gap-1.5 min-w-0 truncate">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
               <span className="text-[10px] text-[#555] font-mono shrink-0">•</span>
-              <span className={`text-xs font-semibold truncate ${isLight ? 'text-[#0f172a]' : 'text-zinc-200'}`}>
-                {currentTrack.title}
-              </span>
-              <span className="text-[11px] text-[#777] truncate hidden sm:inline">
+              <div className="min-w-0 flex-1 max-w-[240px] sm:max-w-[380px] md:max-w-[480px]">
+                <MarqueeText
+                  text={currentTrack.title}
+                  className={`text-xs font-semibold ${isLight ? 'text-[#0f172a]' : 'text-zinc-200'}`}
+                />
+              </div>
+              <span className="text-[11px] text-[#777] truncate shrink-0 hidden sm:inline">
                 — {currentTrack.artist}
               </span>
             </div>
