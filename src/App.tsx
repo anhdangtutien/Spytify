@@ -69,7 +69,14 @@ function createSilentKeepAliveWavUri(): string {
 }
 
 export default function App() {
-  if (typeof window !== 'undefined' && (window.location.hash === '#mini' || window.location.search.includes('mini=true'))) {
+  const isMini = typeof window !== 'undefined' && (
+    Boolean((window as any).__IS_MINI_PLAYER__) ||
+    window.location.hash === '#mini' ||
+    window.location.search.includes('mini') ||
+    Boolean((window as any).__TAURI_INTERNALS__?.metadata?.currentWindow?.label === 'mini')
+  );
+
+  if (isMini) {
     return <StandaloneMiniPlayer />;
   }
   const [tracks, setTracks] = useState<Track[]>([]);

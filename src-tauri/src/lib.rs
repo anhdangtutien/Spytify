@@ -42,13 +42,14 @@ fn open_mini_player_window(app: tauri::AppHandle) -> Result<(), String> {
     let _ = tauri::WebviewWindowBuilder::new(
         &app,
         "mini",
-        tauri::WebviewUrl::App("/#mini".into())
+        tauri::WebviewUrl::default()
     )
     .title("Spytify Mini")
     .inner_size(360.0, 130.0)
     .decorations(false)
     .always_on_top(true)
     .resizable(false)
+    .initialization_script("window.__IS_MINI_PLAYER__ = true; window.location.hash = '#mini';")
     .build()
     .map_err(|e| e.to_string())?;
 
