@@ -2534,7 +2534,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const nextTrackPopupCallbackRef = useCallback((node: HTMLDivElement | null) => {
     nextTrackPopupRef.current = node;
     if (node) {
-      setNextTrackPopupHeight(node.offsetHeight || (isNextTrackPopupCollapsed ? 44 : 270));
+      setNextTrackPopupHeight(node.offsetHeight || (isNextTrackPopupCollapsed ? 44 : 170));
     }
   }, [isNextTrackPopupCollapsed]);
 
@@ -2551,7 +2551,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
     const el = nextTrackPopupRef.current;
     if (!el) {
-      setNextTrackPopupHeight(isNextTrackPopupCollapsed ? 44 : 270);
+      setNextTrackPopupHeight(isNextTrackPopupCollapsed ? 44 : 170);
       return;
     }
     setNextTrackPopupHeight(el.offsetHeight);
@@ -2570,7 +2570,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [isNextTrackPopupVisible, isNextTrackPopupCollapsed, nextTrackPopup, isAiLoadingNext]);
 
   const desktopPlayerBottom = isPlayerBarMinimized ? 34 : 58;
-  const desktopYtBottom = desktopPlayerBottom;
+  const desktopYtBottom = isNextTrackPopupVisible && nextTrackPopupHeight > 0
+    ? desktopPlayerBottom + nextTrackPopupHeight + 10
+    : desktopPlayerBottom;
 
   // ─── WALL-CLOCK TIME TICKER (IMMUNE TO BACKGROUND TAB THROTTLING) ────────
   useEffect(() => {
@@ -5665,11 +5667,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             isPlayerBarMinimized
               ? 'bottom-[calc(100px+env(safe-area-inset-bottom,0px))] md:bottom-[34px]'
               : 'bottom-[calc(122px+env(safe-area-inset-bottom,0px))] md:bottom-[58px]'
-          } ${
-            showYoutubeVideo && currentTrack?.source === 'youtube'
-              ? 'sm:right-[344px] lg:right-[384px]'
-              : 'sm:right-6 md:right-6'
-          } ${
+          } sm:right-6 md:right-6 ${
             isNextTrackPopupCollapsed ? 'w-auto sm:w-80' : 'w-auto sm:w-88 max-w-full sm:max-w-[calc(100vw-3rem)]'
           }`}
           style={{
