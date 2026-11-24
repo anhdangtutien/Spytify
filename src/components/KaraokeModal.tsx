@@ -211,7 +211,7 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
           )}
 
           <div
-            className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold"
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold tracking-wider"
             style={{
               backgroundColor: `${accentColor}18`,
               borderColor: `${accentColor}40`,
@@ -219,8 +219,7 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
             }}
           >
             <Mic2 className="w-3.5 h-3.5 animate-pulse" />
-            <span className="hidden sm:inline">KARAOKE & LỜI ĐỒNG BỘ</span>
-            <span className="sm:hidden">KARAOKE</span>
+            <span>KARAOKE</span>
           </div>
 
           <button
