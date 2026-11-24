@@ -43,6 +43,7 @@ fn set_mini_player_mode(app: tauri::AppHandle, enabled: bool) -> Result<(), Stri
                 *prev = Some((w, h));
             }
             let _ = window.set_min_size(None::<tauri::Size>);
+            let _ = window.set_decorations(false);
             let _ = window.set_always_on_top(true);
             let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: 340.0, height: 116.0 }));
             let _ = window.set_resizable(false);
@@ -51,11 +52,12 @@ fn set_mini_player_mode(app: tauri::AppHandle, enabled: bool) -> Result<(), Stri
                 let prev = PRE_MINI_SIZE.lock().unwrap();
                 prev.clone()
             };
-            let (target_w, target_h) = prev_size.unwrap_or((1200.0, 800.0));
+            let (target_w, target_h) = prev_size.unwrap_or((1280.0, 820.0));
             let _ = window.set_resizable(true);
-            let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize { width: 960.0, height: 640.0 })));
+            let _ = window.set_decorations(true);
             let _ = window.set_always_on_top(false);
-            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: target_w.max(960.0), height: target_h.max(640.0) }));
+            let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize { width: 320.0, height: 110.0 })));
+            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: target_w.max(800.0), height: target_h.max(600.0) }));
         }
     }
     Ok(())
