@@ -3739,8 +3739,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     setShowYoutubeVideo(prev => {
       const next = !prev;
       if (next && currentTrackRef.current?.source === 'youtube') {
+        const vid = extractCleanYtId(currentTrackRef.current.path_or_url || currentTrackRef.current.id);
         const curCh = activeYtChannelRef.current;
-        sendYtCmd('playVideo', [], curCh);
+        const currentSrc = curCh === 1 ? ytIframeSrc1Ref.current : ytIframeSrc2Ref.current;
+        if (ytMusicFallbackActiveRef.current && onlineAudioRef.current) {
+          onlineAudioRef.current.pause();
+          ytMusicFallbackActiveRef.current = false;
+        }
+        if (!currentSrc || currentSrc !== vid) {
+          loadOrMountYtChannel(vid, curCh, volumeRef.current * 100);
+        } else {
+          sendYtCmd('playVideo', [], curCh);
+        }
       }
       return next;
     });
@@ -4155,11 +4165,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
 
       } else if (track.source === 'youtube') {
-        if (isConnectHostActive) {
-          ytMusicFallbackTriedRef.current = false;
-          const directOk = await fallbackToYoutubeMusicStream(track);
-          if (directOk) return;
-        }
         try { invoke('stop_track').catch(() => {}); } catch {}
         sendScCmd('pause', undefined, 1);
         sendScCmd('pause', undefined, 2);
@@ -4654,9 +4659,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           try { await invoke('resume_track'); } catch {}
         }
       } else if (track.source === 'youtube') {
-        if (isConnectHostActive && !ytMusicFallbackActiveRef.current) {
-          fallbackToYoutubeMusicStream(track).catch(() => {});
-        } else if (ytMusicFallbackActiveRef.current && onlineAudioRef.current?.src) {
+        if (ytMusicFallbackActiveRef.current && onlineAudioRef.current?.src) {
           onlineAudioRef.current.play().catch(console.error);
         } else {
           sendYtCmd('playVideo');
@@ -6027,19 +6030,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc1 && (
         <div
           className={
-            currentTrack?.source === 'youtube' && activeYtChannel === 1
+            currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2)
               ? (isMobilePlayerOpen
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
                   : (showYoutubeVideo
-                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[300px] md:sm:w-[320px] md:lg:w-[360px] md:h-[169px] md:sm:h-[180px] md:lg:h-[202px] md:min-h-[160px] md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-[60] md:w-[300px] md:sm:w-[320px] md:lg:w-[360px] md:h-[169px] md:sm:h-[180px] md:lg:h-[202px] md:min-h-[160px] md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
                       : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
                     ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            currentTrack?.source === 'youtube' && activeYtChannel === 1 && isMobilePlayerOpen
+            currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2) && isMobilePlayerOpen
               ? (mobileMvRect
                   ? {
                       top: `${mobileMvRect.top}px`,
@@ -6058,6 +6061,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     })
               : ({
                   '--desktop-yt-bottom': `${desktopYtBottom}px`,
+                  bottom: `${desktopYtBottom}px`,
                 } as React.CSSProperties)
           }
         >
@@ -6079,7 +6083,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
 
           {/* Desktop Floating Header Bar (Overlay) */}
-          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannel === 1) && (
+          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2)) && (
             <div className="hidden md:flex absolute top-0 inset-x-0 px-3 py-1.5 bg-black/85 backdrop-blur-md border-b border-white/10 items-center justify-between z-10 transition-opacity pointer-events-auto shadow-md">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
@@ -6115,19 +6119,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc2 && (
         <div
           className={
-            currentTrack?.source === 'youtube' && activeYtChannel === 2
+            currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1)
               ? (isMobilePlayerOpen
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
                     }`
                   : (showYoutubeVideo
-                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-40 md:w-[300px] md:sm:w-[320px] md:lg:w-[360px] md:h-[169px] md:sm:h-[180px] md:lg:h-[202px] md:min-h-[160px] md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
+                      ? 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:bottom-[var(--desktop-yt-bottom,58px)] md:right-4 md:sm:right-6 md:z-[60] md:w-[300px] md:sm:w-[320px] md:lg:w-[360px] md:h-[169px] md:sm:h-[180px] md:lg:h-[202px] md:min-h-[160px] md:aspect-video md:rounded-2xl md:overflow-hidden md:bg-black md:shadow-[0_20px_50px_rgba(0,0,0,0.95)] md:border md:border-white/20 md:ring-1 md:ring-white/10 md:pointer-events-auto md:opacity-100 md:transition-all md:duration-300 md:group/mv'
                       : 'max-md:fixed max-md:bottom-[68px] max-md:left-3 max-md:w-12 max-md:h-12 max-md:rounded-lg max-md:overflow-hidden max-md:pointer-events-none max-md:z-0 max-md:opacity-100 md:fixed md:top-0 md:-left-[9999px] md:w-[320px] md:h-[180px] md:overflow-hidden md:opacity-0 md:pointer-events-none'
                     ))
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            currentTrack?.source === 'youtube' && activeYtChannel === 2 && isMobilePlayerOpen
+            currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1) && isMobilePlayerOpen
               ? (mobileMvRect
                   ? {
                       top: `${mobileMvRect.top}px`,
@@ -6146,6 +6150,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                     })
               : ({
                   '--desktop-yt-bottom': `${desktopYtBottom}px`,
+                  bottom: `${desktopYtBottom}px`,
                 } as React.CSSProperties)
           }
         >
@@ -6167,7 +6172,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           )}
 
           {/* Desktop Floating Header Bar (Overlay) */}
-          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && activeYtChannel === 2) && (
+          {!isMobilePlayerOpen && Boolean(showYoutubeVideo && currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1)) && (
             <div className="hidden md:flex absolute top-0 inset-x-0 px-3 py-1.5 bg-black/85 backdrop-blur-md border-b border-white/10 items-center justify-between z-10 transition-opacity pointer-events-auto shadow-md">
               <div className="flex items-center gap-2 min-w-0 pr-2">
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse flex-shrink-0" />
