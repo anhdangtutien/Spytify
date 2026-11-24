@@ -931,7 +931,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 : 'text-[#666] hover:text-white border-transparent'
             }`}
           >
-            <Sparkles className={`w-4 h-4 ${isNextTrackPopupEnabled ? 'animate-pulse' : 'opacity-50'}`} />
+            <AudioLines className={`w-4 h-4 ${isNextTrackPopupEnabled ? '' : 'opacity-50'}`} />
           </button>
         )}
 
