@@ -1125,6 +1125,8 @@ export default function App() {
   const [connectPlaybackTarget, setConnectPlaybackTarget] = useState<'desktop' | 'this_device'>('desktop');
   const connectPlaybackTargetRef = useRef<'desktop' | 'this_device'>('desktop');
   connectPlaybackTargetRef.current = connectPlaybackTarget;
+  const remoteSeekTimestampRef = useRef<number>(0);
+  const remoteSeekCooldownRef = useRef<number>(0);
   const [connectHostName, setConnectHostName] = useState('Spytify Desktop');
   const [lanStreamBaseUrl, setLanStreamBaseUrl] = useState<string | null>(null);
   const lanStreamBaseUrlRef = useRef<string | null>(null);
@@ -2580,6 +2582,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       const track = currentTrackRef.current;
       if (!track || !isPlayingRef.current) return;
 
+      // On Mobile Remote Client: smoothly advance timeline locally while Desktop is playing
+      if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+        const maxDur = Math.max(durationRef.current || 0, track.duration_secs || 0);
+        const nextTime = (currentTimeRef.current || 0) + 0.25;
+        if (maxDur <= 0 || nextTime <= maxDur) {
+          currentTimeRef.current = nextTime;
+          setCurrentTime(nextTime);
+        }
+        return;
+      }
+
       let curTime = 0;
       const trueDur = Math.max(durationRef.current || 0, track.duration_secs || 0);
 
@@ -2625,6 +2638,21 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         }
       } else {
         curTime = currentTimeRef.current || 0;
+      }
+
+      // On Desktop Host, broadcast playback state regularly so Mobile Remote clients stay in sync
+      if (isConnectHostActive && isPlayingRef.current) {
+        spytifyConnect.broadcastPlaybackState({
+          currentTrack: currentTrackRef.current,
+          isPlaying: true,
+          currentTime: curTime,
+          duration: trueDur > 0 ? trueDur : (durationRef.current || 0),
+          volume: volumeRef.current,
+          lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+          activeDeviceId: 'desktop',
+          activeDeviceName: 'Spytify Desktop',
+          timestamp: Date.now(),
+        }, false);
       }
 
       if (isTrayModeRef.current) return;
@@ -4609,7 +4637,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleTogglePlay = async () => {
     if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
-      spytifyConnect.sendCommand({ type: isPlayingRef.current ? 'PAUSE' : 'PLAY' });
+      const nextPlay = !isPlayingRef.current;
+      setIsPlaying(nextPlay);
+      isPlayingRef.current = nextPlay;
+      spytifyConnect.sendCommand({ type: nextPlay ? 'PLAY' : 'PAUSE' });
       return;
     }
     const track = currentTrackRef.current;
@@ -4736,6 +4767,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleSeek = async (secs: number) => {
     if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+      const now = Date.now();
+      remoteSeekTimestampRef.current = now;
+      remoteSeekCooldownRef.current = now + 1200;
+      setCurrentTime(secs);
+      currentTimeRef.current = secs;
       spytifyConnect.sendCommand({ type: 'SEEK', time: secs });
       return;
     }
@@ -4745,6 +4781,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     if (effDur <= 0 && currentTrack.source !== 'local') return;
 
     setCurrentTime(secs);
+    currentTimeRef.current = secs;
     accumulatedTimeRef.current = secs;
     if (isPlayingRef.current) {
       playStartTimestampRef.current = Date.now();
@@ -4767,6 +4804,21 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       sendScCmd('seekTo', secs * 1000);
     } else if (onlineAudioRef.current) {
       onlineAudioRef.current.currentTime = secs;
+    }
+
+    // Immediately broadcast updated seek position to all remote devices
+    if (isConnectHostActive) {
+      spytifyConnect.broadcastPlaybackState({
+        currentTrack: currentTrackRef.current,
+        isPlaying: isPlayingRef.current,
+        currentTime: secs,
+        duration: durationRef.current || (currentTrackRef.current?.duration_secs || 0),
+        volume: volumeRef.current,
+        lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+        activeDeviceId: 'desktop',
+        activeDeviceName: 'Spytify Desktop',
+        timestamp: Date.now(),
+      }, true);
     }
   };
 
@@ -5047,8 +5099,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             isPlayingRef.current = remoteState.isPlaying;
           }
           if (typeof remoteState.currentTime === 'number') {
-            setCurrentTime(remoteState.currentTime);
-            currentTimeRef.current = remoteState.currentTime;
+            const isPostSeekUpdate = Boolean(remoteState.timestamp && remoteState.timestamp >= remoteSeekTimestampRef.current);
+            const isCooldownExpired = Date.now() >= remoteSeekCooldownRef.current;
+            if (isPostSeekUpdate || isCooldownExpired) {
+              setCurrentTime(remoteState.currentTime);
+              currentTimeRef.current = remoteState.currentTime;
+            }
           }
           if (typeof remoteState.duration === 'number') {
             setDuration(remoteState.duration);

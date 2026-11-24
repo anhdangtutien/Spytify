@@ -303,56 +303,91 @@ class SpytifyConnectService {
     try {
       const channelName = `spytify_remote_${userId}`;
       let monChannel: any = client.getChannels().find((c: any) => c.topic === `realtime:${channelName}`);
+      
+      // If a channel already exists and is subscribed or joining, NEVER call .on() to avoid Supabase exception
+      if (monChannel && (monChannel.state === 'joined' || monChannel.state === 'joining' || monChannel.subState === 'joined')) {
+        try {
+          const state = monChannel.presenceState?.() || {};
+          let hasHost = false;
+          let foundName = 'Spytify Desktop';
+          for (const presences of Object.values(state)) {
+            if (Array.isArray(presences)) {
+              const h = presences.find((p: any) => p && p.role === 'host' && (p.userId === userId || p.hostId === userId)) as any;
+              if (h) {
+                hasHost = true;
+                if (h.name) foundName = h.name;
+                break;
+              }
+            }
+          }
+          if (hasHost) {
+            this.isHostOnline = true;
+            this.discoveredHostId = userId;
+            this.discoveredHostName = foundName;
+            this.notifyHostStatus(true);
+          }
+        } catch {}
+        return () => {
+          this.onHostStatusCallbacks.delete(onHostStatus);
+        };
+      }
+
       if (!monChannel) {
         monChannel = client.channel(channelName, {
           config: { broadcast: { self: false } },
         });
 
         try {
-          monChannel
-            .on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string; name?: string } }) => {
-              if (payload?.hostId === userId) {
-                this.discoveredHostId = payload.hostId;
-                if (payload.name) this.discoveredHostName = payload.name;
-                this.isHostOnline = true;
-                this.notifyHostStatus(true);
-              }
-            })
-            .on('broadcast', { event: 'state_update' }, ({ payload }: { payload: ConnectPlaybackState }) => {
-              if (payload) {
-                this.lastState = payload;
-                this.isHostOnline = true;
-                this.notifyHostStatus(true);
-                this.onStateCallbacks.forEach(cb => cb(payload));
-              }
-            })
-            .on('presence', { event: 'sync' }, () => {
-              try {
-                const state = monChannel.presenceState();
-                let hasHost = false;
-                let foundName = 'Spytify Desktop';
-                for (const presences of Object.values(state)) {
-                  if (Array.isArray(presences)) {
-                    const h = presences.find((p: any) => p && p.role === 'host' && (p.userId === userId || p.hostId === userId)) as any;
-                    if (h) {
-                      hasHost = true;
-                      if (h.name) foundName = h.name;
-                      break;
-                    }
+          monChannel.on('broadcast', { event: 'host_online' }, ({ payload }: { payload: { hostId: string; name?: string } }) => {
+            if (payload?.hostId === userId) {
+              this.discoveredHostId = payload.hostId;
+              if (payload.name) this.discoveredHostName = payload.name;
+              this.isHostOnline = true;
+              this.notifyHostStatus(true);
+            }
+          });
+        } catch {}
+
+        try {
+          monChannel.on('broadcast', { event: 'state_update' }, ({ payload }: { payload: ConnectPlaybackState }) => {
+            if (payload) {
+              this.lastState = payload;
+              this.isHostOnline = true;
+              this.notifyHostStatus(true);
+              this.onStateCallbacks.forEach(cb => cb(payload));
+            }
+          });
+        } catch {}
+
+        try {
+          monChannel.on('presence', { event: 'sync' }, () => {
+            try {
+              const state = monChannel.presenceState();
+              let hasHost = false;
+              let foundName = 'Spytify Desktop';
+              for (const presences of Object.values(state)) {
+                if (Array.isArray(presences)) {
+                  const h = presences.find((p: any) => p && p.role === 'host' && (p.userId === userId || p.hostId === userId)) as any;
+                  if (h) {
+                    hasHost = true;
+                    if (h.name) foundName = h.name;
+                    break;
                   }
                 }
-                this.isHostOnline = hasHost;
-                if (hasHost) {
-                  this.discoveredHostId = userId;
-                  this.discoveredHostName = foundName;
-                }
-                this.notifyHostStatus(hasHost);
-              } catch {}
-            })
-            .subscribe();
-        } catch (subErr) {
-          console.warn('[Spytify Connect] Subscription setup error:', subErr);
-        }
+              }
+              this.isHostOnline = hasHost;
+              if (hasHost) {
+                this.discoveredHostId = userId;
+                this.discoveredHostName = foundName;
+              }
+              this.notifyHostStatus(hasHost);
+            } catch {}
+          });
+        } catch {}
+
+        try {
+          monChannel.subscribe();
+        } catch {}
       }
 
       return () => {

@@ -377,7 +377,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 setIsDragging(false);
                 onSeek(Number((e.target as HTMLInputElement).value));
               }}
-              onClick={(e) => handleSeekFromEvent(e, true)}
               className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
             />
           )}
@@ -1274,7 +1273,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                     setIsDragging(false);
                   }}
                   onClick={(e) => {
-                    handleSeekFromEvent(e, true);
+                    // Prevent duplicate seek if pointerUp already handled commit
+                    if (isDragging) {
+                      handleSeekFromEvent(e, true);
+                    }
                   }}
                 >
                   <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden pointer-events-none relative">
