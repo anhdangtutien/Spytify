@@ -18,6 +18,8 @@ import { AddToAlbumModal } from './components/AddToAlbumModal';
 import { CreateAlbumFromSelectionModal } from './components/CreateAlbumFromSelectionModal';
 import { EqualizerModal } from './components/EqualizerModal';
 import { ConnectModal } from './components/ConnectModal';
+import { KaraokeModal } from './components/KaraokeModal';
+import { QueueModal } from './components/QueueModal';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
 import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
@@ -1122,6 +1124,9 @@ export default function App() {
   const [isConnectClientActive, setIsConnectClientActive] = useState(false);
   const [isHostOnline, setIsHostOnline] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [isKaraokeModalOpen, setIsKaraokeModalOpen] = useState(false);
+  const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
+  const [remoteQueue, setRemoteQueue] = useState<Track[]>([]);
   const [connectPlaybackTarget, setConnectPlaybackTarget] = useState<'desktop' | 'this_device'>('desktop');
   const connectPlaybackTargetRef = useRef<'desktop' | 'this_device'>('desktop');
   connectPlaybackTargetRef.current = connectPlaybackTarget;
@@ -2660,6 +2665,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           currentTime: curTime,
           duration: trueDur > 0 ? trueDur : (durationRef.current || 0),
           volume: volumeRef.current,
+          queue: getEffectiveQueue().slice(0, 50),
           lanStreamBaseUrl: lanStreamBaseUrlRef.current,
           activeDeviceId: 'desktop',
           activeDeviceName: 'Spytify Desktop',
@@ -4859,6 +4865,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         currentTime: secs,
         duration: durationRef.current || (currentTrackRef.current?.duration_secs || 0),
         volume: volumeRef.current,
+        queue: getEffectiveQueue().slice(0, 50),
         lanStreamBaseUrl: lanStreamBaseUrlRef.current,
         activeDeviceId: 'desktop',
         activeDeviceName: 'Spytify Desktop',
@@ -4902,6 +4909,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         currentTime: currentTimeRef.current,
         duration: durationRef.current || (currentTrackRef.current?.duration_secs || 0),
         volume: clamped,
+        queue: getEffectiveQueue().slice(0, 50),
         lanStreamBaseUrl: lanStreamBaseUrlRef.current,
         activeDeviceId: 'desktop',
         activeDeviceName: 'Spytify Desktop',
@@ -5044,12 +5052,86 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       currentTime: currentTimeRef.current,
       duration: durationRef.current || (currentTrack?.duration_secs || 0),
       volume: volumeRef.current,
+      queue: getEffectiveQueue().slice(0, 50),
       lanStreamBaseUrl: lanStreamBaseUrlRef.current,
       activeDeviceId: 'desktop',
       activeDeviceName: 'Spytify Desktop',
       timestamp: Date.now(),
     });
-  }, [isConnectHostActive, currentTrack, isPlaying, duration, volume]);
+  }, [isConnectHostActive, currentTrack, isPlaying, duration, volume, activeQueue]);
+
+  const handleReorderQueue = useCallback((fromIndex: number, toIndex: number) => {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+      setRemoteQueue(prev => {
+        const copy = [...prev];
+        if (fromIndex < 0 || fromIndex >= copy.length || toIndex < 0 || toIndex >= copy.length) return prev;
+        const [moved] = copy.splice(fromIndex, 1);
+        if (moved) copy.splice(toIndex, 0, moved);
+        return copy;
+      });
+      spytifyConnect.sendCommand({ type: 'REORDER_QUEUE', fromIndex, toIndex });
+      return;
+    }
+
+    setActiveQueue(prev => {
+      const currentList = prev.length > 0 ? [...prev] : [...getEffectiveQueue()];
+      if (fromIndex < 0 || fromIndex >= currentList.length || toIndex < 0 || toIndex >= currentList.length) return prev;
+      const [moved] = currentList.splice(fromIndex, 1);
+      if (moved) currentList.splice(toIndex, 0, moved);
+      activeQueueRef.current = currentList;
+      if (isConnectHostActive) {
+        spytifyConnect.broadcastPlaybackState({
+          currentTrack: currentTrackRef.current,
+          isPlaying: isPlayingRef.current,
+          currentTime: currentTimeRef.current,
+          duration: durationRef.current,
+          volume: volumeRef.current,
+          queue: currentList.slice(0, 50),
+          lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+          activeDeviceId: 'desktop',
+          activeDeviceName: 'Spytify Desktop',
+          timestamp: Date.now(),
+        }, true);
+      }
+      return currentList;
+    });
+  }, [isTauriApp, isConnectHostActive]);
+
+  const handleRemoveFromQueue = useCallback((trackId: string) => {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+      setRemoteQueue(prev => prev.filter(t => t.id !== trackId));
+      spytifyConnect.sendCommand({ type: 'REMOVE_FROM_QUEUE', trackId });
+      return;
+    }
+
+    setActiveQueue(prev => {
+      const currentList = (prev.length > 0 ? prev : getEffectiveQueue()).filter(t => t.id !== trackId);
+      activeQueueRef.current = currentList;
+      if (isConnectHostActive) {
+        spytifyConnect.broadcastPlaybackState({
+          currentTrack: currentTrackRef.current,
+          isPlaying: isPlayingRef.current,
+          currentTime: currentTimeRef.current,
+          duration: durationRef.current,
+          volume: volumeRef.current,
+          queue: currentList.slice(0, 50),
+          lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+          activeDeviceId: 'desktop',
+          activeDeviceName: 'Spytify Desktop',
+          timestamp: Date.now(),
+        }, true);
+      }
+      return currentList;
+    });
+  }, [isTauriApp, isConnectHostActive]);
+
+  const handlePlayQueueTrack = useCallback((track: Track) => {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+      spytifyConnect.sendCommand({ type: 'PLAY_TRACK', track });
+      return;
+    }
+    playTrackInternal(track);
+  }, [isTauriApp]);
 
   const startConnectHost = useCallback(async () => {
     if (!isTauriApp) return;
@@ -5083,6 +5165,17 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           case 'PLAY_TRACK':
             if (cmd.track) playTrackInternal(cmd.track);
             break;
+          case 'REORDER_QUEUE':
+            handleReorderQueue(cmd.fromIndex, cmd.toIndex);
+            break;
+          case 'REMOVE_FROM_QUEUE':
+            handleRemoveFromQueue(cmd.trackId);
+            break;
+          case 'PLAY_QUEUE_INDEX': {
+            const q = getEffectiveQueue();
+            if (q[cmd.index]) playTrackInternal(q[cmd.index]);
+            break;
+          }
           case 'TRANSFER_PLAYBACK':
             if (cmd.target === 'desktop') {
               if (!isPlayingRef.current) handleTogglePlayRef.current();
@@ -5107,13 +5200,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         currentTime: currentTimeRef.current,
         duration: durationRef.current,
         volume: volumeRef.current,
+        queue: getEffectiveQueue().slice(0, 50),
         lanStreamBaseUrl: lanStreamBaseUrlRef.current,
         activeDeviceId: 'desktop',
         activeDeviceName: 'Spytify Desktop',
         timestamp: Date.now(),
       }, true);
     }
-  }, [isTauriApp, getEffectiveRemoteUserId]);
+  }, [isTauriApp, getEffectiveRemoteUserId, handleReorderQueue, handleRemoveFromQueue]);
 
   // Auto-start host on Desktop app launch, and re-bind if user logs in
   useEffect(() => {
@@ -5195,6 +5289,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 volumeRef.current = remoteState.volume;
               }
             }
+          }
+          if (remoteState.queue && Array.isArray(remoteState.queue)) {
+            setRemoteQueue(remoteState.queue);
           }
         }
       }
@@ -6160,6 +6257,37 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             accentColor={activeAccentColor}
             themeMode={themeMode}
             language={language}
+          />
+
+          {/* Karaoke & Synced Lyrics Mode Modal */}
+          <KaraokeModal
+            isOpen={isKaraokeModalOpen}
+            onClose={() => setIsKaraokeModalOpen(false)}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            currentTime={currentTime}
+            duration={duration}
+            onTogglePlay={handleTogglePlay}
+            onPrev={handleUserPrev}
+            onNext={handleUserNext}
+            onSeek={handleSeek}
+            accentColor={activeAccentColor}
+            language={language}
+          />
+
+          {/* Up Next & Queue Management Modal */}
+          <QueueModal
+            isOpen={isQueueModalOpen}
+            onClose={() => setIsQueueModalOpen(false)}
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            queue={connectPlaybackTarget === 'desktop' && !isTauriApp && remoteQueue.length > 0 ? remoteQueue : getEffectiveQueue()}
+            onPlayTrack={handlePlayQueueTrack}
+            onReorder={handleReorderQueue}
+            onRemove={handleRemoveFromQueue}
+            accentColor={activeAccentColor}
+            language={language}
+            isRemoteDesktop={connectPlaybackTarget === 'desktop' && !isTauriApp}
           />
         </>
       )}
@@ -7143,6 +7271,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         playbackTarget={connectPlaybackTarget}
         onToggleConnectClient={!isTauriApp ? handleToggleConnectClient : undefined}
         onOpenConnectModal={!isTauriApp ? () => setIsConnectModalOpen(true) : undefined}
+        onOpenKaraoke={() => setIsKaraokeModalOpen(true)}
+        onOpenQueue={() => setIsQueueModalOpen(true)}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}

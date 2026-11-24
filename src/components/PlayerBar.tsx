@@ -4,7 +4,7 @@ import {
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio, Cast,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
   ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv,
-  Laptop, Smartphone, AudioLines
+  Laptop, Smartphone, AudioLines, Mic2, ListMusic
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
@@ -71,6 +71,8 @@ interface PlayerBarProps {
   playbackTarget?: 'desktop' | 'this_device';
   onToggleConnectClient?: () => void;
   onOpenConnectModal?: () => void;
+  onOpenKaraoke?: () => void;
+  onOpenQueue?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -112,6 +114,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   playbackTarget = 'desktop',
   onToggleConnectClient,
   onOpenConnectModal,
+  onOpenKaraoke,
+  onOpenQueue,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -976,6 +980,30 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
+        {/* Karaoke & Synced Lyrics Mode */}
+        {onOpenKaraoke && (
+          <button
+            type="button"
+            onClick={onOpenKaraoke}
+            title={language === 'vi' ? 'Karaoke & Lời bài hát đồng bộ' : 'Karaoke & Synced Lyrics'}
+            className="p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent flex items-center justify-center shrink-0"
+          >
+            <Mic2 className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Playback Queue */}
+        {onOpenQueue && (
+          <button
+            type="button"
+            onClick={onOpenQueue}
+            title={language === 'vi' ? 'Hàng đợi phát nhạc' : 'Playing Queue'}
+            className="p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent flex items-center justify-center shrink-0"
+          >
+            <ListMusic className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Spytify Connect (Desktop Broadcaster via LiveKit & Supabase) */}
         {onToggleConnectHost && (
           <button
@@ -1370,6 +1398,32 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
           {/* Secondary Utility Row */}
           <div className="flex items-center justify-around pt-2 border-t border-white/10 text-xs">
+            {onOpenKaraoke && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSheetOpen(false);
+                  onOpenKaraoke();
+                }}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <Mic2 className="w-4 h-4" />
+                <span className="text-[10px]">Karaoke</span>
+              </button>
+            )}
+            {onOpenQueue && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSheetOpen(false);
+                  onOpenQueue();
+                }}
+                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <ListMusic className="w-4 h-4" />
+                <span className="text-[10px]">Hàng đợi</span>
+              </button>
+            )}
             {(onCycleRecommendMode || onToggleAutoRecommend) && (
               <button
                 type="button"

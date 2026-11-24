@@ -1,0 +1,308 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Mic2, Play, Pause, SkipBack, SkipForward, RefreshCw, Volume2, Sparkles } from 'lucide-react';
+import { Track } from '../types';
+import { fetchLyrics, LyricsData, LyricLine } from '../services/lyricsService';
+
+function formatTime(secs: number): string {
+  if (isNaN(secs) || secs < 0) return '0:00';
+  const mins = Math.floor(secs / 60);
+  const remainingSecs = Math.floor(secs % 60);
+  return `${mins}:${remainingSecs.toString().padStart(2, '0')}`;
+}
+
+interface KaraokeModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentTrack: Track | null;
+  isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  onTogglePlay: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onSeek: (time: number) => void;
+  accentColor?: string;
+  language?: string;
+}
+
+export const KaraokeModal: React.FC<KaraokeModalProps> = ({
+  isOpen,
+  onClose,
+  currentTrack,
+  isPlaying,
+  currentTime,
+  duration,
+  onTogglePlay,
+  onPrev,
+  onNext,
+  onSeek,
+  accentColor = '#ff2a55',
+  language = 'vi',
+}) => {
+  const [lyricsData, setLyricsData] = useState<LyricsData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<any>(null);
+  const listContainerRef = useRef<HTMLDivElement>(null);
+  const activeLineElRef = useRef<HTMLDivElement | null>(null);
+
+  // Fetch lyrics whenever currentTrack changes
+  useEffect(() => {
+    if (!isOpen || !currentTrack) return;
+    let isCancelled = false;
+    setIsLoading(true);
+
+    fetchLyrics(currentTrack.title, currentTrack.artist, currentTrack.duration_secs || duration)
+      .then((data) => {
+        if (!isCancelled) {
+          setLyricsData(data);
+          setIsLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setLyricsData(null);
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, currentTrack?.id, currentTrack?.title, currentTrack?.artist]);
+
+  // Determine active lyric line index based on currentTime
+  const activeIndex = useMemo(() => {
+    if (!lyricsData || !lyricsData.synced || !lyricsData.lines.length) return -1;
+    const lines = lyricsData.lines;
+    // Current time with a tiny 0.2s lead-in for human perception
+    const leadTime = currentTime + 0.15;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (leadTime >= lines[i].time) {
+        return i;
+      }
+    }
+    return 0;
+  }, [lyricsData, currentTime]);
+
+  // Auto-scroll active lyric line to center of view when not manually scrolling
+  useEffect(() => {
+    if (isUserScrolling || activeIndex < 0 || !activeLineElRef.current) return;
+    try {
+      activeLineElRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    } catch {}
+  }, [activeIndex, isUserScrolling]);
+
+  const handleContainerScroll = () => {
+    setIsUserScrolling(true);
+    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    // Resume auto-scroll after 2.5 seconds of user inactivity
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsUserScrolling(false);
+    }, 2500);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#050508]/95 backdrop-blur-2xl text-white select-none animate-fadeIn">
+      {/* Dynamic Ambient Background Blur */}
+      {currentTrack?.cover_art && (
+        <div
+          className="absolute inset-0 pointer-events-none opacity-25 filter blur-[100px] scale-125 transition-all duration-1000 -z-10"
+          style={{
+            backgroundImage: `url(${currentTrack.cover_art})`,
+            backgroundPosition: 'center',
+            backgroundSize: 'cover',
+          }}
+        />
+      )}
+
+      {/* Top Header */}
+      <header className="flex items-center justify-between px-4 sm:px-8 py-4 sm:py-5 border-b border-white/10 z-10 shrink-0">
+        <div className="flex items-center gap-3 min-w-0 pr-2">
+          {currentTrack?.cover_art && (
+            <img
+              src={currentTrack.cover_art}
+              alt=""
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover shadow-lg border border-white/10 shrink-0"
+            />
+          )}
+          <div className="min-w-0">
+            <h2 className="text-sm sm:text-base font-bold text-white truncate max-w-[220px] sm:max-w-[400px]">
+              {currentTrack?.title || 'Chưa chọn bài hát'}
+            </h2>
+            <p className="text-xs text-zinc-400 truncate max-w-[200px] sm:max-w-[320px]">
+              {currentTrack?.artist || '—'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold"
+            style={{
+              backgroundColor: `${accentColor}18`,
+              borderColor: `${accentColor}40`,
+              color: accentColor,
+            }}
+          >
+            <Mic2 className="w-3.5 h-3.5 animate-pulse" />
+            <span className="hidden sm:inline">KARAOKE & LỜI ĐỒNG BỘ</span>
+            <span className="sm:hidden">KARAOKE</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            title="Đóng"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+      </header>
+
+      {/* Center Lyrics Canvas */}
+      <main
+        ref={listContainerRef}
+        onScroll={handleContainerScroll}
+        className="flex-1 overflow-y-auto px-4 sm:px-12 py-16 flex flex-col items-center scroll-smooth scrollbar-none"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {isLoading ? (
+          <div className="my-auto flex flex-col items-center gap-3 text-zinc-400 animate-pulse">
+            <RefreshCw className="w-8 h-8 animate-spin" style={{ color: accentColor }} />
+            <p className="text-sm">Đang tải lời bài hát đồng bộ từ LRCLIB...</p>
+          </div>
+        ) : !lyricsData || (!lyricsData.synced && !lyricsData.plainText) ? (
+          <div className="my-auto flex flex-col items-center text-center max-w-md gap-3 py-12 text-zinc-400">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center border"
+              style={{
+                backgroundColor: `${accentColor}15`,
+                borderColor: `${accentColor}30`,
+                color: accentColor,
+              }}
+            >
+              <Mic2 className="w-7 h-7" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-white">Chưa có lời đồng bộ</h3>
+            <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
+              Bài hát này hiện chưa có dữ liệu thời gian khớp từng câu trên kho mã nguồn mở LRCLIB. Hãy tận hưởng giai điệu tuyệt vời nhé!
+            </p>
+          </div>
+        ) : lyricsData.synced && lyricsData.lines.length > 0 ? (
+          <div className="w-full max-w-3xl flex flex-col items-center text-center py-20 space-y-7 sm:space-y-9">
+            {lyricsData.lines.map((line, idx) => {
+              const isActive = idx === activeIndex;
+              const isPast = idx < activeIndex;
+
+              return (
+                <div
+                  key={`${line.time}_${idx}`}
+                  ref={isActive ? (el) => { activeLineElRef.current = el; } : undefined}
+                  onClick={() => onSeek(line.time)}
+                  className={`group relative transition-all duration-300 cursor-pointer px-4 py-1.5 rounded-xl ${
+                    isActive
+                      ? 'scale-105 sm:scale-110 font-bold z-10'
+                      : isPast
+                      ? 'opacity-35 hover:opacity-80 scale-95'
+                      : 'opacity-40 hover:opacity-80 scale-95'
+                  }`}
+                >
+                  <p
+                    className={`leading-relaxed tracking-tight transition-all duration-300 ${
+                      isActive
+                        ? 'text-2xl sm:text-4xl text-white'
+                        : 'text-lg sm:text-2xl text-zinc-300'
+                    }`}
+                    style={
+                      isActive
+                        ? {
+                            color: '#ffffff',
+                            textShadow: `0 0 24px ${accentColor}, 0 0 45px ${accentColor}80`,
+                          }
+                        : undefined
+                    }
+                  >
+                    {line.text}
+                  </p>
+
+                  {/* Hover seek indicator badge */}
+                  <span className="hidden group-hover:inline-block absolute right-0 top-1/2 -translate-y-1/2 text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/10 text-zinc-400">
+                    {formatTime(line.time)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* Plain text fallback when synced timestamps are unavailable */
+          <div className="w-full max-w-2xl whitespace-pre-wrap text-center py-10 text-base sm:text-lg text-zinc-300 leading-loose">
+            {lyricsData.plainText}
+          </div>
+        )}
+      </main>
+
+      {/* Bottom Mini Player Controls */}
+      <footer className="px-4 sm:px-8 py-3.5 sm:py-4 bg-[#0a0a0f]/90 border-t border-white/10 z-10 shrink-0 backdrop-blur-xl">
+        <div className="max-w-3xl mx-auto flex flex-col gap-2">
+          {/* Seekbar */}
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-mono text-zinc-400 w-10 text-right">
+              {formatTime(currentTime)}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              step={0.5}
+              value={currentTime}
+              onChange={(e) => onSeek(Number(e.target.value))}
+              className="flex-1 h-1.5 rounded-full appearance-none bg-white/20 cursor-pointer accent-white"
+              style={{ accentColor }}
+            />
+            <span className="text-[11px] font-mono text-zinc-400 w-10">
+              {formatTime(duration)}
+            </span>
+          </div>
+
+          {/* Transport buttons */}
+          <div className="flex items-center justify-center gap-4 sm:gap-6 mt-1">
+            <button
+              type="button"
+              onClick={onPrev}
+              className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Bài trước"
+            >
+              <SkipBack className="w-5 h-5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={onTogglePlay}
+              className="w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+              style={{ backgroundColor: accentColor }}
+              title={isPlaying ? 'Tạm dừng' : 'Phát'}
+            >
+              {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={onNext}
+              className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Bài tiếp theo"
+            >
+              <SkipForward className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+};

@@ -9,6 +9,7 @@ export interface ConnectPlaybackState {
   volume: number;
   repeatMode?: 'off' | 'all' | 'one';
   isShuffle?: boolean;
+  queue?: Track[];
   activeDeviceId?: string;
   activeDeviceName?: string;
   lanStreamBaseUrl?: string | null;
@@ -24,6 +25,9 @@ export type ConnectCommand =
   | { type: 'SEEK'; time: number }
   | { type: 'SET_VOLUME'; volume: number }
   | { type: 'PLAY_TRACK'; track: Track }
+  | { type: 'REORDER_QUEUE'; fromIndex: number; toIndex: number }
+  | { type: 'REMOVE_FROM_QUEUE'; trackId: string }
+  | { type: 'PLAY_QUEUE_INDEX'; index: number }
   | { type: 'TRANSFER_PLAYBACK'; target: 'desktop' | 'mobile'; currentTime?: number }
   | { type: 'REQUEST_STATE' };
 

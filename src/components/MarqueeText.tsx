@@ -60,19 +60,21 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
       className={`overflow-hidden whitespace-nowrap min-w-0 select-none cursor-default leading-normal ${wrapperClassName}`}
       title={text || ''}
     >
-      <style>{`
-        @keyframes spytifyMarqueePingPong {
-          0%, 8% {
-            transform: translateX(0px);
+      {offset > 0 && (
+        <style>{`
+          @keyframes spytifyMarquee_${offset} {
+            0%, 15% {
+              transform: translateX(0px);
+            }
+            50%, 65% {
+              transform: translateX(-${offset}px);
+            }
+            95%, 100% {
+              transform: translateX(0px);
+            }
           }
-          48%, 56% {
-            transform: translateX(var(--marquee-offset, -30px));
-          }
-          96%, 100% {
-            transform: translateX(0px);
-          }
-        }
-      `}</style>
+        `}</style>
+      )}
       <span
         ref={textRef}
         style={{
@@ -81,8 +83,7 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
           maxWidth: 'none',
           ...(isHovered && offset > 0
             ? {
-                animation: `spytifyMarqueePingPong ${animationDuration.toFixed(2)}s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
-                '--marquee-offset': `-${offset}px`,
+                animation: `spytifyMarquee_${offset} ${animationDuration.toFixed(2)}s cubic-bezier(0.4, 0, 0.2, 1) infinite`,
               }
             : {
                 transform: 'translateX(0px)',
