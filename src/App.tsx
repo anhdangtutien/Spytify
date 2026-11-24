@@ -2727,6 +2727,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // ─── INSTANT RESYNC WHEN SWITCHING BACK TO APP WINDOW ────────────────────
   const syncPlaybackStateNow = useCallback(async () => {
+    if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') return;
     const track = currentTrackRef.current;
     if (!track) return;
 
@@ -2795,6 +2796,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   useEffect(() => {
     const onMsg = (event: MessageEvent) => {
       try {
+        // If this device is acting as a remote control for Desktop, ignore local dormant iframe messages
+        if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+          return;
+        }
+
         const isFrom1 = ytIframe1Ref.current && event.source === ytIframe1Ref.current.contentWindow;
         const isFrom2 = ytIframe2Ref.current && event.source === ytIframe2Ref.current.contentWindow;
         const isFromSc1 = scIframe1Ref.current && event.source === scIframe1Ref.current.contentWindow;
@@ -3180,6 +3186,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     const setupAudioListeners = (audio: HTMLAudioElement, channel: 1 | 2) => {
       const onTimeUpdate = () => {
+        if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') return;
         if (activeAudioChannelRef.current !== channel) return;
         if (
           currentTrackRef.current?.source === 'audius' ||
@@ -3814,6 +3821,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   // ─── Core play function ──────────────────────────────────────────────────
   const playTrackInternal = async (rawTrack: Track, isBackOrForward = false, isCrossfade = false) => {
     if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+      setCurrentTrack(rawTrack);
+      currentTrackRef.current = rawTrack;
+      setIsPlaying(true);
+      isPlayingRef.current = true;
+      setCurrentTime(0);
+      currentTimeRef.current = 0;
       spytifyConnect.sendCommand({ type: 'PLAY_TRACK', track: rawTrack });
       return;
     }
@@ -5028,9 +5041,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     spytifyConnect.broadcastPlaybackState({
       currentTrack,
       isPlaying,
-      currentTime,
-      duration,
-      volume,
+      currentTime: currentTimeRef.current,
+      duration: durationRef.current || (currentTrack?.duration_secs || 0),
+      volume: volumeRef.current,
       lanStreamBaseUrl: lanStreamBaseUrlRef.current,
       activeDeviceId: 'desktop',
       activeDeviceName: 'Spytify Desktop',
@@ -5141,12 +5154,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
         if (connectPlaybackTargetRef.current === 'desktop') {
           if (remoteState.currentTrack) {
-            setCurrentTrack(remoteState.currentTrack);
-            currentTrackRef.current = remoteState.currentTrack;
+            if (!currentTrackRef.current || currentTrackRef.current.id !== remoteState.currentTrack.id) {
+              setCurrentTrack(remoteState.currentTrack);
+              currentTrackRef.current = remoteState.currentTrack;
+            }
           }
           if (typeof remoteState.isPlaying === 'boolean') {
-            setIsPlaying(remoteState.isPlaying);
-            isPlayingRef.current = remoteState.isPlaying;
+            if (isPlayingRef.current !== remoteState.isPlaying) {
+              setIsPlaying(remoteState.isPlaying);
+              isPlayingRef.current = remoteState.isPlaying;
+            }
           }
           if (typeof remoteState.currentTime === 'number') {
             if (mobileSeekTargetRef.current !== null && Date.now() < remoteSeekCooldownRef.current) {
@@ -5157,18 +5174,26 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }
             } else {
               mobileSeekTargetRef.current = null;
-              setCurrentTime(remoteState.currentTime);
-              currentTimeRef.current = remoteState.currentTime;
+              if (remoteState.currentTime === 0 && isPlayingRef.current && (currentTimeRef.current || 0) > 2) {
+                // Ignore stale 0 from desktop
+              } else {
+                setCurrentTime(remoteState.currentTime);
+                currentTimeRef.current = remoteState.currentTime;
+              }
             }
           }
-          if (typeof remoteState.duration === 'number') {
-            setDuration(remoteState.duration);
-            durationRef.current = remoteState.duration;
+          if (typeof remoteState.duration === 'number' && remoteState.duration > 0) {
+            if (durationRef.current !== remoteState.duration) {
+              setDuration(remoteState.duration);
+              durationRef.current = remoteState.duration;
+            }
           }
           if (typeof remoteState.volume === 'number') {
             if (Date.now() >= mobileVolumeCooldownRef.current) {
-              setVolume(remoteState.volume);
-              volumeRef.current = remoteState.volume;
+              if (Math.abs((volumeRef.current || 0) - remoteState.volume) > 0.01) {
+                setVolume(remoteState.volume);
+                volumeRef.current = remoteState.volume;
+              }
             }
           }
         }

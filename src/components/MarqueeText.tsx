@@ -25,7 +25,8 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
       const containerW = containerRef.current.clientWidth;
       const textW = textRef.current.scrollWidth;
       const diff = textW - containerW;
-      setOffset(diff > 2 ? Math.ceil(diff + 16) : 0);
+      const newOffset = diff > 4 ? Math.ceil(diff + 16) : 0;
+      setOffset(prev => (prev === newOffset ? prev : newOffset));
     }
   }, []);
 
@@ -38,7 +39,6 @@ export const MarqueeText: React.FC<MarqueeTextProps> = ({
     if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
       ro = new ResizeObserver(() => checkOverflow());
       ro.observe(containerRef.current);
-      if (textRef.current) ro.observe(textRef.current);
     }
 
     return () => {
