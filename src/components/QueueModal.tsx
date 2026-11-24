@@ -89,7 +89,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md select-none animate-fadeIn">
+    <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md select-none animate-fadeIn">
       {/* Backdrop tap to close */}
       <div className="absolute inset-0" onClick={onClose} />
 

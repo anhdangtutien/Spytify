@@ -108,7 +108,7 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-40 pb-[52px] md:pb-[52px] flex flex-col bg-[#050508]/95 backdrop-blur-2xl text-white select-none animate-fadeIn">
+    <div className="fixed inset-x-0 top-0 bottom-0 md:bottom-[52px] z-[80] flex flex-col bg-[#050508] text-white select-none animate-fadeIn">
       {/* Dynamic Ambient Background Blur */}
       {currentTrack?.cover_art && (
         <div
@@ -122,7 +122,7 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
       )}
 
       {/* Top Header */}
-      <header className="flex items-center justify-between px-4 sm:px-8 py-4 sm:py-5 border-b border-white/10 z-10 shrink-0">
+      <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 border-b border-white/10 z-10 shrink-0 bg-[#07070b] shadow-md">
         <div className="flex items-center gap-3 min-w-0 pr-2">
           {currentTrack?.cover_art && (
             <img

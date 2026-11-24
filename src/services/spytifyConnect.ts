@@ -158,7 +158,7 @@ class SpytifyConnectService {
     if (!this.isHostRunning) return;
 
     const now = Date.now();
-    if (!force && (now - this.lastBroadcastTime < 800)) {
+    if (!force && (now - this.lastBroadcastTime < 400)) {
       return;
     }
     this.lastBroadcastTime = now;

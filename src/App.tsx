@@ -1121,6 +1121,8 @@ export default function App() {
   const [isConnectHostActive, setIsConnectHostActive] = useState(() => {
     return isTauriApp && localStorage.getItem('spytify_connect_host_enabled') === 'true';
   });
+  const isConnectHostActiveRef = useRef(isConnectHostActive);
+  isConnectHostActiveRef.current = isConnectHostActive;
   const [isConnectClientActive, setIsConnectClientActive] = useState(false);
   const [isHostOnline, setIsHostOnline] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
@@ -2657,15 +2659,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         curTime = currentTimeRef.current || 0;
       }
 
-      // On Desktop Host, broadcast playback state regularly so Mobile Remote clients stay in sync
-      if (isConnectHostActive && isPlayingRef.current) {
+      // On Desktop Host, broadcast lightweight playback state ticks regularly so Mobile Remote stays in sync
+      if ((isConnectHostActiveRef.current || spytifyConnect.getIsHostRunning()) && isPlayingRef.current) {
         spytifyConnect.broadcastPlaybackState({
           currentTrack: currentTrackRef.current,
           isPlaying: true,
           currentTime: curTime,
           duration: trueDur > 0 ? trueDur : (durationRef.current || 0),
           volume: volumeRef.current,
-          queue: getEffectiveQueue().slice(0, 50),
           lanStreamBaseUrl: lanStreamBaseUrlRef.current,
           activeDeviceId: 'desktop',
           activeDeviceName: 'Spytify Desktop',
@@ -4069,6 +4070,22 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     ytMusicFallbackActiveRef.current = false;
     ytMusicFallbackTriedRef.current = false;
 
+    // Immediately broadcast track start and updated queue to remote clients
+    if (isConnectHostActiveRef.current || spytifyConnect.getIsHostRunning()) {
+      spytifyConnect.broadcastPlaybackState({
+        currentTrack: track,
+        isPlaying: true,
+        currentTime: 0,
+        duration: track.duration_secs || 0,
+        volume: volumeRef.current,
+        queue: getEffectiveQueue().slice(0, 50),
+        lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+        activeDeviceId: 'desktop',
+        activeDeviceName: 'Spytify Desktop',
+        timestamp: Date.now(),
+      }, true);
+    }
+
     // Record into in-memory listened set immediately so candidate promotion never picks the currently playing track
     if (track.title) listenedHistoryTitlesRef.current.add(track.title.trim().toLowerCase());
     if (track.id) listenedHistoryTitlesRef.current.add(track.id.toLowerCase());
@@ -4747,6 +4764,21 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onlineAudioRef.current?.play().catch(console.error);
       }
     }
+
+    // Immediately force broadcast play/pause state change to mobile
+    if (isConnectHostActiveRef.current || spytifyConnect.getIsHostRunning()) {
+      spytifyConnect.broadcastPlaybackState({
+        currentTrack: currentTrackRef.current,
+        isPlaying: isPlayingRef.current,
+        currentTime: currentTimeRef.current || 0,
+        duration: durationRef.current || (currentTrackRef.current?.duration_secs || 0),
+        volume: volumeRef.current,
+        lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+        activeDeviceId: 'desktop',
+        activeDeviceName: 'Spytify Desktop',
+        timestamp: Date.now(),
+      }, true);
+    }
   };
 
   const handlePauseTrack = () => {
@@ -5176,6 +5208,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             if (q[cmd.index]) playTrackInternal(q[cmd.index]);
             break;
           }
+          case 'REQUEST_STATE':
+            spytifyConnect.broadcastPlaybackState({
+              currentTrack: currentTrackRef.current,
+              isPlaying: isPlayingRef.current,
+              currentTime: currentTimeRef.current || 0,
+              duration: durationRef.current || (currentTrackRef.current?.duration_secs || 0),
+              volume: volumeRef.current,
+              queue: getEffectiveQueue().slice(0, 50),
+              lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+              activeDeviceId: 'desktop',
+              activeDeviceName: 'Spytify Desktop',
+              timestamp: Date.now(),
+            }, true);
+            break;
           case 'TRANSFER_PLAYBACK':
             if (cmd.target === 'desktop') {
               if (!isPlayingRef.current) handleTogglePlayRef.current();
@@ -5248,9 +5294,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
         if (connectPlaybackTargetRef.current === 'desktop') {
           if (remoteState.currentTrack) {
-            if (!currentTrackRef.current || currentTrackRef.current.id !== remoteState.currentTrack.id) {
+            const isNewTrack = !currentTrackRef.current || currentTrackRef.current.id !== remoteState.currentTrack.id;
+            if (isNewTrack) {
               setCurrentTrack(remoteState.currentTrack);
               currentTrackRef.current = remoteState.currentTrack;
+              const initTime = typeof remoteState.currentTime === 'number' ? remoteState.currentTime : 0;
+              setCurrentTime(initTime);
+              currentTimeRef.current = initTime;
             }
           }
           if (typeof remoteState.isPlaying === 'boolean') {
@@ -5268,12 +5318,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               }
             } else {
               mobileSeekTargetRef.current = null;
-              if (remoteState.currentTime === 0 && isPlayingRef.current && (currentTimeRef.current || 0) > 2) {
-                // Ignore stale 0 from desktop
-              } else {
-                setCurrentTime(remoteState.currentTime);
-                currentTimeRef.current = remoteState.currentTime;
-              }
+              setCurrentTime(remoteState.currentTime);
+              currentTimeRef.current = remoteState.currentTime;
             }
           }
           if (typeof remoteState.duration === 'number' && remoteState.duration > 0) {
@@ -6257,37 +6303,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             accentColor={activeAccentColor}
             themeMode={themeMode}
             language={language}
-          />
-
-          {/* Karaoke & Synced Lyrics Mode Modal */}
-          <KaraokeModal
-            isOpen={isKaraokeModalOpen}
-            onClose={() => setIsKaraokeModalOpen(false)}
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            currentTime={currentTime}
-            duration={duration}
-            onTogglePlay={handleTogglePlay}
-            onPrev={handleUserPrev}
-            onNext={handleUserNext}
-            onSeek={handleSeek}
-            accentColor={activeAccentColor}
-            language={language}
-          />
-
-          {/* Up Next & Queue Management Modal */}
-          <QueueModal
-            isOpen={isQueueModalOpen}
-            onClose={() => setIsQueueModalOpen(false)}
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            queue={connectPlaybackTarget === 'desktop' && !isTauriApp && remoteQueue.length > 0 ? remoteQueue : getEffectiveQueue()}
-            onPlayTrack={handlePlayQueueTrack}
-            onReorder={handleReorderQueue}
-            onRemove={handleRemoveFromQueue}
-            accentColor={activeAccentColor}
-            language={language}
-            isRemoteDesktop={connectPlaybackTarget === 'desktop' && !isTauriApp}
           />
         </>
       )}
@@ -7306,6 +7321,37 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           );
         })}
       </nav>
+
+      {/* Karaoke & Synced Lyrics Mode Modal */}
+      <KaraokeModal
+        isOpen={isKaraokeModalOpen}
+        onClose={() => setIsKaraokeModalOpen(false)}
+        currentTrack={currentTrack}
+        isPlaying={isPlaying}
+        currentTime={currentTime}
+        duration={duration}
+        onTogglePlay={handleTogglePlay}
+        onPrev={handleUserPrev}
+        onNext={handleUserNext}
+        onSeek={handleSeek}
+        accentColor={activeAccentColor}
+        language={language}
+      />
+
+      {/* Up Next & Queue Management Modal */}
+      <QueueModal
+        isOpen={isQueueModalOpen}
+        onClose={() => setIsQueueModalOpen(false)}
+        currentTrack={currentTrack}
+        isPlaying={isPlaying}
+        queue={connectPlaybackTarget === 'desktop' && !isTauriApp && remoteQueue.length > 0 ? remoteQueue : getEffectiveQueue()}
+        onPlayTrack={handlePlayQueueTrack}
+        onReorder={handleReorderQueue}
+        onRemove={handleRemoveFromQueue}
+        accentColor={activeAccentColor}
+        language={language}
+        isRemoteDesktop={connectPlaybackTarget === 'desktop' && !isTauriApp}
+      />
     </div>
   );
 }
