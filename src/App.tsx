@@ -3481,7 +3481,27 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       try {
         await invoke('set_mini_player_mode', { enabled: nextVal });
       } catch (e) {
-        console.warn('Failed to set mini player mode:', e);
+        console.warn('Failed to set mini player mode via invoke:', e);
+      }
+
+      try {
+        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const appWindow = getCurrentWebviewWindow();
+        if (nextVal) {
+          if (await appWindow.isMaximized()) {
+            await appWindow.unmaximize();
+          }
+          await appWindow.setDecorations(false);
+          await appWindow.setAlwaysOnTop(true);
+          await appWindow.setSize(new LogicalSize(340, 116));
+        } else {
+          await appWindow.setDecorations(true);
+          await appWindow.setAlwaysOnTop(false);
+          await appWindow.setSize(new LogicalSize(1280, 820));
+        }
+      } catch (directErr) {
+        console.warn('Direct webviewWindow resize fallback note:', directErr);
       }
     }
   }, [isMiniWidget, isTauriApp]);
