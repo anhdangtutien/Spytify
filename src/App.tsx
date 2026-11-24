@@ -1127,6 +1127,9 @@ export default function App() {
   connectPlaybackTargetRef.current = connectPlaybackTarget;
   const remoteSeekTimestampRef = useRef<number>(0);
   const remoteSeekCooldownRef = useRef<number>(0);
+  const mobileSeekTargetRef = useRef<number | null>(null);
+  const desktopSeekCooldownRef = useRef<{ targetTime: number; expiresAt: number } | null>(null);
+  const mobileVolumeCooldownRef = useRef<number>(0);
   const [connectHostName, setConnectHostName] = useState('Spytify Desktop');
   const [lanStreamBaseUrl, setLanStreamBaseUrl] = useState<string | null>(null);
   const lanStreamBaseUrlRef = useRef<string | null>(null);
@@ -2604,10 +2607,19 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       if (isAudioElement) {
         const audio = activeAudioChannelRef.current === 1 ? onlineAudio1Ref.current : onlineAudio2Ref.current;
         if (audio && !audio.paused) {
-          curTime = audio.currentTime;
-          currentTimeRef.current = audio.currentTime;
+          if (desktopSeekCooldownRef.current && Date.now() < desktopSeekCooldownRef.current.expiresAt) {
+            if (Math.abs(audio.currentTime - desktopSeekCooldownRef.current.targetTime) > 3.0) {
+              curTime = desktopSeekCooldownRef.current.targetTime;
+            } else {
+              desktopSeekCooldownRef.current = null;
+              curTime = audio.currentTime;
+            }
+          } else {
+            curTime = audio.currentTime;
+          }
+          currentTimeRef.current = curTime;
           if (!isTrayModeRef.current) {
-            setCurrentTime(audio.currentTime);
+            setCurrentTime(curTime);
           }
           if (audio.duration > 0 && isFinite(audio.duration) && audio.duration !== durationRef.current) {
             durationRef.current = audio.duration;
@@ -2950,6 +2962,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   durationRef.current = 0;
                   if (!isTrayModeRef.current) setDuration(0);
                 } else if (rawCur >= 0) {
+                  if (desktopSeekCooldownRef.current && Date.now() < desktopSeekCooldownRef.current.expiresAt) {
+                    if (Math.abs(rawCur - desktopSeekCooldownRef.current.targetTime) > 3.0) {
+                      // Stale pre-seek packet from YouTube iframe! Ignore it so we don't snap back!
+                      return;
+                    } else {
+                      desktopSeekCooldownRef.current = null;
+                    }
+                  }
                   currentTimeRef.current = rawCur;
                   accumulatedTimeRef.current = rawCur;
                   if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
@@ -3047,6 +3067,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               const rawPos = data.data?.currentPosition ?? data.value?.currentPosition ?? 0;
               const posSecs = rawPos / 1000;
               if (posSecs > 0) {
+                if (desktopSeekCooldownRef.current && Date.now() < desktopSeekCooldownRef.current.expiresAt) {
+                  if (Math.abs(posSecs - desktopSeekCooldownRef.current.targetTime) > 3.0) {
+                    return;
+                  } else {
+                    desktopSeekCooldownRef.current = null;
+                  }
+                }
                 currentTimeRef.current = posSecs;
                 accumulatedTimeRef.current = posSecs;
                 if (isPlayingRef.current) playStartTimestampRef.current = Date.now();
@@ -4768,8 +4795,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const handleSeek = async (secs: number) => {
     if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
       const now = Date.now();
+      mobileSeekTargetRef.current = secs;
       remoteSeekTimestampRef.current = now;
-      remoteSeekCooldownRef.current = now + 1200;
+      remoteSeekCooldownRef.current = now + 2000;
       setCurrentTime(secs);
       currentTimeRef.current = secs;
       spytifyConnect.sendCommand({ type: 'SEEK', time: secs });
@@ -4780,6 +4808,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     const effDur = duration > 0 ? duration : (currentTrack.duration_secs || 0);
     if (effDur <= 0 && currentTrack.source !== 'local') return;
 
+    desktopSeekCooldownRef.current = {
+      targetTime: secs,
+      expiresAt: Date.now() + 2000,
+    };
     setCurrentTime(secs);
     currentTimeRef.current = secs;
     accumulatedTimeRef.current = secs;
@@ -4825,6 +4857,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const handleVolumeChange = async (v: number) => {
     const clamped = Math.max(0, Math.min(1, isNaN(v) ? 0.8 : v));
     if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
+      mobileVolumeCooldownRef.current = Date.now() + 1500;
       spytifyConnect.sendCommand({ type: 'SET_VOLUME', volume: clamped });
     }
     setVolume(clamped);
@@ -4847,6 +4880,21 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     if (onlineAudioRef.current) onlineAudioRef.current.volume = clamped;
 
     window.dispatchEvent(new CustomEvent('spytify-volume-change', { detail: clamped }));
+
+    // On Desktop Host: force broadcast new volume state immediately to mobile
+    if (isConnectHostActive) {
+      spytifyConnect.broadcastPlaybackState({
+        currentTrack: currentTrackRef.current,
+        isPlaying: isPlayingRef.current,
+        currentTime: currentTimeRef.current,
+        duration: durationRef.current || (currentTrackRef.current?.duration_secs || 0),
+        volume: clamped,
+        lanStreamBaseUrl: lanStreamBaseUrlRef.current,
+        activeDeviceId: 'desktop',
+        activeDeviceName: 'Spytify Desktop',
+        timestamp: Date.now(),
+      }, true);
+    }
   };
 
   
@@ -4927,6 +4975,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   handleUserNextRef.current = handleUserNext;
   const handleSeekRef = useRef(handleSeek);
   handleSeekRef.current = handleSeek;
+  const handleVolumeChangeRef = useRef(handleVolumeChange);
+  handleVolumeChangeRef.current = handleVolumeChange;
 
   // ─── SPYTIFY CONNECT (Host Broadcaster & Mobile Listener) ──────────────
   // Query LAN stream info on Tauri Desktop for local audio proxy
@@ -5015,7 +5065,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             handleSeekRef.current(cmd.time);
             break;
           case 'SET_VOLUME':
-            handleVolumeChange(cmd.volume);
+            handleVolumeChangeRef.current(cmd.volume);
             break;
           case 'PLAY_TRACK':
             if (cmd.track) playTrackInternal(cmd.track);
@@ -5099,9 +5149,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             isPlayingRef.current = remoteState.isPlaying;
           }
           if (typeof remoteState.currentTime === 'number') {
-            const isPostSeekUpdate = Boolean(remoteState.timestamp && remoteState.timestamp >= remoteSeekTimestampRef.current);
-            const isCooldownExpired = Date.now() >= remoteSeekCooldownRef.current;
-            if (isPostSeekUpdate || isCooldownExpired) {
+            if (mobileSeekTargetRef.current !== null && Date.now() < remoteSeekCooldownRef.current) {
+              if (Math.abs(remoteState.currentTime - mobileSeekTargetRef.current) <= 3.0) {
+                mobileSeekTargetRef.current = null;
+                setCurrentTime(remoteState.currentTime);
+                currentTimeRef.current = remoteState.currentTime;
+              }
+            } else {
+              mobileSeekTargetRef.current = null;
               setCurrentTime(remoteState.currentTime);
               currentTimeRef.current = remoteState.currentTime;
             }
@@ -5111,8 +5166,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             durationRef.current = remoteState.duration;
           }
           if (typeof remoteState.volume === 'number') {
-            setVolume(remoteState.volume);
-            volumeRef.current = remoteState.volume;
+            if (Date.now() >= mobileVolumeCooldownRef.current) {
+              setVolume(remoteState.volume);
+              volumeRef.current = remoteState.volume;
+            }
           }
         }
       }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio, Cast,
@@ -209,6 +209,16 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     ? Math.min(100, Math.max(0, (displayTime / safeDuration) * 100))
     : 0;
 
+  const lastCommitTimeRef = useRef(0);
+  const commitSeek = (v: number) => {
+    const now = Date.now();
+    if (now - lastCommitTimeRef.current < 150) return;
+    lastCommitTimeRef.current = now;
+    setIsDragging(false);
+    setDragValue(v);
+    onSeek(v);
+  };
+
   const handleSeekFromEvent = (
     e: React.MouseEvent<HTMLElement> | React.TouchEvent<HTMLElement> | React.PointerEvent<HTMLElement>,
     commit: boolean
@@ -233,9 +243,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     const targetTime = ratio * safeDuration;
 
     if (commit) {
-      setIsDragging(false);
-      setDragValue(targetTime);
-      onSeek(targetTime);
+      commitSeek(targetTime);
     } else {
       setIsDragging(true);
       setDragValue(targetTime);
@@ -370,12 +378,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               onTouchStart={() => setIsDragging(true)}
               onChange={(e) => setDragValue(Number(e.target.value))}
               onMouseUp={(e) => {
-                setIsDragging(false);
-                onSeek(Number((e.target as HTMLInputElement).value));
+                commitSeek(Number((e.target as HTMLInputElement).value));
               }}
               onTouchEnd={(e) => {
-                setIsDragging(false);
-                onSeek(Number((e.target as HTMLInputElement).value));
+                commitSeek(Number((e.target as HTMLInputElement).value));
               }}
               className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
             />
@@ -860,20 +866,14 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                     setDragValue(v);
                   }}
                   onMouseUp={(e) => {
-                    const v = Number((e.target as HTMLInputElement).value);
-                    setIsDragging(false);
-                    onSeek(v);
+                    commitSeek(Number((e.target as HTMLInputElement).value));
                   }}
                   onTouchEnd={(e) => {
-                    const v = Number((e.target as HTMLInputElement).value);
-                    setIsDragging(false);
-                    onSeek(v);
+                    commitSeek(Number((e.target as HTMLInputElement).value));
                   }}
                   onPointerUp={(e) => {
-                    const v = Number((e.target as HTMLInputElement).value);
                     if (isDragging) {
-                      setIsDragging(false);
-                      onSeek(v);
+                      commitSeek(Number((e.target as HTMLInputElement).value));
                     }
                   }}
                   onBlur={() => {
