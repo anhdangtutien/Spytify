@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { 
   MoreHorizontal, ChevronLeft, ChevronRight, Home, Search, 
   Minus, Square, Copy, X, Globe, User as UserIcon, Radio,
@@ -28,6 +29,7 @@ interface CustomTitleBarProps {
   isTauriApp: boolean;
   onOpenWebsite: () => void;
   accentColor?: string;
+  onOpenWhatsNew?: () => void;
 }
 
 export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
@@ -51,6 +53,7 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
   isTauriApp,
   onOpenWebsite,
   accentColor = '#ff2a55',
+  onOpenWhatsNew,
 }) => {
   const [isMaximized, setIsMaximized] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -158,15 +161,25 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
     { code: 'ko' as LanguageCode, label: '한국어', flag: '🇰🇷' },
   ];
 
+  const handleStartDragging = (e: React.MouseEvent) => {
+    if (!isTauriApp || e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, select, textarea, [role="button"], a, .no-drag')) return;
+    try {
+      getCurrentWindow().startDragging();
+    } catch {}
+  };
+
   return (
     <header
-      className={`hidden md:flex h-12 w-full items-center justify-between ${isTauriApp ? 'pl-3 pr-0' : 'px-3'} select-none border-b shrink-0 z-50 ${
+      className={`hidden md:flex h-12 w-full items-center justify-between ${isTauriApp ? 'pl-3 pr-0' : 'px-3'} select-none border-b shrink-0 z-50 cursor-default ${
         themeMode === 'light'
           ? 'bg-slate-100 border-slate-200 text-slate-800'
           : 'bg-[#000000] border-[#181820] text-zinc-300'
       }`}
       data-tauri-drag-region="true"
       style={{ WebkitAppRegion: 'drag' } as any}
+      onMouseDown={handleStartDragging}
       onDoubleClick={isTauriApp ? handleToggleMaximize : undefined}
     >
       {/* ─── LEFT: Logo / Menu & Navigation History ─── */}
@@ -221,6 +234,19 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
                 <Settings className="w-4 h-4 text-purple-400" />
                 <span>{getTranslation(language, 'nav.account')}</span>
               </button>
+              {onOpenWhatsNew && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenWhatsNew();
+                    setIsMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-amber-500/10 hover:text-amber-300 text-left transition-colors cursor-pointer text-amber-400 font-semibold"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
+                  <span>{language === 'vi' ? 'Tính năng mới v1.1.7' : "What's New in v1.1.7"}</span>
+                </button>
+              )}
               <div className="my-1 border-t border-white/10" />
               <button
                 type="button"
@@ -284,14 +310,16 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
       {/* ─── CENTER: Spotify-style Quick Home & Search Bar ─── */}
       <div 
         className="flex items-center gap-2 max-w-[520px] w-full px-2"
-        data-tauri-drag-region="false"
-        style={{ WebkitAppRegion: 'no-drag' } as any}
+        data-tauri-drag-region="true"
+        style={{ WebkitAppRegion: 'drag' } as any}
       >
         {/* Quick Home Button (Round) */}
         <button
           type="button"
+          data-tauri-drag-region="false"
+          style={{ WebkitAppRegion: 'no-drag' } as any}
           onClick={() => onNavigateView('library')}
-          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer ${
+          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 cursor-pointer no-drag ${
             currentView === 'library'
               ? 'bg-white text-black shadow-md'
               : 'bg-[#1f1f26] text-zinc-300 hover:text-white hover:bg-[#282832]'
@@ -303,7 +331,9 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
 
         {/* Integrated Search Input Pill */}
         <div 
-          className="relative flex-1 group"
+          className="relative flex-1 group no-drag"
+          data-tauri-drag-region="false"
+          style={{ WebkitAppRegion: 'no-drag' } as any}
           onClick={() => searchInputRef.current?.focus()}
         >
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400 group-hover:text-zinc-200 transition-colors">

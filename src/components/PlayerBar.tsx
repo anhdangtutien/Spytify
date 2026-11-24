@@ -357,7 +357,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   return (
     <>
     <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-50 relative transition-all duration-300 ease-in-out flex-shrink-0 ${
-      isCompact ? 'h-[52px] px-2 sm:px-4 flex items-center justify-between' : 'h-22 px-3 sm:px-6 flex items-center justify-between'
+      isCompact ? 'h-[52px] px-2 sm:px-3 flex items-center justify-between' : 'h-22 px-3 sm:px-6 flex items-center justify-between'
     }`}>
       {/* Sleek Top-Edge Progress Bar in Compact Mode */}
       {isCompact && (
@@ -396,7 +396,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       )}
 
       {/* Left: Track Info — Spy Minimalist style */}
-      <div className="flex items-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 sm:flex-none sm:max-w-[220px] md:max-w-[260px] xl:w-[26%] xl:max-w-[320px] z-10 overflow-hidden">
+      <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 sm:flex-none max-w-[150px] sm:max-w-[170px] md:max-w-[190px] xl:w-[26%] xl:max-w-[320px] z-10 overflow-hidden">
         {currentTrack ? (
           <>
             <div
@@ -454,7 +454,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 <button
                   onClick={onAddToAlbum}
                   title={getTranslation(language, 'player.addToAlbum')}
-                  className="hidden sm:flex p-1.5 rounded-full text-[#555] hover:text-[var(--accent-color, #ff2a55)] hover:bg-[#161620] transition-colors cursor-pointer"
+                  className="hidden xl:flex p-1.5 rounded-full text-[#555] hover:text-[var(--accent-color, #ff2a55)] hover:bg-[#161620] transition-colors cursor-pointer"
                 >
                   <FolderPlus className="w-4 h-4" />
                 </button>
@@ -471,7 +471,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                       ? getTranslation(language, 'download.downloading')
                       : getTranslation(language, 'download.downloadBtn')
                   }
-                  className={`hidden sm:flex p-1.5 rounded-full transition-all cursor-pointer ${
+                  className={`hidden xl:flex p-1.5 rounded-full transition-all cursor-pointer ${
                     currentTrack.source === 'local' || currentTrack.is_downloaded
                       ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
                       : isDownloading
@@ -890,7 +890,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
       </div>
 
       {/* Right: Volume + Utils */}
-      <div className={`flex items-center justify-end shrink-0 ml-1 sm:ml-auto z-10 xl:w-[26%] xl:max-w-[360px] ${isCompact ? 'gap-1 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
+      <div className={`flex items-center justify-end shrink-0 ml-1 sm:ml-auto z-10 xl:w-[26%] xl:max-w-[360px] ${isCompact ? 'gap-1 sm:gap-1.5' : 'gap-2 sm:gap-3.5'}`}>
         {/* Mobile Expand Full-Screen Player Sheet Button */}
         <button
           type="button"
@@ -902,10 +902,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         </button>
 
         {/* Desktop Utils Group */}
-        <div className={`hidden sm:flex items-center ${isCompact ? 'gap-1.5 sm:gap-2.5' : 'gap-2 sm:gap-3.5'}`}>
-          {/* Compact Mode Inline Time Display (Inside Right Container to prevent absolute overlap) */}
+        <div className={`hidden sm:flex items-center ${isCompact ? 'gap-1 sm:gap-1.5' : 'gap-2 sm:gap-3.5'}`}>
+          {/* Compact Mode Inline Time Display (Hidden on < xl to maximize space for core controls & YT stream) */}
           {isCompact && (
-            <div className="hidden md:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none mr-1.5 shrink-0 whitespace-nowrap">
+            <div className="hidden xl:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none mr-1 shrink-0 whitespace-nowrap">
               <span className="font-semibold text-white/90">{formatTime(displayTime)}</span>
               <span className="text-[#555]">/</span>
               <span>{isLive ? 'LIVE' : formatTime(effectiveDuration)}</span>
@@ -927,7 +927,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               borderColor: `${accentColor}50`,
               boxShadow: `0 0 10px ${accentColor}30`,
             } : undefined}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
+            className={`hidden 2xl:flex p-1.5 rounded-md transition-all cursor-pointer border items-center justify-center shrink-0 ${
               isNextTrackPopupEnabled
                 ? ''
                 : 'text-[#666] hover:text-white border-transparent'
@@ -969,7 +969,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   : `${sleepTimerMinutes}m`}
               </span>
             ) : crossfadeDuration > 0 ? (
-              <span className="text-[10px] font-mono font-bold leading-none">
+              <span className="hidden xl:inline text-[10px] font-mono font-bold leading-none">
                 {crossfadeDuration}s
               </span>
             ) : null}
@@ -988,7 +988,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             type="button"
             onClick={onOpenKaraoke}
             title={language === 'vi' ? 'Karaoke & Lời bài hát đồng bộ' : 'Karaoke & Synced Lyrics'}
-            className="p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent flex items-center justify-center shrink-0"
+            className="hidden lg:flex p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent items-center justify-center shrink-0"
           >
             <Mic2 className="w-4 h-4" />
           </button>
@@ -1078,7 +1078,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Source Badge (Clicking YT STREAM toggles Desktop MV) */}
         {currentTrack && (
-          <div className="hidden md:inline-flex shrink-0">
+          <div className="inline-flex shrink-0">
             {getSourceBadge(currentTrack.source)}
           </div>
         )}
@@ -1087,7 +1087,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         {(() => {
           const safeVolume = Math.max(0, Math.min(1, typeof volume === 'number' && !isNaN(volume) ? volume : 0.8));
           return (
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 onClick={handleMuteToggle}
                 title={safeVolume === 0 ? 'Bật âm lượng' : 'Tắt tiếng'}
@@ -1103,7 +1103,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   const next = Math.max(0, Math.min(1, Math.round((safeVolume + step) * 100) / 100));
                   onVolumeChange(next);
                 }}
-                className={`relative hidden sm:flex items-center ${isCompact ? 'w-14 sm:w-16' : 'w-20'} h-4 group cursor-pointer transition-all`}
+                className={`relative flex items-center ${isCompact ? 'w-10 sm:w-12' : 'w-20'} h-4 group cursor-pointer transition-all`}
               >
                 <div 
                   className="absolute w-full h-[4px] rounded-full group-hover:h-[6px] transition-all overflow-hidden border border-black/5"
@@ -1132,11 +1132,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         {/* Minimize Button in any view */}
         {(onToggleMinimize || onMinimize) && (
           <button
+            type="button"
             onClick={onToggleMinimize || onMinimize}
             title={getTranslation(language, 'player.minimizeBar')}
-            className="p-1.5 rounded-lg text-[#777] hover:text-white hover:bg-[#161622] transition-colors cursor-pointer flex items-center justify-center ml-1 shrink-0"
+            className="p-1 sm:p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center shrink-0 border border-white/10 shadow-sm"
           >
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-4 h-4 text-zinc-300" />
           </button>
         )}
         </div>

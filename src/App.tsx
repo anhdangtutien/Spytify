@@ -23,11 +23,13 @@ import { KaraokeModal } from './components/KaraokeModal';
 import { QueueModal } from './components/QueueModal';
 import { MiniPlayerWidget } from './components/MiniPlayerWidget';
 import { StandaloneMiniPlayer } from './components/StandaloneMiniPlayer';
+import { DesktopMiniBar } from './components/DesktopMiniBar';
 import { CustomTitleBar } from './components/CustomTitleBar';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
 import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
+import { WhatsNewModal } from './components/WhatsNewModal';
 import { checkGitHubUpdate, checkStartupUpdatePolicy, UpdateInfo, CURRENT_VERSION, compareSemver, resolveDirectInstallerUrl } from './services/updater';
 import { cloudSyncPull, cloudSyncPush, isSupabaseConfigured, cloudRegisterUser } from './services/supabase';
 import { openWebsite } from './services/website';
@@ -212,6 +214,25 @@ export default function App() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [isMandatoryUpdate, setIsMandatoryUpdate] = useState(false);
+
+  // What's New Notification State (Auto-triggers when updated to a new version)
+  const [isWhatsNewOpen, setIsWhatsNewOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const lastSeenVer = localStorage.getItem('spytify_last_seen_whatsnew_ver');
+      if (lastSeenVer !== CURRENT_VERSION) {
+        setIsWhatsNewOpen(true);
+      }
+    } catch {}
+  }, []);
+
+  const handleCloseWhatsNew = useCallback(() => {
+    setIsWhatsNewOpen(false);
+    try {
+      localStorage.setItem('spytify_last_seen_whatsnew_ver', CURRENT_VERSION);
+    } catch {}
+  }, []);
 
   // Audio Equalizer (EQ) State
   const [isEqualizerOpen, setIsEqualizerOpen] = useState(false);
@@ -1211,6 +1232,9 @@ export default function App() {
   const audioFxPresetRef = useRef(audioFxPreset);
   audioFxPresetRef.current = audioFxPreset;
 
+  // Desktop Mini Bar Mode (Resizes main window down to a sleek floating bar without titlebar)
+  const [isDesktopMiniBar, setIsDesktopMiniBar] = useState(false);
+
   // Floating Always-on-Top Mini Player Widget (Picture-in-Picture & Tauri Mini Window)
   const [isMiniWidget, setIsMiniWidget] = useState(false);
   const [pipContainer, setPipContainer] = useState<HTMLElement | null>(null);
@@ -1226,6 +1250,19 @@ export default function App() {
     prev: () => {},
     seek: () => {},
   });
+
+  useEffect(() => {
+    if (isTauriApp && !isDesktopMiniBar) {
+      (async () => {
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const { LogicalSize } = await import('@tauri-apps/api/dpi');
+          const win = getCurrentWindow();
+          await win.setMinSize(new LogicalSize(800, 520));
+        } catch {}
+      })();
+    }
+  }, [isTauriApp, isDesktopMiniBar]);
 
   useEffect(() => {
     if (!isMobilePlayerOpen) {
@@ -3549,43 +3586,66 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     } catch {}
   }, [currentTrack, isPlaying, currentTime, duration, activeAccentColor]);
 
-  const handleToggleMiniWidget = useCallback(async () => {
-    setIsMiniWidget(true);
-
-    // 1. If on Desktop Tauri, call native Rust command to create/show standalone frameless mini player
+  const handleEnterDesktopMiniBar = useCallback(async () => {
+    setIsDesktopMiniBar(true);
     if (isTauriApp) {
       try {
-        await invoke('open_mini_player_window');
-        return;
-      } catch (invokeErr) {
-        console.warn('invoke open_mini_player_window failed, trying WebviewWindow fallback:', invokeErr);
-      }
-      try {
-        const miniUrl = window.location.href.split('#')[0].split('?')[0] + '#mini';
-        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-        let mini = await WebviewWindow.getByLabel('mini');
-        if (!mini) {
-          mini = new WebviewWindow('mini', {
-            url: miniUrl,
-            title: 'Spytify Mini Player',
-            width: 360,
-            height: 130,
-            decorations: false,
-            alwaysOnTop: true,
-            resizable: true,
-          });
-        } else {
-          await mini.show();
-          await mini.setAlwaysOnTop(true);
-          await mini.setFocus();
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        if (await win.isMaximized()) {
+          await win.unmaximize();
         }
-        return;
+        await win.setMinSize(new LogicalSize(320, 64));
+        await win.setSize(new LogicalSize(380, 76));
+        await win.setAlwaysOnTop(true);
+        await win.setResizable(false);
       } catch (err) {
-        console.warn('WebviewWindow API error, falling back to window.open:', err);
+        console.warn('Error entering mini bar:', err);
       }
     }
+  }, [isTauriApp]);
 
-    // 2. On Web Browser (Chrome/Edge): open native popup window
+  const handleRestoreFromDesktopMiniBar = useCallback(async () => {
+    setIsDesktopMiniBar(false);
+    if (isTauriApp) {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const { LogicalSize } = await import('@tauri-apps/api/dpi');
+        const win = getCurrentWindow();
+        await win.setMinSize(new LogicalSize(800, 520));
+        await win.setSize(new LogicalSize(1280, 820));
+        await win.setAlwaysOnTop(false);
+        await win.setResizable(true);
+        await win.center();
+      } catch (err) {
+        console.warn('Error restoring from mini bar:', err);
+      }
+    }
+  }, [isTauriApp]);
+
+  const handleCloseMiniBar = useCallback(async () => {
+    if (isTauriApp) {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().close();
+        return;
+      } catch {}
+    }
+    handleRestoreFromDesktopMiniBar();
+  }, [isTauriApp, handleRestoreFromDesktopMiniBar]);
+
+  const handleToggleMiniWidget = useCallback(async () => {
+    if (isTauriApp) {
+      if (isDesktopMiniBar) {
+        handleRestoreFromDesktopMiniBar();
+      } else {
+        handleEnterDesktopMiniBar();
+      }
+      return;
+    }
+
+    // On Web Browser: open native popup window
     const miniUrl = window.location.href.split('#')[0].split('?')[0] + '#mini';
     const popup = window.open(
       miniUrl,
@@ -3595,7 +3655,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     if (popup) {
       popup.focus();
     }
-  }, [isTauriApp]);
+  }, [isTauriApp, isDesktopMiniBar, handleRestoreFromDesktopMiniBar, handleEnterDesktopMiniBar]);
 
   const loadOrMountYtChannel = (videoId: string, channel: 1 | 2, volPct: number, forceRemount = false) => {
     clearYtLoadTimers();
@@ -6173,28 +6233,54 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       )}
 
       {/* ─── SPOTIFY UNIFIED CUSTOM TITLEBAR (DESKTOP / TAURI FRAMELESS) ─── */}
-      <CustomTitleBar
-        currentView={currentView}
-        onNavigateView={handleNavigateView}
-        canGoBack={canGoBack}
-        canGoForward={canGoForward}
-        onGoBack={handleGoBack}
-        onGoForward={handleGoForward}
-        searchQuery={topSearchQuery}
-        onSearchChange={handleTopSearchChange}
-        currentUser={currentUser}
-        onOpenAuth={() => setIsAuthModalOpen(true)}
-        onOpenProfile={() => handleNavigateView('profile')}
-        onOpenConnectModal={() => setIsConnectModalOpen(true)}
-        isConnectHostActive={isConnectHostActive}
-        isConnectClientActive={isConnectClientActive}
-        language={language}
-        onLanguageChange={handleUpdateLanguage}
-        themeMode={themeMode}
-        isTauriApp={isTauriApp}
-        onOpenWebsite={() => openWebsite()}
-        accentColor={activeAccentColor}
-      />
+      {!isDesktopMiniBar && (
+        <CustomTitleBar
+          currentView={currentView}
+          onNavigateView={handleNavigateView}
+          canGoBack={canGoBack}
+          canGoForward={canGoForward}
+          onGoBack={handleGoBack}
+          onGoForward={handleGoForward}
+          searchQuery={topSearchQuery}
+          onSearchChange={handleTopSearchChange}
+          currentUser={currentUser}
+          onOpenAuth={() => setIsAuthModalOpen(true)}
+          onOpenProfile={() => handleNavigateView('profile')}
+          onOpenConnectModal={() => setIsConnectModalOpen(true)}
+          isConnectHostActive={isConnectHostActive}
+          isConnectClientActive={isConnectClientActive}
+          language={language}
+          onLanguageChange={handleUpdateLanguage}
+          themeMode={themeMode}
+          isTauriApp={isTauriApp}
+          onOpenWebsite={() => openWebsite()}
+          accentColor={activeAccentColor}
+          onOpenWhatsNew={() => setIsWhatsNewOpen(true)}
+        />
+      )}
+
+      {/* ─── DESKTOP FLOATING MINI PLAYER BAR (NO WINDOW TITLEBAR, FILLS ENTIRE SMALL WINDOW) ─── */}
+      {isDesktopMiniBar && (
+        <div 
+          className="fixed inset-0 w-full h-full z-[100] flex flex-col justify-between overflow-hidden bg-[#07070a] select-none"
+          data-tauri-drag-region="true"
+          style={{ WebkitAppRegion: 'drag' } as any}
+        >
+          <DesktopMiniBar
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            currentTime={currentTime}
+            duration={duration}
+            onTogglePlay={handleTogglePlay}
+            onPrev={handleUserPrev}
+            onNext={handleUserNext}
+            onSeek={handleSeek}
+            onRestoreFull={handleRestoreFromDesktopMiniBar}
+            onClose={handleCloseMiniBar}
+            accentColor={activeAccentColor}
+          />
+        </div>
+      )}
 
       {/* Spy Minimalist Discord-style Startup Screen */}
       {!isTrayMode && showSplash && (
@@ -6533,6 +6619,15 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             />
           )}
 
+          {/* What's New Feature Announcement Modal */}
+          <WhatsNewModal
+            isOpen={isWhatsNewOpen}
+            onClose={handleCloseWhatsNew}
+            version={CURRENT_VERSION}
+            language={language}
+            accentColor={activeAccentColor}
+          />
+
           {/* Audio Equalizer (EQ) Modal */}
           <EqualizerModal
             isOpen={isEqualizerOpen}
@@ -6579,7 +6674,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc1 && (
         <div
           className={
-            currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2)
+            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+              ? 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
+              : currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2)
               ? (isMobilePlayerOpen
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
@@ -6591,7 +6688,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2) && isMobilePlayerOpen
+            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+              ? ({ left: '-9999px', top: '0px' } as React.CSSProperties)
+              : currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2) && isMobilePlayerOpen
               ? (mobileMvRect
                   ? {
                       top: `${mobileMvRect.top}px`,
@@ -6668,7 +6767,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc2 && (
         <div
           className={
-            currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1)
+            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+              ? 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
+              : currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1)
               ? (isMobilePlayerOpen
                   ? `fixed rounded-3xl overflow-hidden bg-black shadow-[0_20px_60px_rgba(0,0,0,0.95)] border border-white/20 transition-all duration-300 ${
                       showYoutubeVideo ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-100'
@@ -6680,7 +6781,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1) && isMobilePlayerOpen
+            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+              ? ({ left: '-9999px', top: '0px' } as React.CSSProperties)
+              : currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1) && isMobilePlayerOpen
               ? (mobileMvRect
                   ? {
                       top: `${mobileMvRect.top}px`,
@@ -6809,7 +6912,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       )}
 
       {/* Main Layout (Persistently mounted to keep WebRTC, Screen Share, Audio & Radio Bots alive) */}
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className={`flex flex-1 overflow-hidden relative ${isDesktopMiniBar ? 'hidden' : ''}`}>
         {/* Desktop Sidebar */}
         <div className="hidden md:flex h-full flex-shrink-0">
           <Sidebar
@@ -7328,83 +7431,85 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       </div>
 
       {/* Ultra Hi-Fi Player Bar */}
-      <PlayerBar
-        language={language}
-        isCompact={true}
-        isMinimized={isPlayerBarMinimized}
-        onToggleMinimize={() => {
-          setIsPlayerBarMinimized(prev => {
-            const next = !prev;
-            userManuallyMinimizedRef.current = next;
-            return next;
-          });
-        }}
-        currentTrack={currentTrack}
-        upcomingTrack={effectiveUpcomingTrack}
-        previousTrack={previousTrack}
-        upcomingModeLabel={nextTrackPopup?.modeLabel || getPlaylistModeLabel(activeQueueContext)}
-        isPlaying={isPlaying}
-        currentTime={currentTime}
-        duration={duration}
-        volume={volume}
-        isFavorite={currentTrack ? favorites.has(currentTrack.id) : false}
-        repeatMode={repeatMode}
-        isShuffle={isShuffle}
-        onToggleRepeat={() => {
-          setRepeatMode(prev => {
-            if (prev === 'all') return 'one';
-            if (prev === 'one') return 'off';
-            return 'all';
-          });
-        }}
-        onToggleShuffle={() => setIsShuffle(p => !p)}
-        onTogglePlay={handleTogglePlay}
-        onPrev={handleUserPrev}
-        onNext={handleUserNext}
-        onSeek={handleSeek}
-        onVolumeChange={handleVolumeChange}
-        onToggleFavorite={() => currentTrack && handleToggleFavorite(currentTrack)}
-        accentColor={activeAccentColor}
-        onAddToAlbum={() => {
-          if (currentTrack) {
-            setTrackToAddToAlbum(currentTrack);
-            setIsAddToAlbumModalOpen(true);
-          }
-        }}
-        onDownload={handleDownloadTrack}
-        isDownloading={currentTrack ? downloadingTrackIds.has(currentTrack.id) : false}
-        sleepTimerMinutes={sleepTimerMinutes}
-        sleepTimerRemainingSecs={sleepTimerRemainingSecs}
-        onSetSleepTimer={handleSetSleepTimer}
-        onToggleVisualizer={() => setShowVisualizer(p => !p)}
-        showVisualizer={showVisualizer}
-        themeMode={themeMode}
-        recommendMode={recommendMode}
-        onCycleRecommendMode={handleCycleRecommendMode}
-        isNextTrackPopupEnabled={Boolean(isNextTrackPopupEnabled && nextTrackPopup)}
-        onToggleNextTrackPopupEnabled={handleToggleNextTrackPopupEnabled}
-        crossfadeDuration={crossfadeDuration}
-        onUpdateCrossfadeDuration={setCrossfadeDuration}
-        isCrossfading={isCrossfading}
-        onOpenEqualizer={() => setIsEqualizerOpen(true)}
-        isEqualizerActive={isEqualizerActive}
-        isBackgroundPlayEnabled={isBackgroundPlayEnabled}
-        onToggleBackgroundPlay={handleToggleBackgroundPlay}
-        onToggleMv={handleToggleYoutubeVideo}
-        showMv={showYoutubeVideo}
-        isMobilePlayerOpen={isMobilePlayerOpen}
-        onToggleMobilePlayer={setIsMobilePlayerOpen}
-        isConnectHostActive={isConnectHostActive}
-        onToggleConnectHost={isTauriApp ? handleToggleConnectHost : undefined}
-        isConnectClientActive={isConnectClientActive}
-        isHostOnline={isHostOnline}
-        playbackTarget={connectPlaybackTarget}
-        onToggleConnectClient={!isTauriApp ? handleToggleConnectClient : undefined}
-        onOpenConnectModal={!isTauriApp ? () => setIsConnectModalOpen(true) : undefined}
-        onOpenKaraoke={() => setIsKaraokeModalOpen(true)}
-        onOpenQueue={() => setIsQueueModalOpen(true)}
-        onToggleMiniWidget={handleToggleMiniWidget}
-      />
+      {!isDesktopMiniBar && (
+        <PlayerBar
+          language={language}
+          isCompact={true}
+          isMinimized={isPlayerBarMinimized}
+          onToggleMinimize={() => {
+            setIsPlayerBarMinimized(prev => {
+              const next = !prev;
+              userManuallyMinimizedRef.current = next;
+              return next;
+            });
+          }}
+          currentTrack={currentTrack}
+          upcomingTrack={effectiveUpcomingTrack}
+          previousTrack={previousTrack}
+          upcomingModeLabel={nextTrackPopup?.modeLabel || getPlaylistModeLabel(activeQueueContext)}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          duration={duration}
+          volume={volume}
+          isFavorite={currentTrack ? favorites.has(currentTrack.id) : false}
+          repeatMode={repeatMode}
+          isShuffle={isShuffle}
+          onToggleRepeat={() => {
+            setRepeatMode(prev => {
+              if (prev === 'all') return 'one';
+              if (prev === 'one') return 'off';
+              return 'all';
+            });
+          }}
+          onToggleShuffle={() => setIsShuffle(p => !p)}
+          onTogglePlay={handleTogglePlay}
+          onPrev={handleUserPrev}
+          onNext={handleUserNext}
+          onSeek={handleSeek}
+          onVolumeChange={handleVolumeChange}
+          onToggleFavorite={() => currentTrack && handleToggleFavorite(currentTrack)}
+          accentColor={activeAccentColor}
+          onAddToAlbum={() => {
+            if (currentTrack) {
+              setTrackToAddToAlbum(currentTrack);
+              setIsAddToAlbumModalOpen(true);
+            }
+          }}
+          onDownload={handleDownloadTrack}
+          isDownloading={currentTrack ? downloadingTrackIds.has(currentTrack.id) : false}
+          sleepTimerMinutes={sleepTimerMinutes}
+          sleepTimerRemainingSecs={sleepTimerRemainingSecs}
+          onSetSleepTimer={handleSetSleepTimer}
+          onToggleVisualizer={() => setShowVisualizer(p => !p)}
+          showVisualizer={showVisualizer}
+          themeMode={themeMode}
+          recommendMode={recommendMode}
+          onCycleRecommendMode={handleCycleRecommendMode}
+          isNextTrackPopupEnabled={Boolean(isNextTrackPopupEnabled && nextTrackPopup)}
+          onToggleNextTrackPopupEnabled={handleToggleNextTrackPopupEnabled}
+          crossfadeDuration={crossfadeDuration}
+          onUpdateCrossfadeDuration={setCrossfadeDuration}
+          isCrossfading={isCrossfading}
+          onOpenEqualizer={() => setIsEqualizerOpen(true)}
+          isEqualizerActive={isEqualizerActive}
+          isBackgroundPlayEnabled={isBackgroundPlayEnabled}
+          onToggleBackgroundPlay={handleToggleBackgroundPlay}
+          onToggleMv={handleToggleYoutubeVideo}
+          showMv={showYoutubeVideo}
+          isMobilePlayerOpen={isMobilePlayerOpen}
+          onToggleMobilePlayer={setIsMobilePlayerOpen}
+          isConnectHostActive={isConnectHostActive}
+          onToggleConnectHost={isTauriApp ? handleToggleConnectHost : undefined}
+          isConnectClientActive={isConnectClientActive}
+          isHostOnline={isHostOnline}
+          playbackTarget={connectPlaybackTarget}
+          onToggleConnectClient={!isTauriApp ? handleToggleConnectClient : undefined}
+          onOpenConnectModal={!isTauriApp ? () => setIsConnectModalOpen(true) : undefined}
+          onOpenKaraoke={() => setIsKaraokeModalOpen(true)}
+          onOpenQueue={() => setIsQueueModalOpen(true)}
+          onToggleMiniWidget={handleToggleMiniWidget}
+        />
+      )}
 
       {/* Mobile Bottom Navigation Bar (Only for Web on Mobile Phones, NEVER on Desktop Tauri) */}
       {!isTauriApp && (

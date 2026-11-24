@@ -20,8 +20,8 @@ export interface UpdatePolicyResult {
 }
 
 // Baseline build timestamp for the current installed client
-export const CURRENT_BUILD_DATE = '2026-11-24T03:30:00Z';
-export const CURRENT_VERSION = '1.1.6';
+export const CURRENT_BUILD_DATE = '2026-11-25T01:00:00Z';
+export const CURRENT_VERSION = '1.1.7';
 
 export function resolveDirectInstallerUrl(rawUrl: string | undefined, version: string): string {
   const cleanVer = (version || CURRENT_VERSION).replace(/^v/, '').trim();
