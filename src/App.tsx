@@ -23,6 +23,7 @@ import { KaraokeModal } from './components/KaraokeModal';
 import { QueueModal } from './components/QueueModal';
 import { MiniPlayerWidget } from './components/MiniPlayerWidget';
 import { StandaloneMiniPlayer } from './components/StandaloneMiniPlayer';
+import { CustomTitleBar } from './components/CustomTitleBar';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
 import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
@@ -114,6 +115,45 @@ export default function App() {
     } catch {}
   }, [volume]);
   const [currentView, setCurrentView] = useState<ViewType>('library');
+  const [viewHistory, setViewHistory] = useState<ViewType[]>(['library']);
+  const [viewHistoryIndex, setViewHistoryIndex] = useState<number>(0);
+  const [topSearchQuery, setTopSearchQuery] = useState<string>('');
+
+  const handleNavigateView = useCallback((nextView: ViewType) => {
+    setCurrentView(nextView);
+    setViewHistory(prev => {
+      const sliced = prev.slice(0, viewHistoryIndex + 1);
+      if (sliced[sliced.length - 1] === nextView) return sliced;
+      return [...sliced, nextView];
+    });
+    setViewHistoryIndex(prev => prev + 1);
+  }, [viewHistoryIndex]);
+
+  const canGoBack = viewHistoryIndex > 0;
+  const canGoForward = viewHistoryIndex < viewHistory.length - 1;
+
+  const handleGoBack = useCallback(() => {
+    if (viewHistoryIndex > 0) {
+      const prevIdx = viewHistoryIndex - 1;
+      setViewHistoryIndex(prevIdx);
+      setCurrentView(viewHistory[prevIdx]);
+    }
+  }, [viewHistoryIndex, viewHistory]);
+
+  const handleGoForward = useCallback(() => {
+    if (viewHistoryIndex < viewHistory.length - 1) {
+      const nextIdx = viewHistoryIndex + 1;
+      setViewHistoryIndex(nextIdx);
+      setCurrentView(viewHistory[nextIdx]);
+    }
+  }, [viewHistoryIndex, viewHistory]);
+
+  const handleTopSearchChange = useCallback((q: string) => {
+    setTopSearchQuery(q);
+    if (currentView !== 'search') {
+      handleNavigateView('search');
+    }
+  }, [currentView, handleNavigateView]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [smartDjEnabled, setSmartDjEnabled] = useState(true);
@@ -6126,6 +6166,30 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         </div>
       )}
 
+      {/* ─── SPOTIFY UNIFIED CUSTOM TITLEBAR (DESKTOP / TAURI FRAMELESS) ─── */}
+      <CustomTitleBar
+        currentView={currentView}
+        onNavigateView={handleNavigateView}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        onGoBack={handleGoBack}
+        onGoForward={handleGoForward}
+        searchQuery={topSearchQuery}
+        onSearchChange={handleTopSearchChange}
+        currentUser={currentUser}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        onOpenProfile={() => handleNavigateView('profile')}
+        onOpenConnectModal={() => setIsConnectModalOpen(true)}
+        isConnectHostActive={isConnectHostActive}
+        isConnectClientActive={isConnectClientActive}
+        language={language}
+        onLanguageChange={handleUpdateLanguage}
+        themeMode={themeMode}
+        isTauriApp={isTauriApp}
+        onOpenWebsite={() => openWebsite()}
+        accentColor={activeAccentColor}
+      />
+
       {/* Spy Minimalist Discord-style Startup Screen */}
       {!isTrayMode && showSplash && (
         <SplashScreen
@@ -6744,7 +6808,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         <div className="hidden md:flex h-full flex-shrink-0">
           <Sidebar
             currentView={currentView}
-            onViewChange={setCurrentView}
+            onViewChange={handleNavigateView}
             onSelectFolder={handleSelectFolder}
             localTrackCount={localCount}
             favoritesCount={favorites.size}
@@ -6769,7 +6833,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               <Sidebar
                 currentView={currentView}
                 onViewChange={(view) => {
-                  setCurrentView(view);
+                  handleNavigateView(view);
                   setIsMobileSidebarOpen(false);
                 }}
                 onSelectFolder={() => {
@@ -6835,161 +6899,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </button>
             </div>
           )}
-
-          {/* Header Bar — Minimalist (Chỉ hiển thị trên Desktop, trên Mobile tiết kiệm tối đa không gian vì đã có thanh điều hướng ở dưới) */}
-          <header className="hidden md:flex h-12 px-3 sm:px-6 items-center justify-between border-b border-[#141416] bg-black/95 z-40">
-            <div className="flex items-center gap-2 text-xs font-medium text-[#888]">
-              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#666] truncate">
-                {currentView === 'community'
-                  ? getTranslation(language, 'nav.community').toUpperCase()
-                  : currentView === 'search'
-                  ? getTranslation(language, 'nav.search').toUpperCase()
-                  : currentView === 'albums'
-                  ? getTranslation(language, 'nav.myAlbums').toUpperCase()
-                  : currentView === 'ai_mix'
-                  ? getTranslation(language, 'nav.aiMix').toUpperCase()
-                  : currentView === 'profile'
-                  ? getTranslation(language, 'nav.account').toUpperCase()
-                  : currentView === 'youtube'
-                  ? 'YOUTUBE MUSIC'
-                  : currentView === 'soundcloud'
-                  ? 'SOUNDCLOUD'
-                  : currentView === 'audius'
-                  ? 'AUDIUS HI-FI'
-                  : currentView === 'local'
-                  ? getTranslation(language, 'nav.localMusic').toUpperCase()
-                  : currentView === 'favorites'
-                  ? getTranslation(language, 'nav.favorites').toUpperCase()
-                  : getTranslation(language, 'nav.trending').toUpperCase()}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 sm:gap-2.5">
-
-              {/* Spytify Vercel Website Button (Desktop) */}
-              <button
-                type="button"
-                onClick={() => openWebsite()}
-                title="Mở trang web giới thiệu Spytify (Vercel) trên trình duyệt"
-                className={`hidden md:flex px-2.5 py-1 text-xs font-medium rounded-md border transition-all items-center gap-1.5 cursor-pointer hover:scale-105 shadow-sm ${
-                  themeMode === 'light'
-                    ? 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-300'
-                    : 'bg-[#101018] hover:bg-[#181824] text-white border-[#222230] hover:border-cyan-500/50'
-                }`}
-              >
-                <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="font-semibold text-[11px] hidden sm:inline">
-                  {getTranslation(language, 'website.headerBtn')}
-                </span>
-                <ArrowUpRight className="w-3 h-3 text-cyan-400/80" />
-              </button>
-
-              {/* Quick Language Switcher Dropdown (Desktop) */}
-              <div className="hidden md:block relative" ref={langDropdownRef}>
-                <button
-                  onClick={() => setShowLanguageDropdown(p => !p)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors flex items-center gap-1.5 cursor-pointer ${
-                    themeMode === 'light'
-                      ? 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300 shadow-sm'
-                      : 'bg-[#121212] hover:bg-[#1c1c1c] text-white border-[#222]'
-                  }`}
-                  title={getTranslation(language, 'header.language')}
-                >
-                  <Globe className="w-3.5 h-3.5" style={{ color: activeAccentColor }} />
-                  <span className="font-mono text-[11px] font-bold tracking-wider">
-                    {SUPPORTED_LANGUAGES.find(l => l.code === language)?.tag || 'VN'}
-                  </span>
-                </button>
-
-                {showLanguageDropdown && (
-                  <>
-                    <div 
-                      className="fixed inset-0 z-40 bg-transparent" 
-                      onClick={() => setShowLanguageDropdown(false)} 
-                    />
-                    <div
-                      className={`absolute right-0 top-full mt-2 w-52 py-1.5 rounded-xl border z-50 text-xs font-sans ${
-                        themeMode === 'light'
-                          ? 'bg-white text-slate-900 border-slate-200 shadow-xl'
-                          : 'bg-[#0e0e14] text-white border-[#222230] shadow-2xl'
-                      }`}
-                      style={{
-                        borderColor: `${activeAccentColor}50`,
-                        boxShadow: themeMode === 'light'
-                          ? `0 12px 28px rgba(0,0,0,0.12), 0 0 12px ${activeAccentColor}20`
-                          : `0 16px 36px rgba(0,0,0,0.9), 0 0 16px ${activeAccentColor}25`
-                      }}
-                    >
-                      <div className={`px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider border-b mb-1 flex items-center justify-between ${
-                        themeMode === 'light' ? 'text-slate-400 border-slate-100' : 'text-[#666] border-[#1c1c28]'
-                      }`}>
-                        <span className="flex items-center gap-1.5" style={{ color: activeAccentColor }}>
-                          <Languages className="w-3.5 h-3.5" />
-                          {getTranslation(language, 'header.language')}
-                        </span>
-                        <span className={`text-[9px] font-mono ${themeMode === 'light' ? 'text-slate-400' : 'text-[#555]'}`}>
-                          {SUPPORTED_LANGUAGES.length}
-                        </span>
-                      </div>
-                      {SUPPORTED_LANGUAGES.map((l) => {
-                        const isSel = l.code === language;
-                        return (
-                          <button
-                            key={l.code}
-                            onClick={() => {
-                              handleUpdateLanguage(l.code);
-                              setShowLanguageDropdown(false);
-                            }}
-                            className={`w-full px-3 py-2 text-left flex items-center justify-between transition-colors cursor-pointer ${
-                              themeMode === 'light'
-                                ? isSel 
-                                  ? 'bg-slate-100 font-semibold text-slate-900' 
-                                  : 'text-slate-700 hover:bg-slate-50'
-                                : isSel 
-                                  ? 'bg-[#181824] font-semibold text-white' 
-                                  : 'text-[#bbb] hover:bg-[#181824]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span 
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border flex-shrink-0 ${
-                                  isSel
-                                    ? ''
-                                    : themeMode === 'light'
-                                    ? 'bg-slate-100 text-slate-700 border-slate-200'
-                                    : 'bg-[#181822] text-[#ccc] border-[#262636]'
-                                }`}
-                                style={isSel ? {
-                                  color: activeAccentColor,
-                                  borderColor: `${activeAccentColor}50`,
-                                  backgroundColor: `${activeAccentColor}18`
-                                } : undefined}
-                              >
-                                {l.tag}
-                              </span>
-                              <span className="truncate">{l.nativeName}</span>
-                            </div>
-                            {isSel && (
-                              <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: activeAccentColor }}></span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {currentView === 'local' && (
-                <button
-                  onClick={handleSelectFolder}
-                  className="px-3 py-1 bg-[#121212] hover:bg-[#1c1c1c] text-white text-xs font-medium rounded-md border border-[#222] transition-colors flex items-center gap-1.5 cursor-pointer"
-                >
-                  <FolderPlus className="w-3.5 h-3.5 text-white" />
-                  {getTranslation(language, 'header.selectFolder')}
-                </button>
-              )}
-            </div>
-          </header>
 
           {/* ─── Persistent Spy Jam / Community View Container (Keep WebRTC Voice & Bot Radio alive in background) ─── */}
           <div className={`flex-1 p-0 overflow-hidden flex flex-col ${currentView === 'community' ? '' : 'hidden'}`}>
@@ -7144,6 +7053,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onTrackSelect={handlePlayTrack}
                 currentTrack={currentTrack}
                 accentColor={activeAccentColor}
+                initialQuery={topSearchQuery}
+                onQueryChange={setTopSearchQuery}
               />
             ) : currentView === 'youtube' ? (
               <div>

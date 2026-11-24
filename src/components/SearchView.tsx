@@ -14,6 +14,8 @@ interface SearchViewProps {
   currentTrack?: Track | null;
   accentColor?: string;
   language?: LanguageCode;
+  initialQuery?: string;
+  onQueryChange?: (query: string) => void;
 }
 
 const POPULAR = ['Die With A Smile', 'APT. ROSÉ', 'Sơn Tùng M-TP', 'Creepy Nuts', 'Alan Walker', 'V-Pop 2025', 'Lo-Fi Beats', 'Billie Eilish'];
@@ -51,8 +53,10 @@ export const SearchView: React.FC<SearchViewProps> = ({
   currentTrack,
   accentColor = '#00E5FF',
   language = 'vi',
+  initialQuery = '',
+  onQueryChange,
 }) => {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -65,6 +69,16 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Sync with external query from top custom titlebar
+  useEffect(() => {
+    if (initialQuery !== undefined && initialQuery !== query) {
+      setQuery(initialQuery);
+      if (initialQuery.trim()) {
+        doSearch(initialQuery, filter);
+      }
+    }
+  }, [initialQuery]);
 
   const addToSearchHistory = (term?: string | null) => {
     if (!term) return;
