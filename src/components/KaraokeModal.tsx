@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Mic2, Play, Pause, SkipBack, SkipForward, RefreshCw, Volume2, Sparkles } from 'lucide-react';
+import { X, Mic2, RefreshCw } from 'lucide-react';
 import { Track } from '../types';
 import { fetchLyrics, LyricsData, LyricLine } from '../services/lyricsService';
 
@@ -14,12 +14,12 @@ interface KaraokeModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentTrack: Track | null;
-  isPlaying: boolean;
+  isPlaying?: boolean;
   currentTime: number;
-  duration: number;
-  onTogglePlay: () => void;
-  onPrev: () => void;
-  onNext: () => void;
+  duration?: number;
+  onTogglePlay?: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
   onSeek: (time: number) => void;
   accentColor?: string;
   language?: string;
@@ -108,7 +108,7 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#050508]/95 backdrop-blur-2xl text-white select-none animate-fadeIn">
+    <div className="fixed inset-0 z-40 pb-[52px] md:pb-[52px] flex flex-col bg-[#050508]/95 backdrop-blur-2xl text-white select-none animate-fadeIn">
       {/* Dynamic Ambient Background Blur */}
       {currentTrack?.cover_art && (
         <div
@@ -247,62 +247,6 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
           </div>
         )}
       </main>
-
-      {/* Bottom Mini Player Controls */}
-      <footer className="px-4 sm:px-8 py-3.5 sm:py-4 bg-[#0a0a0f]/90 border-t border-white/10 z-10 shrink-0 backdrop-blur-xl">
-        <div className="max-w-3xl mx-auto flex flex-col gap-2">
-          {/* Seekbar */}
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] font-mono text-zinc-400 w-10 text-right">
-              {formatTime(currentTime)}
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              step={0.5}
-              value={currentTime}
-              onChange={(e) => onSeek(Number(e.target.value))}
-              className="flex-1 h-1.5 rounded-full appearance-none bg-white/20 cursor-pointer accent-white"
-              style={{ accentColor }}
-            />
-            <span className="text-[11px] font-mono text-zinc-400 w-10">
-              {formatTime(duration)}
-            </span>
-          </div>
-
-          {/* Transport buttons */}
-          <div className="flex items-center justify-center gap-4 sm:gap-6 mt-1">
-            <button
-              type="button"
-              onClick={onPrev}
-              className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              title="Bài trước"
-            >
-              <SkipBack className="w-5 h-5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={onTogglePlay}
-              className="w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-              style={{ backgroundColor: accentColor }}
-              title={isPlaying ? 'Tạm dừng' : 'Phát'}
-            >
-              {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={onNext}
-              className="p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-              title="Bài tiếp theo"
-            >
-              <SkipForward className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };
