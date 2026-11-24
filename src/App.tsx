@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -1159,8 +1160,10 @@ export default function App() {
   const audioFxPresetRef = useRef(audioFxPreset);
   audioFxPresetRef.current = audioFxPreset;
 
-  // Floating Always-on-Top Mini Player Widget
+  // Floating Always-on-Top Mini Player Widget (Picture-in-Picture & Tauri Mini Window)
   const [isMiniWidget, setIsMiniWidget] = useState(false);
+  const [pipContainer, setPipContainer] = useState<HTMLElement | null>(null);
+  const pipWindowRef = useRef<Window | null>(null);
 
   useEffect(() => {
     if (!isMobilePlayerOpen) {
@@ -3425,6 +3428,54 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   const handleToggleMiniWidget = useCallback(async (enabled?: boolean) => {
     const nextVal = enabled !== undefined ? enabled : !isMiniWidget;
+
+    // 1. If currently in Picture-in-Picture mode and user wants to close/restore
+    if (!nextVal && pipWindowRef.current) {
+      try {
+        pipWindowRef.current.close();
+      } catch {}
+      pipWindowRef.current = null;
+      setPipContainer(null);
+      setIsMiniWidget(false);
+      return;
+    }
+
+    // 2. Try Document Picture-in-Picture for a true separate OS popout window!
+    if (nextVal && typeof window !== 'undefined' && 'documentPictureInPicture' in window) {
+      try {
+        const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
+          width: 360,
+          height: 125,
+        });
+        pipWindowRef.current = pipWindow;
+
+        // Copy stylesheets and style tags
+        document.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => {
+          pipWindow.document.head.appendChild(el.cloneNode(true));
+        });
+
+        pipWindow.document.documentElement.classList.add('dark');
+        pipWindow.document.body.style.margin = '0';
+        pipWindow.document.body.style.padding = '0';
+        pipWindow.document.body.style.overflow = 'hidden';
+        pipWindow.document.body.style.backgroundColor = '#06060a';
+        pipWindow.document.title = 'Spytify Mini Player';
+
+        pipWindow.addEventListener('pagehide', () => {
+          pipWindowRef.current = null;
+          setPipContainer(null);
+          setIsMiniWidget(false);
+        });
+
+        setPipContainer(pipWindow.document.body);
+        setIsMiniWidget(true);
+        return;
+      } catch (err) {
+        console.warn('Document Picture-in-Picture failed, falling back to window mode:', err);
+      }
+    }
+
+    // 3. Fallback: Tauri native window resize mode (or floating corner card on web)
     setIsMiniWidget(nextVal);
     if (isTauriApp) {
       try {
@@ -7429,8 +7480,29 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         language={language}
         isRemoteDesktop={connectPlaybackTarget === 'desktop' && !isTauriApp}
       />
-      {/* Floating Always-on-Top Mini Player Widget */}
-      {isMiniWidget && (
+      {/* Floating Always-on-Top Mini Player Widget (Picture-in-Picture Portal) */}
+      {pipContainer && createPortal(
+        <div className="w-full h-full p-2 bg-[#06060a] text-white overflow-hidden flex items-center justify-center">
+          <MiniPlayerWidget
+            currentTrack={currentTrack}
+            isPlaying={isPlaying}
+            currentTime={currentTime}
+            duration={duration}
+            onTogglePlay={handleTogglePlay}
+            onPrev={handleUserPrev}
+            onNext={handleUserNext}
+            onSeek={handleSeek}
+            onRestoreFull={() => handleToggleMiniWidget(false)}
+            accentColor={activeAccentColor}
+            themeMode={themeMode}
+            volume={volume}
+            onVolumeChange={handleVolumeChange}
+          />
+        </div>,
+        pipContainer
+      )}
+      {/* Standard In-App / Tauri Floating Mini Player Widget (Fallback) */}
+      {!pipContainer && isMiniWidget && (
         <MiniPlayerWidget
           currentTrack={currentTrack}
           isPlaying={isPlaying}

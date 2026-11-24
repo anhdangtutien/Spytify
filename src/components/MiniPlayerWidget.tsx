@@ -69,9 +69,9 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
 
   const content = (
     <div 
-      className={`w-full h-full flex flex-col justify-between p-2.5 text-white select-none ${
+      className={`w-full h-full max-w-[380px] max-h-[126px] mx-auto flex flex-col justify-between p-2.5 text-white select-none ${
         isTauriApp || isWindowSmall
-          ? 'bg-[#06060a] border border-white/10'
+          ? 'bg-[#06060a] border border-white/10 rounded-xl'
           : 'bg-[#0a0a10]/95 backdrop-blur-2xl rounded-2xl border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.85)]'
       }`}
       data-tauri-drag-region="true"
@@ -101,7 +101,7 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
               onRestoreFull();
             }}
             className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title="Mở rộng toàn màn hình"
+            title="Mở rộng / Đóng mini player"
           >
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
@@ -215,16 +215,25 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
     </div>
   );
 
-  // If on Desktop Tauri or small window, fill the whole window so the OS window IS the widget!
-  if (isTauriApp || isWindowSmall) {
+  // If in small window or PiP, fill the container cleanly
+  if (isWindowSmall) {
     return (
-      <div className="fixed inset-0 z-[99999] overflow-hidden w-screen h-screen" data-tauri-drag-region="true">
+      <div className="w-full h-full overflow-hidden flex items-center justify-center p-1 bg-[#06060a]" data-tauri-drag-region="true">
         {content}
       </div>
     );
   }
 
-  // If running in browser, render as sleek floating corner widget!
+  // If on Desktop Tauri, fill the window or center it
+  if (isTauriApp) {
+    return (
+      <div className="fixed inset-0 z-[99999] overflow-hidden w-screen h-screen flex items-center justify-center bg-[#06060a]" data-tauri-drag-region="true">
+        {content}
+      </div>
+    );
+  }
+
+  // If running in browser or large window, render as sleek floating corner widget!
   return (
     <div className="fixed bottom-6 right-6 z-[999] w-[340px] h-[116px] animate-fadeIn">
       {content}
