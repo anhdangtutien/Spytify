@@ -29,53 +29,47 @@ use std::sync::Mutex;
 static RELATED_CACHE: Mutex<Option<HashMap<String, Vec<SearchResult>>>> = Mutex::new(None);
 static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
 static IS_EXITING: AtomicBool = AtomicBool::new(false);
-static PRE_MINI_SIZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
-static WAS_MAXIMIZED: AtomicBool = AtomicBool::new(false);
+
+#[tauri::command]
+fn open_mini_player_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(mini) = app.get_webview_window("mini") {
+        let _ = mini.show();
+        let _ = mini.set_always_on_top(true);
+        let _ = mini.set_focus();
+        return Ok(());
+    }
+
+    let _ = tauri::WebviewWindowBuilder::new(
+        &app,
+        "mini",
+        tauri::WebviewUrl::App("/#mini".into())
+    )
+    .title("Spytify Mini")
+    .inner_size(360.0, 130.0)
+    .decorations(false)
+    .always_on_top(true)
+    .resizable(false)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn close_mini_player_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(mini) = app.get_webview_window("mini") {
+        let _ = mini.hide();
+    }
+    Ok(())
+}
 
 #[tauri::command]
 fn set_mini_player_mode(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
-    let window = app
-        .get_webview_window("main")
-        .or_else(|| app.webview_windows().into_values().next())
-        .ok_or_else(|| "No window found to toggle mini player".to_string())?;
-
     if enabled {
-        let is_max = window.is_maximized().unwrap_or(false);
-        WAS_MAXIMIZED.store(is_max, Ordering::SeqCst);
-        if is_max {
-            let _ = window.unmaximize();
-            std::thread::sleep(std::time::Duration::from_millis(60));
-        }
-        if let Ok(size) = window.inner_size() {
-            let scale = window.scale_factor().unwrap_or(1.0);
-            let w = (size.width as f64) / scale;
-            let h = (size.height as f64) / scale;
-            let mut prev = PRE_MINI_SIZE.lock().unwrap();
-            *prev = Some((w, h));
-        }
-        let _ = window.set_min_size(None::<tauri::Size>);
-        let _ = window.set_decorations(false);
-        let _ = window.set_always_on_top(true);
-        let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: 340.0, height: 116.0 }));
-        let _ = window.set_resizable(false);
+        open_mini_player_window(app)
     } else {
-        let was_max = WAS_MAXIMIZED.load(Ordering::SeqCst);
-        let prev_size = {
-            let prev = PRE_MINI_SIZE.lock().unwrap();
-            prev.clone()
-        };
-        let (target_w, target_h) = prev_size.unwrap_or((1280.0, 820.0));
-        let _ = window.set_resizable(true);
-        let _ = window.set_decorations(true);
-        let _ = window.set_always_on_top(false);
-        let _ = window.set_min_size(Some(tauri::Size::Logical(tauri::LogicalSize { width: 320.0, height: 110.0 })));
-        if was_max {
-            let _ = window.maximize();
-        } else {
-            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: target_w.max(800.0), height: target_h.max(600.0) }));
-        }
+        close_mini_player_window(app)
     }
-    Ok(())
 }
 
 #[tauri::command]

@@ -21,6 +21,18 @@
         "decorations": true,
         "transparent": false,
         "additionalBrowserArgs": "--hide-media-capture-notification --disable-features=Translate,OptimizationHints,MediaRouter,TabCaptureNotification --disk-cache-size=33554432 --media-cache-size=33554432"
+      },
+      {
+        "label": "mini",
+        "title": "Spytify Mini Player",
+        "url": "/#mini",
+        "width": 360,
+        "height": 130,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "resizable": false,
+        "visible": false,
+        "transparent": false
       }
     ],
     "security": {

@@ -22,6 +22,7 @@ import { ConnectModal } from './components/ConnectModal';
 import { KaraokeModal } from './components/KaraokeModal';
 import { QueueModal } from './components/QueueModal';
 import { MiniPlayerWidget } from './components/MiniPlayerWidget';
+import { StandaloneMiniPlayer } from './components/StandaloneMiniPlayer';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
 import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
@@ -68,6 +69,9 @@ function createSilentKeepAliveWavUri(): string {
 }
 
 export default function App() {
+  if (typeof window !== 'undefined' && (window.location.hash === '#mini' || window.location.search.includes('mini=true'))) {
+    return <StandaloneMiniPlayer />;
+  }
   const [tracks, setTracks] = useState<Track[]>([]);
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1164,6 +1168,17 @@ export default function App() {
   const [isMiniWidget, setIsMiniWidget] = useState(false);
   const [pipContainer, setPipContainer] = useState<HTMLElement | null>(null);
   const pipWindowRef = useRef<Window | null>(null);
+  const miniActionHandlersRef = useRef<{
+    togglePlay: () => void;
+    next: () => void;
+    prev: () => void;
+    seek: (t: number) => void;
+  }>({
+    togglePlay: () => {},
+    next: () => {},
+    prev: () => {},
+    seek: () => {},
+  });
 
   useEffect(() => {
     if (!isMobilePlayerOpen) {
@@ -3426,85 +3441,113 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     sendYtCmd('setPlaybackRate', [rate], 2);
   }, []);
 
-  const handleToggleMiniWidget = useCallback(async (enabled?: boolean) => {
-    const nextVal = enabled !== undefined ? enabled : !isMiniWidget;
+  // Real-time synchronization with Standalone Mini Player window
+  const miniSyncChannelRef = useRef<BroadcastChannel | null>(null);
 
-    // 1. If currently in Picture-in-Picture mode and user wants to close/restore
-    if (!nextVal && pipWindowRef.current) {
-      try {
-        pipWindowRef.current.close();
-      } catch {}
-      pipWindowRef.current = null;
-      setPipContainer(null);
-      setIsMiniWidget(false);
-      return;
-    }
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('spytify_mini_sync');
+      miniSyncChannelRef.current = bc;
 
-    // 2. Try Document Picture-in-Picture for a true separate OS popout window!
-    if (nextVal && typeof window !== 'undefined' && 'documentPictureInPicture' in window) {
-      try {
-        const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
-          width: 360,
-          height: 125,
-        });
-        pipWindowRef.current = pipWindow;
-
-        // Copy stylesheets and style tags
-        document.querySelectorAll('style, link[rel="stylesheet"]').forEach((el) => {
-          pipWindow.document.head.appendChild(el.cloneNode(true));
-        });
-
-        pipWindow.document.documentElement.classList.add('dark');
-        pipWindow.document.body.style.margin = '0';
-        pipWindow.document.body.style.padding = '0';
-        pipWindow.document.body.style.overflow = 'hidden';
-        pipWindow.document.body.style.backgroundColor = '#06060a';
-        pipWindow.document.title = 'Spytify Mini Player';
-
-        pipWindow.addEventListener('pagehide', () => {
-          pipWindowRef.current = null;
-          setPipContainer(null);
+      bc.onmessage = (e) => {
+        const data = e.data;
+        if (!data) return;
+        if (data.type === 'REQUEST_SYNC') {
+          bc?.postMessage({
+            type: 'SYNC',
+            track: currentTrackRef.current,
+            isPlaying: isPlayingRef.current,
+            currentTime: currentTimeRef.current,
+            duration: durationRef.current,
+            accentColor: activeAccentColor,
+          });
+        } else if (data.type === 'TOGGLE_PLAY') {
+          miniActionHandlersRef.current.togglePlay();
+        } else if (data.type === 'NEXT') {
+          miniActionHandlersRef.current.next();
+        } else if (data.type === 'PREV') {
+          miniActionHandlersRef.current.prev();
+        } else if (data.type === 'SEEK') {
+          miniActionHandlersRef.current.seek(data.time);
+        } else if (data.type === 'MINI_CLOSED') {
           setIsMiniWidget(false);
-        });
+        }
+      };
+    } catch {}
 
-        setPipContainer(pipWindow.document.body);
-        setIsMiniWidget(true);
-        return;
-      } catch (err) {
-        console.warn('Document Picture-in-Picture failed, falling back to window mode:', err);
-      }
-    }
+    return () => {
+      bc?.close();
+    };
+  }, [activeAccentColor]);
 
-    // 3. Fallback: Tauri native window resize mode (or floating corner card on web)
-    setIsMiniWidget(nextVal);
+  // Broadcast state updates to mini window
+  useEffect(() => {
+    try {
+      miniSyncChannelRef.current?.postMessage({
+        type: 'SYNC',
+        track: currentTrack,
+        isPlaying,
+        currentTime,
+        duration,
+        accentColor: activeAccentColor,
+      });
+      localStorage.setItem('spytify_last_playback_sync', JSON.stringify({
+        track: currentTrack,
+        isPlaying,
+        currentTime,
+        duration,
+        accentColor: activeAccentColor,
+      }));
+    } catch {}
+  }, [currentTrack, isPlaying, currentTime, duration, activeAccentColor]);
+
+  const handleToggleMiniWidget = useCallback(async () => {
+    setIsMiniWidget(true);
+
+    // If on Desktop Tauri:
     if (isTauriApp) {
       try {
-        await invoke('set_mini_player_mode', { enabled: nextVal });
+        await invoke('open_mini_player_window');
+        return;
       } catch (e) {
-        console.warn('Failed to set mini player mode via invoke:', e);
+        console.warn('Rust open_mini_player_window error, trying WebviewWindow API:', e);
       }
 
       try {
-        const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-        const { LogicalSize } = await import('@tauri-apps/api/dpi');
-        const appWindow = getCurrentWebviewWindow();
-        if (nextVal) {
-          if (await appWindow.isMaximized()) {
-            await appWindow.unmaximize();
-          }
-          await appWindow.setDecorations(false);
-          await appWindow.setAlwaysOnTop(true);
-          await appWindow.setSize(new LogicalSize(340, 116));
+        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+        let mini = await WebviewWindow.getByLabel('mini');
+        if (!mini) {
+          mini = new WebviewWindow('mini', {
+            url: '/#mini',
+            title: 'Spytify Mini Player',
+            width: 360,
+            height: 130,
+            decorations: false,
+            alwaysOnTop: true,
+            resizable: false,
+          });
         } else {
-          await appWindow.setDecorations(true);
-          await appWindow.setAlwaysOnTop(false);
-          await appWindow.setSize(new LogicalSize(1280, 820));
+          await mini.show();
+          await mini.setAlwaysOnTop(true);
+          await mini.setFocus();
         }
-      } catch (directErr) {
-        console.warn('Direct webviewWindow resize fallback note:', directErr);
+        return;
+      } catch (err) {
+        console.warn('WebviewWindow API error:', err);
       }
     }
-  }, [isMiniWidget, isTauriApp]);
+
+    // On Web Browser (Chrome/Edge): open native popup window
+    const popup = window.open(
+      '/#mini',
+      'SpytifyMini',
+      'width=360,height=140,menubar=no,toolbar=no,location=no,status=no,resizable=no'
+    );
+    if (popup) {
+      popup.focus();
+    }
+  }, [isTauriApp]);
 
   const loadOrMountYtChannel = (videoId: string, channel: 1 | 2, volPct: number, forceRemount = false) => {
     clearYtLoadTimers();
@@ -5173,6 +5216,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   handleSeekRef.current = handleSeek;
   const handleVolumeChangeRef = useRef(handleVolumeChange);
   handleVolumeChangeRef.current = handleVolumeChange;
+  miniActionHandlersRef.current = {
+    togglePlay: handleTogglePlay,
+    next: handleUserNext,
+    prev: handleUserPrev,
+    seek: handleSeek,
+  };
 
   // ─── SPYTIFY CONNECT (Host Broadcaster & Mobile Listener) ──────────────
   // Query LAN stream info on Tauri Desktop for local audio proxy
@@ -7500,45 +7549,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         language={language}
         isRemoteDesktop={connectPlaybackTarget === 'desktop' && !isTauriApp}
       />
-      {/* Floating Always-on-Top Mini Player Widget (Picture-in-Picture Portal) */}
-      {pipContainer && createPortal(
-        <div className="w-full h-full p-2 bg-[#06060a] text-white overflow-hidden flex items-center justify-center">
-          <MiniPlayerWidget
-            currentTrack={currentTrack}
-            isPlaying={isPlaying}
-            currentTime={currentTime}
-            duration={duration}
-            onTogglePlay={handleTogglePlay}
-            onPrev={handleUserPrev}
-            onNext={handleUserNext}
-            onSeek={handleSeek}
-            onRestoreFull={() => handleToggleMiniWidget(false)}
-            accentColor={activeAccentColor}
-            themeMode={themeMode}
-            volume={volume}
-            onVolumeChange={handleVolumeChange}
-          />
-        </div>,
-        pipContainer
-      )}
-      {/* Standard In-App / Tauri Floating Mini Player Widget (Fallback) */}
-      {!pipContainer && isMiniWidget && (
-        <MiniPlayerWidget
-          currentTrack={currentTrack}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          onTogglePlay={handleTogglePlay}
-          onPrev={handleUserPrev}
-          onNext={handleUserNext}
-          onSeek={handleSeek}
-          onRestoreFull={() => handleToggleMiniWidget(false)}
-          accentColor={activeAccentColor}
-          themeMode={themeMode}
-          volume={volume}
-          onVolumeChange={handleVolumeChange}
-        />
-      )}
     </div>
   );
 }
