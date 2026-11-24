@@ -750,11 +750,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </>
               ) : recommendMode === 'mix' ? (
                 <>
-                  <AudioLines className="w-3.5 h-3.5" />
+                  <Sparkles className="w-3.5 h-3.5" />
                   <span className="leading-none">MIX</span>
                 </>
               ) : (
-                <AudioLines className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
+                <Sparkles className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
               )}
             </button>
           )}

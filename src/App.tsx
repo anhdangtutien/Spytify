@@ -5731,7 +5731,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               {/* Header */}
               <div className="flex items-center justify-between border-b border-[#1c1c28] pb-1.5">
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: activeAccentColor }}>
-                  <AudioLines className="w-3.5 h-3.5 animate-pulse" />
+                  <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                   {getTranslation(language, 'popup.aiAnalyzing')}
                 </span>
                 <button 
@@ -5783,7 +5783,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               <div className="flex items-center justify-between border-b border-[#1c1c28] pb-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: activeAccentColor }}>
-                    <span className="animate-pulse flex items-center">{currentTrack ? '⏭' : <AudioLines className="w-3 h-3 inline" />}</span>{' '}
+                    <span className="animate-pulse flex items-center">{currentTrack ? '⏭' : <Sparkles className="w-3 h-3 inline" />}</span>{' '}
                     {currentTrack ? getTranslation(language, 'popup.nextTrack') : getTranslation(language, 'popup.aiMixRecommend')}
                   </span>
                   {nextTrackPopup.isCountdown && typeof nextTrackPopup.remainingSecs === 'number' && (
