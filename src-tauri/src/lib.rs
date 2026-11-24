@@ -29,6 +29,35 @@ use std::sync::Mutex;
 static RELATED_CACHE: Mutex<Option<HashMap<String, Vec<SearchResult>>>> = Mutex::new(None);
 static CLOSE_TO_TRAY: AtomicBool = AtomicBool::new(true);
 static IS_EXITING: AtomicBool = AtomicBool::new(false);
+static PRE_MINI_SIZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+#[tauri::command]
+fn set_mini_player_mode(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        if enabled {
+            if let Ok(size) = window.inner_size() {
+                let scale = window.scale_factor().unwrap_or(1.0);
+                let w = (size.width as f64) / scale;
+                let h = (size.height as f64) / scale;
+                let mut prev = PRE_MINI_SIZE.lock().unwrap();
+                *prev = Some((w, h));
+            }
+            let _ = window.set_always_on_top(true);
+            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: 340.0, height: 116.0 }));
+            let _ = window.set_resizable(false);
+        } else {
+            let prev_size = {
+                let prev = PRE_MINI_SIZE.lock().unwrap();
+                prev.clone()
+            };
+            let (target_w, target_h) = prev_size.unwrap_or((1200.0, 800.0));
+            let _ = window.set_always_on_top(false);
+            let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width: target_w.max(800.0), height: target_h.max(600.0) }));
+            let _ = window.set_resizable(true);
+        }
+    }
+    Ok(())
+}
 
 #[tauri::command]
 fn set_close_to_tray(enabled: bool) {
@@ -1987,6 +2016,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_close_to_tray,
             get_close_to_tray,
+            set_mini_player_mode,
             exit_app,
             scan_music_folder,
             play_track,

@@ -3,7 +3,7 @@ import {
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio, Cast,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
-  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv,
+  ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv, Pin,
   Laptop, Smartphone, AudioLines, Mic2, ListMusic
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
@@ -73,6 +73,7 @@ interface PlayerBarProps {
   onOpenConnectModal?: () => void;
   onOpenKaraoke?: () => void;
   onOpenQueue?: () => void;
+  onToggleMiniWidget?: () => void;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -116,6 +117,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onOpenConnectModal,
   onOpenKaraoke,
   onOpenQueue,
+  onToggleMiniWidget,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -1004,6 +1006,18 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           </button>
         )}
 
+        {/* Floating Mini Player Widget (Always on Top) */}
+        {onToggleMiniWidget && (
+          <button
+            type="button"
+            onClick={onToggleMiniWidget}
+            title={language === 'vi' ? 'Mini Player nổi (Luôn ghim trên cùng màn hình)' : 'Floating Mini Player (Always on Top)'}
+            className="p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent flex items-center justify-center shrink-0"
+          >
+            <Pin className="w-4 h-4" />
+          </button>
+        )}
+
         {/* Spytify Connect (Desktop Broadcaster via LiveKit & Supabase) */}
         {onToggleConnectHost && (
           <button
@@ -1167,6 +1181,19 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 title="Spytify Connect"
               >
                 {playbackTarget === 'desktop' ? <Laptop className="w-4 h-4" /> : <Radio className="w-4 h-4" />}
+              </button>
+            )}
+            {onOpenKaraoke && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSheetOpen(false);
+                  onOpenKaraoke();
+                }}
+                className="p-2 rounded-full bg-white/5 hover:bg-white/10 text-zinc-300 cursor-pointer"
+                title={language === 'vi' ? 'Karaoke & Lời bài hát' : 'Karaoke & Lyrics'}
+              >
+                <Mic2 className="w-4 h-4" />
               </button>
             )}
             {onOpenEqualizer ? (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Mic2, RefreshCw } from 'lucide-react';
+import { X, Mic2, RefreshCw, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { Track } from '../types';
 import { fetchLyrics, LyricsData, LyricLine } from '../services/lyricsService';
 
@@ -314,6 +314,64 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
           </div>
         )}
       </main>
+
+      {/* Mobile-only Bottom Playback Controls Bar */}
+      <div className="md:hidden shrink-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] pt-2">
+        <div className="flex items-center justify-between bg-[#0e0e16]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-2.5 shadow-2xl">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+            {currentTrack?.cover_art && (
+              <img
+                src={currentTrack.cover_art}
+                alt=""
+                className="w-9 h-9 rounded-lg object-cover shrink-0"
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-white truncate">{currentTrack?.title || 'Spytify'}</p>
+              <p className="text-[10px] text-zinc-400 font-mono">
+                {formatTime(currentTime)} / {formatTime(duration || currentTrack?.duration_secs || 0)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {onPrev && (
+              <button
+                type="button"
+                onClick={onPrev}
+                className="p-1.5 text-zinc-300 hover:text-white cursor-pointer"
+                title="Bài trước"
+              >
+                <SkipBack className="w-5 h-5 fill-current" />
+              </button>
+            )}
+            {onTogglePlay && (
+              <button
+                type="button"
+                onClick={onTogglePlay}
+                className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg cursor-pointer active:scale-95 transition-transform"
+                style={{
+                  backgroundColor: accentColor,
+                  color: '#ffffff',
+                }}
+                title={isPlaying ? 'Tạm dừng' : 'Phát'}
+              >
+                {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+              </button>
+            )}
+            {onNext && (
+              <button
+                type="button"
+                onClick={onNext}
+                className="p-1.5 text-zinc-300 hover:text-white cursor-pointer"
+                title="Bài tiếp theo"
+              >
+                <SkipForward className="w-5 h-5 fill-current" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

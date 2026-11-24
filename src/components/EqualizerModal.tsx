@@ -39,6 +39,10 @@ interface EqualizerModalProps {
   sleepTimerMinutes?: number | null;
   sleepTimerRemainingSecs?: number | null;
   onSetSleepTimer?: (minutes: number | null) => void;
+  playbackRate?: number;
+  onUpdatePlaybackRate?: (rate: number) => void;
+  audioFxPreset?: 'normal' | 'nightcore' | 'slowed';
+  onUpdateAudioFxPreset?: (preset: 'normal' | 'nightcore' | 'slowed') => void;
 }
 
 export const EqualizerModal: React.FC<EqualizerModalProps> = ({
@@ -55,6 +59,10 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
   sleepTimerMinutes = null,
   sleepTimerRemainingSecs = null,
   onSetSleepTimer,
+  playbackRate = 1.0,
+  onUpdatePlaybackRate,
+  audioFxPreset = 'normal',
+  onUpdateAudioFxPreset,
 }) => {
   const isLight = themeMode === 'light';
   const [eqState, setEqState] = useState<EqualizerState>(() => loadEqualizerState());
@@ -754,6 +762,106 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Playback Rate & Audio FX: Normal, Nightcore, Slowed + Reverb */}
+            <div className={`p-2.5 rounded-xl border ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121a] border-[#20202e]'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-mono font-semibold text-slate-300 flex items-center gap-1.5">
+                  <Flame className="w-3 h-3 text-amber-400" />
+                  {language === 'vi' ? 'Tốc độ phát & Hiệu ứng đặc biệt' : 'Playback Speed & Sound FX'}
+                </span>
+                <span className="text-[9.5px] font-mono font-bold px-1.5 py-0.5 rounded bg-white/10" style={{ color: accentColor }}>
+                  {playbackRate.toFixed(2)}x {audioFxPreset === 'nightcore' ? '✨ NIGHTCORE' : audioFxPreset === 'slowed' ? '🌙 SLOWED' : '⚡ CHUẨN'}
+                </span>
+              </div>
+
+              {/* 3 FX Presets */}
+              <div className="grid grid-cols-3 gap-1.5 w-full mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdatePlaybackRate?.(1.0);
+                    onUpdateAudioFxPreset?.('normal');
+                  }}
+                  className={`py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer border text-center flex items-center justify-center gap-1 ${
+                    audioFxPreset === 'normal' && playbackRate === 1.0
+                      ? 'border-transparent font-bold text-white shadow-sm'
+                      : isLight
+                      ? 'bg-slate-200/60 border-slate-300 text-slate-700 hover:bg-slate-200'
+                      : 'bg-[#181824] border-[#272738] text-slate-300 hover:text-white hover:bg-[#202030]'
+                  }`}
+                  style={audioFxPreset === 'normal' && playbackRate === 1.0 ? { backgroundColor: accentColor, color: getContrastTextColor(accentColor) } : undefined}
+                >
+                  <span>⚡</span>
+                  <span>{language === 'vi' ? 'Chuẩn (1.0x)' : 'Normal (1.0x)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdatePlaybackRate?.(1.20);
+                    onUpdateAudioFxPreset?.('nightcore');
+                  }}
+                  className={`py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer border text-center flex items-center justify-center gap-1 ${
+                    audioFxPreset === 'nightcore'
+                      ? 'border-transparent font-bold text-white shadow-sm shadow-fuchsia-500/30'
+                      : isLight
+                      ? 'bg-slate-200/60 border-slate-300 text-slate-700 hover:bg-slate-200'
+                      : 'bg-[#181824] border-[#272738] text-slate-300 hover:text-white hover:bg-[#202030]'
+                  }`}
+                  style={audioFxPreset === 'nightcore' ? { backgroundColor: '#d946ef', color: '#ffffff' } : undefined}
+                >
+                  <span>✨</span>
+                  <span>Nightcore (1.2x)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdatePlaybackRate?.(0.85);
+                    onUpdateAudioFxPreset?.('slowed');
+                  }}
+                  className={`py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer border text-center flex items-center justify-center gap-1 ${
+                    audioFxPreset === 'slowed'
+                      ? 'border-transparent font-bold text-white shadow-sm shadow-indigo-500/30'
+                      : isLight
+                      ? 'bg-slate-200/60 border-slate-300 text-slate-700 hover:bg-slate-200'
+                      : 'bg-[#181824] border-[#272738] text-slate-300 hover:text-white hover:bg-[#202030]'
+                  }`}
+                  style={audioFxPreset === 'slowed' ? { backgroundColor: '#6366f1', color: '#ffffff' } : undefined}
+                >
+                  <span>🌙</span>
+                  <span>Slowed (0.85x)</span>
+                </button>
+              </div>
+
+              {/* Fine-tuning speed slider */}
+              <div className="flex items-center gap-2 pt-1 border-t border-white/5">
+                <span className="text-[9px] font-mono text-zinc-500 shrink-0">0.75x</span>
+                <input
+                  type="range"
+                  min="0.75"
+                  max="1.50"
+                  step="0.05"
+                  value={playbackRate}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    onUpdatePlaybackRate?.(val);
+                    if (val === 1.0) onUpdateAudioFxPreset?.('normal');
+                    else if (val > 1.0) onUpdateAudioFxPreset?.('nightcore');
+                    else onUpdateAudioFxPreset?.('slowed');
+                  }}
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none touch-none"
+                  style={{
+                    accentColor: accentColor,
+                    backgroundColor: isLight ? '#cbd5e1' : '#222232',
+                  }}
+                />
+                <span className="text-[9px] font-mono text-zinc-500 shrink-0">1.50x</span>
+              </div>
+            </div>
 
             {/* Auxiliary Sliders: Preamp, Bass Boost, 3D Spatial */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">

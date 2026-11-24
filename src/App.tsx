@@ -20,6 +20,7 @@ import { EqualizerModal } from './components/EqualizerModal';
 import { ConnectModal } from './components/ConnectModal';
 import { KaraokeModal } from './components/KaraokeModal';
 import { QueueModal } from './components/QueueModal';
+import { MiniPlayerWidget } from './components/MiniPlayerWidget';
 import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
 import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
@@ -1141,6 +1142,25 @@ export default function App() {
   const [lanStreamBaseUrl, setLanStreamBaseUrl] = useState<string | null>(null);
   const lanStreamBaseUrlRef = useRef<string | null>(null);
   lanStreamBaseUrlRef.current = lanStreamBaseUrl;
+
+  // Playback Rate & Audio FX: Normal (1.0x), Nightcore (1.2x), Slowed + Reverb (0.85x)
+  const [playbackRate, setPlaybackRate] = useState<number>(() => {
+    const saved = localStorage.getItem('spytify_playback_rate');
+    const parsed = saved ? parseFloat(saved) : 1.0;
+    return isNaN(parsed) || parsed < 0.5 || parsed > 2.0 ? 1.0 : parsed;
+  });
+  const playbackRateRef = useRef(playbackRate);
+  playbackRateRef.current = playbackRate;
+
+  const [audioFxPreset, setAudioFxPreset] = useState<'normal' | 'nightcore' | 'slowed'>(() => {
+    const saved = localStorage.getItem('spytify_audio_fx_preset');
+    return (saved === 'nightcore' || saved === 'slowed') ? saved : 'normal';
+  });
+  const audioFxPresetRef = useRef(audioFxPreset);
+  audioFxPresetRef.current = audioFxPreset;
+
+  // Floating Always-on-Top Mini Player Widget
+  const [isMiniWidget, setIsMiniWidget] = useState(false);
 
   useEffect(() => {
     if (!isMobilePlayerOpen) {
@@ -3362,6 +3382,58 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       );
     }
   };
+
+  const handleUpdatePlaybackRate = useCallback((rate: number) => {
+    setPlaybackRate(rate);
+    playbackRateRef.current = rate;
+    localStorage.setItem('spytify_playback_rate', String(rate));
+
+    const fx = audioFxPresetRef.current;
+    const audios = [onlineAudio1Ref.current, onlineAudio2Ref.current, onlineAudioRef.current];
+    audios.forEach((audio) => {
+      if (audio) {
+        try {
+          audio.playbackRate = rate;
+          (audio as any).preservesPitch = fx === 'normal';
+        } catch {}
+      }
+    });
+
+    sendYtCmd('setPlaybackRate', [rate], 1);
+    sendYtCmd('setPlaybackRate', [rate], 2);
+  }, []);
+
+  const handleUpdateAudioFxPreset = useCallback((preset: 'normal' | 'nightcore' | 'slowed') => {
+    setAudioFxPreset(preset);
+    audioFxPresetRef.current = preset;
+    localStorage.setItem('spytify_audio_fx_preset', preset);
+
+    const rate = playbackRateRef.current;
+    const audios = [onlineAudio1Ref.current, onlineAudio2Ref.current, onlineAudioRef.current];
+    audios.forEach((audio) => {
+      if (audio) {
+        try {
+          audio.playbackRate = rate;
+          (audio as any).preservesPitch = preset === 'normal';
+        } catch {}
+      }
+    });
+
+    sendYtCmd('setPlaybackRate', [rate], 1);
+    sendYtCmd('setPlaybackRate', [rate], 2);
+  }, []);
+
+  const handleToggleMiniWidget = useCallback(async (enabled?: boolean) => {
+    const nextVal = enabled !== undefined ? enabled : !isMiniWidget;
+    setIsMiniWidget(nextVal);
+    if (isTauriApp) {
+      try {
+        await invoke('set_mini_player_mode', { enabled: nextVal });
+      } catch (e) {
+        console.warn('Failed to set mini player mode:', e);
+      }
+    }
+  }, [isMiniWidget, isTauriApp]);
 
   const loadOrMountYtChannel = (videoId: string, channel: 1 | 2, volPct: number, forceRemount = false) => {
     clearYtLoadTimers();
@@ -6287,6 +6359,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             sleepTimerMinutes={sleepTimerMinutes}
             sleepTimerRemainingSecs={sleepTimerRemainingSecs}
             onSetSleepTimer={handleSetSleepTimer}
+            playbackRate={playbackRate}
+            onUpdatePlaybackRate={handleUpdatePlaybackRate}
+            audioFxPreset={audioFxPreset}
+            onUpdateAudioFxPreset={handleUpdateAudioFxPreset}
           />
 
           {/* Spytify Connect Device Switcher Modal */}
@@ -7288,6 +7364,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onOpenConnectModal={!isTauriApp ? () => setIsConnectModalOpen(true) : undefined}
         onOpenKaraoke={() => setIsKaraokeModalOpen(true)}
         onOpenQueue={() => setIsQueueModalOpen(true)}
+        onToggleMiniWidget={handleToggleMiniWidget}
       />
 
       {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}
@@ -7352,6 +7429,24 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         language={language}
         isRemoteDesktop={connectPlaybackTarget === 'desktop' && !isTauriApp}
       />
+      {/* Floating Always-on-Top Mini Player Widget */}
+      {isMiniWidget && (
+        <MiniPlayerWidget
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          duration={duration}
+          onTogglePlay={handleTogglePlay}
+          onPrev={handleUserPrev}
+          onNext={handleUserNext}
+          onSeek={handleSeek}
+          onRestoreFull={() => handleToggleMiniWidget(false)}
+          accentColor={activeAccentColor}
+          themeMode={themeMode}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+        />
+      )}
     </div>
   );
 }
