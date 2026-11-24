@@ -1,5 +1,5 @@
-import React from 'react';
-import { Play, Pause, SkipBack, SkipForward, Maximize2, Pin, Volume2, Music } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Pause, SkipBack, SkipForward, Maximize2, Pin, Music, X } from 'lucide-react';
 import { Track } from '../types';
 import { MarqueeText } from './MarqueeText';
 
@@ -37,18 +37,34 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
   onSeek,
   onRestoreFull,
   accentColor = '#ff2a55',
-  themeMode = 'dark',
 }) => {
+  const [isWindowSmall, setIsWindowSmall] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth <= 420 && window.innerHeight <= 220;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsWindowSmall(window.innerWidth <= 420 && window.innerHeight <= 220);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const effectiveDuration = duration && duration > 0 ? duration : currentTrack?.duration_secs || 0;
   const progressPercent = effectiveDuration > 0 ? Math.min(100, Math.max(0, (currentTime / effectiveDuration) * 100)) : 0;
 
-  return (
+  const content = (
     <div 
-      className="fixed inset-0 z-[999] flex flex-col justify-between p-2.5 bg-[#06060a]/95 text-white select-none backdrop-blur-2xl border border-white/10 overflow-hidden"
+      className={`w-full h-full flex flex-col justify-between p-2.5 text-white select-none ${
+        isWindowSmall
+          ? 'bg-[#06060a]'
+          : 'bg-[#0a0a10]/95 backdrop-blur-2xl rounded-2xl border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.85)]'
+      }`}
       data-tauri-drag-region="true"
     >
       {/* Top Drag & Status Bar */}
-      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 pb-1 shrink-0" data-tauri-drag-region="true">
+      <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 pb-0.5 shrink-0" data-tauri-drag-region="true">
         <div className="flex items-center gap-1.5 pointer-events-none" data-tauri-drag-region="true">
           <Pin className="w-3 h-3 text-emerald-400" />
           <span className="font-bold tracking-wider uppercase text-[9px] text-zinc-300">SPYTIFY MINI</span>
@@ -57,20 +73,22 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onRestoreFull}
-          className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-          title="Mở rộng toàn màn hình"
-        >
-          <Maximize2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onRestoreFull}
+            className="p-1 rounded hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+            title="Mở rộng toàn màn hình"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Center Track Info & Controls Row */}
       <div className="flex items-center gap-2.5 min-w-0 flex-1 my-auto">
         {/* Cover Art with Ambient Shadow */}
-        <div className="w-12 h-12 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-lg relative group">
+        <div className="w-11 h-11 rounded-xl overflow-hidden bg-black/40 border border-white/10 shrink-0 shadow-lg relative group">
           {currentTrack?.cover_art ? (
             <img
               src={currentTrack.cover_art}
@@ -96,7 +114,7 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
         </div>
 
         {/* Transport Buttons */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
             onClick={onPrev}
@@ -132,9 +150,9 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
       </div>
 
       {/* Bottom Mini Progress Track */}
-      <div className="pt-1 shrink-0">
+      <div className="pt-0.5 shrink-0">
         <div
-          className="relative w-full h-1.5 rounded-full bg-white/10 cursor-pointer overflow-hidden"
+          className="relative w-full h-1 rounded-full bg-white/10 cursor-pointer overflow-hidden"
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             if (rect.width > 0 && effectiveDuration > 0) {
@@ -156,6 +174,22 @@ export const MiniPlayerWidget: React.FC<MiniPlayerWidgetProps> = ({
           <span>{formatTime(effectiveDuration)}</span>
         </div>
       </div>
+    </div>
+  );
+
+  // If window is small (Tauri shrunk window), fill window completely.
+  if (isWindowSmall) {
+    return (
+      <div className="fixed inset-0 z-[999] overflow-hidden" data-tauri-drag-region="true">
+        {content}
+      </div>
+    );
+  }
+
+  // If running in browser or large window, render as sleek floating corner widget!
+  return (
+    <div className="fixed bottom-6 right-6 z-[999] w-[340px] h-[116px] animate-fadeIn">
+      {content}
     </div>
   );
 };
