@@ -2030,6 +2030,8 @@ pub fn run() {
             set_close_to_tray,
             get_close_to_tray,
             set_mini_player_mode,
+            open_mini_player_window,
+            close_mini_player_window,
             exit_app,
             scan_music_folder,
             play_track,
