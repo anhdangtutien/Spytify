@@ -34,6 +34,7 @@ static IS_EXITING: AtomicBool = AtomicBool::new(false);
 fn open_mini_player_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(mini) = app.get_webview_window("mini") {
         let _ = mini.show();
+        let _ = mini.unminimize();
         let _ = mini.set_always_on_top(true);
         let _ = mini.set_focus();
         return Ok(());
@@ -44,11 +45,13 @@ fn open_mini_player_window(app: tauri::AppHandle) -> Result<(), String> {
         "mini",
         tauri::WebviewUrl::default()
     )
-    .title("Spytify Mini")
+    .title("Spytify Mini Player")
     .inner_size(360.0, 130.0)
+    .min_inner_size(320.0, 110.0)
     .decorations(false)
     .always_on_top(true)
-    .resizable(false)
+    .resizable(true)
+    .shadow(true)
     .initialization_script("window.__IS_MINI_PLAYER__ = true; window.location.hash = '#mini';")
     .build()
     .map_err(|e| e.to_string())?;
@@ -1913,8 +1916,6 @@ pub fn run() {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
-                #[cfg(debug_assertions)]
-                let _ = window.open_devtools();
             }
 
             // Setup System Tray

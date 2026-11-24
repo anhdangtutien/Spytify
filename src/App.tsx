@@ -3552,11 +3552,16 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   const handleToggleMiniWidget = useCallback(async () => {
     setIsMiniWidget(true);
 
-    const miniUrl = window.location.href.split('#')[0].split('?')[0] + '#mini';
-
-    // 1. If on Desktop Tauri, create/show WebviewWindow with the exact runtime URL
+    // 1. If on Desktop Tauri, call native Rust command to create/show standalone frameless mini player
     if (isTauriApp) {
       try {
+        await invoke('open_mini_player_window');
+        return;
+      } catch (invokeErr) {
+        console.warn('invoke open_mini_player_window failed, trying WebviewWindow fallback:', invokeErr);
+      }
+      try {
+        const miniUrl = window.location.href.split('#')[0].split('?')[0] + '#mini';
         const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
         let mini = await WebviewWindow.getByLabel('mini');
         if (!mini) {
@@ -3567,7 +3572,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             height: 130,
             decorations: false,
             alwaysOnTop: true,
-            resizable: false,
+            resizable: true,
           });
         } else {
           await mini.show();
@@ -3581,6 +3586,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     // 2. On Web Browser (Chrome/Edge): open native popup window
+    const miniUrl = window.location.href.split('#')[0].split('?')[0] + '#mini';
     const popup = window.open(
       miniUrl,
       'SpytifyMini',
@@ -6823,8 +6829,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           />
         </div>
 
-        {/* Mobile Sidebar Drawer */}
-        {isMobileSidebarOpen && (
+        {/* Mobile Sidebar Drawer (Only on Web on Mobile Phones) */}
+        {!isTauriApp && isMobileSidebarOpen && (
           <div
             className="md:hidden fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex"
             onClick={() => setIsMobileSidebarOpen(false)}
@@ -7400,37 +7406,39 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onToggleMiniWidget={handleToggleMiniWidget}
       />
 
-      {/* Mobile Bottom Navigation Bar (App-like mobile shell with iOS safe-area bottom inset) */}
-      <nav
-        className={`md:hidden flex items-center justify-around border-t z-40 flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)] select-none ${
-          themeMode === 'light'
-            ? 'bg-white/95 border-slate-200 text-slate-500'
-            : 'bg-[#050508]/95 border-[#161620] text-[#777788]'
-        } backdrop-blur-xl`}
-      >
-        {[
-          { view: 'library' as ViewType, label: language === 'vi' ? 'Trang chủ' : 'Home', icon: <ModernHomeIcon className="w-4 h-4" active={currentView === 'library'} /> },
-          { view: 'search' as ViewType, label: language === 'vi' ? 'Tìm kiếm' : 'Search', icon: <Search className="w-4 h-4" /> },
-          { view: 'community' as ViewType, label: 'Spy Jam', icon: <SpyJamIcon className="w-4 h-4" /> },
-          { view: 'albums' as ViewType, label: 'Album', icon: <Layers className="w-4 h-4" /> },
-          { view: 'ai_mix' as ViewType, label: 'AI Mix', icon: <AudioLines className="w-4 h-4" /> },
-          { view: 'profile' as ViewType, label: language === 'vi' ? 'Hồ sơ' : 'Profile', icon: <UserIcon className="w-4 h-4" /> },
-        ].map((item) => {
-          const isActive = currentView === item.view;
-          return (
-            <button
-              key={item.view}
-              type="button"
-              onClick={() => setCurrentView(item.view)}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 px-1 text-[10px] font-semibold transition-colors cursor-pointer"
-              style={{ color: isActive ? activeAccentColor : undefined }}
-            >
-              <span>{item.icon}</span>
-              <span className="truncate max-w-[64px]">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {/* Mobile Bottom Navigation Bar (Only for Web on Mobile Phones, NEVER on Desktop Tauri) */}
+      {!isTauriApp && (
+        <nav
+          className={`md:hidden flex items-center justify-around border-t z-40 flex-shrink-0 pb-[env(safe-area-inset-bottom,0px)] select-none ${
+            themeMode === 'light'
+              ? 'bg-white/95 border-slate-200 text-slate-500'
+              : 'bg-[#050508]/95 border-[#161620] text-[#777788]'
+          } backdrop-blur-xl`}
+        >
+          {[
+            { view: 'library' as ViewType, label: language === 'vi' ? 'Trang chủ' : 'Home', icon: <ModernHomeIcon className="w-4 h-4" active={currentView === 'library'} /> },
+            { view: 'search' as ViewType, label: language === 'vi' ? 'Tìm kiếm' : 'Search', icon: <Search className="w-4 h-4" /> },
+            { view: 'community' as ViewType, label: 'Spy Jam', icon: <SpyJamIcon className="w-4 h-4" /> },
+            { view: 'albums' as ViewType, label: 'Album', icon: <Layers className="w-4 h-4" /> },
+            { view: 'ai_mix' as ViewType, label: 'AI Mix', icon: <AudioLines className="w-4 h-4" /> },
+            { view: 'profile' as ViewType, label: language === 'vi' ? 'Hồ sơ' : 'Profile', icon: <UserIcon className="w-4 h-4" /> },
+          ].map((item) => {
+            const isActive = currentView === item.view;
+            return (
+              <button
+                key={item.view}
+                type="button"
+                onClick={() => setCurrentView(item.view)}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 px-1 text-[10px] font-semibold transition-colors cursor-pointer"
+                style={{ color: isActive ? activeAccentColor : undefined }}
+              >
+                <span>{item.icon}</span>
+                <span className="truncate max-w-[64px]">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {/* Karaoke & Synced Lyrics Mode Modal */}
       <KaraokeModal
