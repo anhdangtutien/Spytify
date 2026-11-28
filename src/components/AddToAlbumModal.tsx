@@ -10,7 +10,7 @@ interface AddToAlbumModalProps {
   trackToAdd: Track | null;
   albums: UserAlbum[];
   onAddTrackToAlbum: (albumId: string, track: Track) => void;
-  onCreateAlbum: (title: string, description: string) => UserAlbum;
+  onCreateAlbum: (title: string, description: string, initialTracks?: Track[]) => UserAlbum;
   language?: LanguageCode;
   accentColor?: string;
 }
@@ -62,8 +62,7 @@ export const AddToAlbumModal: React.FC<AddToAlbumModalProps> = ({
   const handleCreateAndAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAlbumTitle.trim()) return;
-    const created = onCreateAlbum(newAlbumTitle.trim(), '');
-    onAddTrackToAlbum(created.id, trackToAdd);
+    onCreateAlbum(newAlbumTitle.trim(), '', trackToAdd ? [trackToAdd] : []);
     setNewAlbumTitle('');
     setIsCreatingNew(false);
     onClose();

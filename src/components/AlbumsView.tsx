@@ -795,7 +795,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
           </button>
 
           {/* Album Banner */}
-          <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-[#0d0d12] via-[#09090c] to-black border border-[#1c1c24] flex flex-col sm:flex-row items-center gap-4 sm:gap-6 shadow-xl">
+          <div className="p-4 sm:p-6 rounded-2xl bg-zinc-900/40 border border-white/10 flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
             <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-2xl overflow-hidden bg-[#14141c] border border-[#262632] flex-shrink-0 flex items-center justify-center relative shadow-lg">
               {selectedAlbum.cover_art ? (
                 <img
@@ -993,15 +993,15 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                         draggedIndex === idx ? 'opacity-30 scale-[0.98] pointer-events-none' : ''
                       } ${
                         dragOverIndex === idx && albumDropPosition === 'above'
-                          ? '!border-t-2 !border-t-cyan-400 bg-cyan-500/15 shadow-[0_-3px_10px_rgba(34,211,238,0.4)]'
+                          ? '!border-t-2 !border-t-white bg-white/10'
                           : ''
                       } ${
                         dragOverIndex === idx && albumDropPosition === 'below'
-                          ? '!border-b-2 !border-b-cyan-400 bg-cyan-500/15 shadow-[0_3px_10px_rgba(34,211,238,0.4)]'
+                          ? '!border-b-2 !border-b-white bg-white/10'
                           : ''
                       } ${
                         dragOverIndex === idx && albumDropPosition === 'swap'
-                          ? '!border-2 !border-cyan-400 bg-cyan-500/20 shadow-[0_0_14px_rgba(34,211,238,0.4)] scale-[1.01]'
+                          ? '!border-2 !border-white bg-white/10 scale-[1.01]'
                           : ''
                       } ${
                         isCurrent
@@ -1011,11 +1011,11 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                     >
                       {/* Liền trước indicator */}
                       {dragOverIndex === idx && albumDropPosition === 'above' && (
-                        <div className="absolute top-0 left-0 right-0 h-[3px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] rounded-t-xl z-20 pointer-events-none" />
+                        <div className="absolute top-0 left-0 right-0 h-[2px] bg-white rounded-t-xl z-20 pointer-events-none" />
                       )}
                       {/* Liền sau indicator */}
                       {dragOverIndex === idx && albumDropPosition === 'below' && (
-                        <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] rounded-b-xl z-20 pointer-events-none" />
+                        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-white rounded-b-xl z-20 pointer-events-none" />
                       )}
                       {/* Swap vị trí indicator */}
                       {dragOverIndex === idx && albumDropPosition === 'swap' && (
@@ -1254,7 +1254,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                   <div
                     key={album.id}
                     onClick={() => setSelectedAlbumId(album.id)}
-                    className="p-3 rounded-2xl bg-[#09090c] hover:bg-[#121218] border border-[#161620] hover:border-[#222230] transition-all flex flex-col group cursor-pointer shadow-sm"
+                    className="p-3 rounded-2xl bg-zinc-900/40 hover:bg-zinc-900/80 border border-white/5 hover:border-white/15 transition-all flex flex-col group cursor-pointer"
                   >
                     <div className="relative aspect-square w-full rounded-xl overflow-hidden mb-2.5 bg-[#14141c] border border-[#1e1e28]">
                       {coverArt ? (
@@ -1266,7 +1266,7 @@ export const AlbumsView: React.FC<AlbumsViewProps> = ({
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[#444] bg-gradient-to-br from-[#121218] to-[#0a0a0e]">
+                        <div className="w-full h-full flex items-center justify-center text-[#444] bg-zinc-900">
                           <Disc className="w-10 h-10" style={{ color: accentColor }} />
                         </div>
                       )}

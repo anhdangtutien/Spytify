@@ -902,7 +902,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [searchFilter, setSearchFilter] = useState('');
 
   return (
-    <div className={`flex-1 flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden select-none ${themeMode === 'light' ? 'bg-[#f8fafc]' : 'bg-[#0a0a10]'}`}>
+    <div className={`flex-1 flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden select-none ${themeMode === 'light' ? 'bg-[#f8fafc]' : 'bg-[#09090b]'}`}>
       {/* Hidden File Inputs */}
       <input 
         ref={fileInputRef} 
@@ -937,7 +937,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {/* 1. Account Card */}
-        <div className={`p-4 rounded-2xl border ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+        <div className={`p-4 rounded-2xl border ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111115] border-white/10'}`}>
           <div className="flex items-center gap-3">
             <div 
               onClick={() => fileInputRef.current?.click()}
@@ -992,7 +992,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {/* 2. Playback & Audio Card */}
-        <div className={`p-4 rounded-2xl border space-y-3.5 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+        <div className={`p-4 rounded-2xl border space-y-3.5 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111115] border-white/10'}`}>
           <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
             <Headphones className="w-4 h-4" style={{ color: accentColor }} />
             <span>{language === 'vi' ? 'Phát nhạc & Âm thanh' : 'Playback & Audio'}</span>
@@ -1058,7 +1058,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {/* 3. Appearance & Theme Card */}
-        <div className={`p-4 rounded-2xl border space-y-3.5 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+        <div className={`p-4 rounded-2xl border space-y-3.5 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111115] border-white/10'}`}>
           <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
             <Sparkles className="w-4 h-4" style={{ color: accentColor }} />
             <span>{language === 'vi' ? 'Giao diện & Màu chủ đạo' : 'Appearance & Theme'}</span>
@@ -1107,7 +1107,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {/* 4. Language Card */}
-        <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+        <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111115] border-white/10'}`}>
           <div className="flex items-center gap-2 text-xs font-bold text-zinc-300">
             <Globe className="w-4 h-4" style={{ color: accentColor }} />
             <span>{language === 'vi' ? 'Ngôn ngữ' : 'Language'}</span>
@@ -1132,7 +1132,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {/* 5. Cloud Sync & About Card */}
-        <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#12121c] border-white/10'}`}>
+        <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111115] border-white/10'}`}>
           <div className="flex items-center justify-between">
             <div>
               <span className={`text-xs font-semibold ${themeMode === 'light' ? 'text-slate-800' : 'text-white'}`}>
@@ -1168,10 +1168,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
 
       {/* ──────── 1. LEFT SIDEBAR (DESKTOP) ──────── */}
-      <div className={`hidden md:flex md:w-64 border-r flex-col justify-between flex-shrink-0 ${themeMode === 'light' ? 'bg-[#f1f5f9] border-[#cbd5e1]' : 'bg-[#0b0b12] border-[#181824]'}`}>
+      <div className={`hidden md:flex md:w-64 border-r flex-col justify-between flex-shrink-0 ${themeMode === 'light' ? 'bg-[#f1f5f9] border-[#cbd5e1]' : 'bg-[#09090b] border-[rgba(255,255,255,0.06)]'}`}>
         <div className="p-4 space-y-3 flex-1 overflow-y-auto">
           {/* User Mini Card */}
-          <div className={`p-3 rounded-xl border flex items-center gap-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#12121c] border-[#1e1e2c]'}`}>
+          <div className={`p-3 rounded-xl border flex items-center gap-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
             <div className="relative group cursor-pointer" onClick={() => setActiveTab('profile_appearance')}>
               <div 
                 className="w-10 h-10 rounded-xl overflow-hidden border border-white/20 flex items-center justify-center text-white font-bold text-sm shadow-md"
@@ -1193,7 +1193,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <button 
                 type="button" 
                 onClick={() => setActiveTab('profile_appearance')} 
-                className="text-[10px] text-[#888] hover:text-white font-mono flex items-center gap-1 cursor-pointer transition-colors"
+                className="text-[10px] text-zinc-400 hover:text-white font-mono flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <Edit3 className="w-2.5 h-2.5" />
                 <span>{getTranslation(language, 'settings.editProfile')}</span>
@@ -1203,7 +1203,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
           {/* Search Box */}
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-[#666]" />
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
             <input
               type="text"
               value={searchFilter}
@@ -1212,7 +1212,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               className={`w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none border transition-colors ${
                 themeMode === 'light' 
                   ? 'bg-white text-slate-900 border-[#cbd5e1] placeholder-slate-400' 
-                  : 'bg-[#101018] text-white border-[#20202c] placeholder-[#666]'
+                  : 'bg-[#111115] text-white border-[rgba(255,255,255,0.08)] placeholder-[#666]'
               }`}
             />
           </div>
@@ -1221,7 +1221,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="space-y-4 pt-1">
             {/* Group 1: Tài khoản */}
             <div>
-              <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] px-2 mb-1">
+              <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 px-2 mb-1">
                 {getTranslation(language, 'settings.userGroup')}
               </p>
               <div className="space-y-0.5">
@@ -1241,8 +1241,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => setActiveTab(item.key as any)}
                         className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all text-left cursor-pointer ${
                           isCur
-                            ? themeMode === 'light' ? 'bg-[#cbd5e1] text-slate-900' : 'bg-[#1e1e2c] text-white font-bold'
-                            : themeMode === 'light' ? 'text-slate-600 hover:bg-[#e2e8f0]' : 'text-[#888] hover:text-white hover:bg-white/5'
+                            ? themeMode === 'light' ? 'bg-[#cbd5e1] text-slate-900' : 'bg-[rgba(255,255,255,0.08)] text-white font-bold'
+                            : themeMode === 'light' ? 'text-slate-600 hover:bg-[#e2e8f0]' : 'text-zinc-400 hover:text-white hover:bg-white/5'
                         }`}
                         style={isCur ? { borderLeft: `3px solid ${accentColor}` } : undefined}
                       >
@@ -1256,7 +1256,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             {/* Group 2: Trải nghiệm & Cài đặt ứng dụng */}
             <div>
-              <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] px-2 mb-1">
+              <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 px-2 mb-1">
                 {getTranslation(language, 'settings.appGroup')}
               </p>
               <div className="space-y-0.5">
@@ -1279,8 +1279,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => setActiveTab(item.key as any)}
                         className={`w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all text-left cursor-pointer ${
                           isCur
-                            ? themeMode === 'light' ? 'bg-[#cbd5e1] text-slate-900' : 'bg-[#1e1e2c] text-white font-bold'
-                            : themeMode === 'light' ? 'text-slate-600 hover:bg-[#e2e8f0]' : 'text-[#888] hover:text-white hover:bg-white/5'
+                            ? themeMode === 'light' ? 'bg-[#cbd5e1] text-slate-900' : 'bg-[rgba(255,255,255,0.08)] text-white font-bold'
+                            : themeMode === 'light' ? 'text-slate-600 hover:bg-[#e2e8f0]' : 'text-zinc-400 hover:text-white hover:bg-white/5'
                         }`}
                         style={isCur ? { borderLeft: `3px solid ${accentColor}` } : undefined}
                       >
@@ -1296,7 +1296,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {/* Bottom Logout */}
-        <div className="p-3 border-t border-[#181824]">
+        <div className="p-3 border-t border-[rgba(255,255,255,0.06)]">
           {currentUser ? (
             <button
               onClick={onLogout}
@@ -1325,16 +1325,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.accountTitle')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.accountDescription')}
               </p>
             </div>
 
             {/* Discord Account Info Card */}
-            <div className={`p-4 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
-              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+            <div className={`p-4 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
+              <div className="flex items-center justify-between pb-3 border-b border-[rgba(255,255,255,0.06)]">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.username')}</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">{getTranslation(language, 'settings.username')}</p>
                   <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                     @{currentUser ? currentUser.username : 'khach'}
                   </p>
@@ -1348,9 +1348,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               </div>
 
-              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+              <div className="flex items-center justify-between pb-3 border-b border-[rgba(255,255,255,0.06)]">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.displayName')}</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">{getTranslation(language, 'settings.displayName')}</p>
                   <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                     {currentUser ? currentUser.display_name : getTranslation(language, 'settings.guestNotSignedIn')}
                   </p>
@@ -1364,9 +1364,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               </div>
 
-              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+              <div className="flex items-center justify-between pb-3 border-b border-[rgba(255,255,255,0.06)]">
                 <div className="flex-1 pr-4">
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.bio')}</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">{getTranslation(language, 'settings.bio')}</p>
                   {isEditingBio ? (
                     <div className="mt-1 flex items-center gap-2">
                       <input
@@ -1375,7 +1375,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         value={userBio}
                         onChange={e => setUserBio(e.target.value)}
                         className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-sans border outline-none ${
-                          themeMode === 'light' ? 'bg-slate-100 border-slate-300 text-slate-900' : 'bg-[#141420] border-[#252538] text-white focus:border-white/40'
+                          themeMode === 'light' ? 'bg-slate-100 border-slate-300 text-slate-900' : 'bg-[#111115] border-[rgba(255,255,255,0.08)] text-white focus:border-white/40'
                         }`}
                       />
                       <button
@@ -1416,9 +1416,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+              <div className="flex items-center justify-between pb-3 border-b border-[rgba(255,255,255,0.06)]">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.email')}</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">{getTranslation(language, 'settings.email')}</p>
                   <p className={`text-sm font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                     {currentUser?.email ? currentUser.email : getTranslation(language, 'settings.emailNotLinked')}
                   </p>
@@ -1434,8 +1434,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#777]">{getTranslation(language, 'settings.phone')}</p>
-                  <p className="text-xs text-[#666] font-mono mt-0.5">{getTranslation(language, 'settings.phoneNotAdded')}</p>
+                  <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400">{getTranslation(language, 'settings.phone')}</p>
+                  <p className="text-xs text-zinc-500 font-mono mt-0.5">{getTranslation(language, 'settings.phoneNotAdded')}</p>
                 </div>
                 <button
                   type="button"
@@ -1452,11 +1452,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h3 className={`text-sm font-bold mb-2 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.passwordSecurity')}
               </h3>
-              <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
-                <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
+              <div className={`p-4 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
+                <div className="flex items-center justify-between pb-2 border-b border-[rgba(255,255,255,0.06)]">
                   <div>
                     <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.password')}</p>
-                    <p className="text-[11px] text-[#777] font-mono">••••••••••••</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">••••••••••••</p>
                   </div>
                   <button
                     type="button"
@@ -1467,7 +1467,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </button>
                 </div>
 
-                <div className="pb-3 border-b border-[#1c1c28]">
+                <div className="pb-3 border-b border-[rgba(255,255,255,0.06)]">
                   <div className="flex items-center justify-between">
                     <div className="pr-4">
                       <div className="flex items-center gap-2">
@@ -1483,7 +1483,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           Google Authenticator
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#777] font-mono mt-0.5">
+                      <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
                         Bảo mật tài khoản bằng mã xác thực 6 số (RFC 6238 TOTP)
                       </p>
                     </div>
@@ -1559,7 +1559,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between group ${
                                 isSelected
                                   ? 'text-white shadow-lg'
-                                  : 'bg-[#12121c]/70 border-[#222234] text-zinc-400 hover:text-white hover:bg-white/5'
+                                  : 'bg-[#111115]/70 border-[rgba(255,255,255,0.08)] text-zinc-400 hover:text-white hover:bg-white/5'
                               }`}
                               style={isSelected ? {
                                 backgroundColor: `${accentColor}18`,
@@ -1594,7 +1594,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.signedInDevices')}</p>
-                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.signedInDeviceCount')}</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">{getTranslation(language, 'settings.signedInDeviceCount')}</p>
                   </div>
                   <span className="text-xs font-mono font-bold flex items-center gap-1.5 text-zinc-300">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }} />
@@ -1612,13 +1612,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navAppearance')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.appearanceDescription')}
               </p>
             </div>
 
             {/* Avatar Section */}
-            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
                   <Shield className="w-3.5 h-3.5" style={{ color: accentColor }} />
@@ -1638,15 +1638,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               {/* Upload Button */}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full py-3 px-4 rounded-xl border border-dashed border-[#2b2b3a] hover:border-white/50 bg-[#0c0c10] hover:bg-[#121218] transition-all flex items-center justify-center gap-2.5 text-xs font-semibold text-white cursor-pointer group"
+                className="w-full py-3 px-4 rounded-xl border border-dashed border-[rgba(255,255,255,0.08)] hover:border-white/50 bg-[#0c0c10] hover:bg-[#121218] transition-all flex items-center justify-center gap-2.5 text-xs font-semibold text-white cursor-pointer group"
               >
-                <Upload className="w-4 h-4 text-[#888] group-hover:text-white transition-colors" />
+                <Upload className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
                 <span>{getTranslation(language, 'profile.uploadAvatar')}</span>
               </button>
 
               {/* Presets */}
               <div>
-                <p className="text-[11px] text-[#777] font-mono mb-2">{getTranslation(language, 'settings.avatarPresetPrompt')}</p>
+                <p className="text-[11px] text-zinc-400 font-mono mb-2">{getTranslation(language, 'settings.avatarPresetPrompt')}</p>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                   {SPY_AVATARS.map((preset) => {
                     const isSelected = currentUser?.avatar === preset.svg;
@@ -1657,7 +1657,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         title={preset.name}
                         className={`p-2 rounded-xl border text-center flex flex-col items-center gap-2 transition-all cursor-pointer group ${
                           isSelected 
-                            ? 'bg-[#181824] border-white shadow-[0_0_12px_rgba(255,255,255,0.2)] scale-105' 
+                            ? 'bg-[rgba(255,255,255,0.06)] border-white  scale-105' 
                             : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#38384a] hover:bg-[#13131b]'
                         }`}
                       >
@@ -1675,7 +1675,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Theme Mode & Neon Accent */}
-            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               {/* Light / Dark Mode Toggle */}
               <div>
                 <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
@@ -1686,7 +1686,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <button
                     onClick={() => themeMode === 'light' && onToggleThemeMode()}
                     style={{
-                      backgroundColor: '#0b0b12',
+                      backgroundColor: '#09090b',
                       borderColor: themeMode === 'dark' ? accentColor : '#27273a',
                       boxShadow: themeMode === 'dark' ? `0 0 16px ${accentColor}40` : '0 2px 8px rgba(0,0,0,0.2)',
                     }}
@@ -1760,7 +1760,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
 
               {/* Accent Color Palette */}
-              <div className="pt-4 border-t border-[#1c1c28]">
+              <div className="pt-4 border-t border-[rgba(255,255,255,0.06)]">
                 <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2 mb-3">
                   <Sparkles className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   {getTranslation(language, 'profile.accentColor')}
@@ -1774,7 +1774,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onClick={() => onUpdateAccentColor(theme.hex)}
                         className={`p-3 rounded-xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
                           isSelected 
-                            ? 'bg-[#15151e] border-white shadow-[0_0_12px_rgba(255,255,255,0.15)] scale-[1.02]' 
+                            ? 'bg-[#111115] border-white  scale-[1.02]' 
                             : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#333] hover:bg-[#121218]'
                         }`}
                       >
@@ -1788,7 +1788,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         </div>
                         <div className="overflow-hidden">
                           <p className="text-xs font-bold text-white truncate">{theme.name}</p>
-                          <p className="text-[10px] text-[#777] truncate font-mono">
+                          <p className="text-[10px] text-zinc-400 truncate font-mono">
                             {getTranslation(language, `palette.${theme.key}`) || theme.desc}
                           </p>
                         </div>
@@ -1808,7 +1808,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   />
                   <div className="flex-1">
                     <p className="text-xs font-semibold text-white">{getTranslation(language, 'profile.customHex')}</p>
-                    <p className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'profile.customHexDesc')}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{getTranslation(language, 'profile.customHexDesc')}</p>
                   </div>
                   <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-[#161620] border border-[#262634] text-white">
                     {accentColor.toUpperCase()}
@@ -1825,7 +1825,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navAccountStatus')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.statusDescription')}
               </p>
             </div>
@@ -1838,28 +1838,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </p>
             </div>
 
-            <div className={`p-4 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
-              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+            <div className={`p-4 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
+              <div className="flex items-center justify-between pb-3 border-b border-[rgba(255,255,255,0.06)]">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-300">
                     <UserIcon className="w-4 h-4" />
                   </div>
                   <div>
                     <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.ageGroup')}</p>
-                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.ageDescription')}</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">{getTranslation(language, 'settings.ageDescription')}</p>
                   </div>
                 </div>
                 <span className="text-xs font-bold font-mono text-zinc-300">{getTranslation(language, 'settings.adult')}</span>
               </div>
 
-              <div className="flex items-center justify-between pb-3 border-b border-[#1c1c28]">
+              <div className="flex items-center justify-between pb-3 border-b border-[rgba(255,255,255,0.06)]">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <div>
                     <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.accountStatus')}</p>
-                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.accountStatusDescription')}</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">{getTranslation(language, 'settings.accountStatusDescription')}</p>
                   </div>
                 </div>
                 <span className="text-xs font-mono font-bold text-emerald-400">{getTranslation(language, 'settings.healthy')}</span>
@@ -1879,7 +1879,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </div>
                   <div>
                     <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.sqliteTitle')}</p>
-                    <p className="text-[11px] text-[#777] font-mono">{getTranslation(language, 'settings.sqliteDescription')}</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">{getTranslation(language, 'settings.sqliteDescription')}</p>
                   </div>
                 </div>
                 <span className="text-xs font-mono font-bold" style={{ color: accentColor }}>{getTranslation(language, 'settings.active')}</span>
@@ -1894,12 +1894,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navVoice')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.voiceDescription')}
               </p>
             </div>
 
-            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               {/* Master Music Volume Slider */}
               {onVolumeChange !== undefined && (
                 <div className="p-4 rounded-xl bg-[#0e0e14] border border-[#1e1e28] flex flex-col justify-between">
@@ -1924,7 +1924,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           type="button"
                           onClick={() => onVolumeChange(0.8)}
                           title={getTranslation(language, 'settings.resetVolume')}
-                          className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
+                          className="p-1 rounded hover:bg-[#1a1a24] text-zinc-400 hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
                         >
                           <RotateCcw className="w-3 h-3" />
                         </button>
@@ -1964,7 +1964,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           type="button"
                           onClick={() => handleUpdateMicVolume(100)}
                           title={getTranslation(language, 'settings.resetVolume')}
-                          className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
+                          className="p-1 rounded hover:bg-[#1a1a24] text-zinc-400 hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
                         >
                           <RotateCcw className="w-3 h-3" />
                         </button>
@@ -2008,7 +2008,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           type="button"
                           onClick={() => handleUpdateSpeakerVolume(100)}
                           title={getTranslation(language, 'settings.resetVolume')}
-                          className="p-1 rounded hover:bg-[#1a1a24] text-[#777] hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
+                          className="p-1 rounded hover:bg-[#1a1a24] text-zinc-400 hover:text-white text-[10px] font-mono transition-colors cursor-pointer"
                         >
                           <RotateCcw className="w-3 h-3" />
                         </button>
@@ -2049,7 +2049,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <Monitor className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                   <div>
                     <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.shareFps')}</p>
-                    <p className="text-[10px] text-[#777] font-mono mt-0.5">
+                    <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
                       {getTranslation(language, 'settings.shareFpsDescription')}
                     </p>
                   </div>
@@ -2089,7 +2089,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           {currentCrossfade > 0 ? `${currentCrossfade}s` : getTranslation(language, 'settings.crossfadeOff')}
                         </span>
                       </div>
-                      <p className="text-[10px] text-[#777] font-mono mt-0.5">
+                      <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
                         {getTranslation(language, 'settings.crossfadeDesc')}
                       </p>
                     </div>
@@ -2109,7 +2109,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         className={`px-3 py-1.5 rounded-lg border text-xs font-mono font-bold transition-all cursor-pointer ${
                           currentCrossfade === opt.sec
                             ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm'
-                            : 'bg-[#14141c] border-[#22222e] text-[#888] hover:text-white hover:border-[#333344]'
+                            : 'bg-[#14141c] border-[#22222e] text-zinc-400 hover:text-white hover:border-[#333344]'
                         }`}
                       >
                         {opt.label}
@@ -2143,12 +2143,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navDownloads')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.downloadsDescription')}
               </p>
             </div>
 
-            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div 
@@ -2171,7 +2171,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       onClick={onChangeDownloadFolder}
                       className="px-3 py-1.5 rounded-lg bg-[#14141c] hover:bg-[#1e1e28] text-white text-xs font-medium border border-[#22222e] transition-colors cursor-pointer flex items-center gap-1.5"
                     >
-                      <Folder className="w-3.5 h-3.5 text-[#888]" />
+                      <Folder className="w-3.5 h-3.5 text-zinc-400" />
                       <span>{getTranslation(language, 'download.changeFolder')}</span>
                     </button>
                   )}
@@ -2201,20 +2201,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navCloud')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.cloudDescription')}
               </p>
             </div>
 
             {/* Cloud Sync Container */}
-            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               <div className="flex items-center justify-between">
                 <div>
                   <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
                     <Cloud className="w-3.5 h-3.5" style={{ color: accentColor }} />
                     {getTranslation(language, 'settings.cloudSyncLabel')}
                   </label>
-                  <p className="text-[11px] text-[#777] mt-0.5">
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
                     {getTranslation(language, 'settings.cloudSyncDescription')}
                   </p>
                 </div>
@@ -2249,7 +2249,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 <button
                   onClick={() => setShowSupabaseSettings(p => !p)}
-                  className="py-2.5 px-3 rounded-xl bg-[#0c0c12] hover:bg-[#15151e] border border-[#222230] text-xs font-semibold text-[#aaa] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
+                  className="py-2.5 px-3 rounded-xl bg-[#0c0c12] hover:bg-[#111115] border border-[#222230] text-xs font-semibold text-[#aaa] hover:text-white flex items-center gap-1.5 cursor-pointer transition-colors"
                 >
                   <Key className="w-3.5 h-3.5" />
                   <span>{getTranslation(language, 'settings.customSupabase')}</span>
@@ -2274,7 +2274,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <button
                       type="button"
                       onClick={handleCopySql}
-                      className="px-2.5 py-1 rounded bg-[#181824] hover:bg-[#222230] text-[11px] font-mono text-[#aaa] hover:text-white border border-[#2c2c3c] flex items-center gap-1 cursor-pointer transition-colors"
+                      className="px-2.5 py-1 rounded bg-[rgba(255,255,255,0.06)] hover:bg-[#222230] text-[11px] font-mono text-[#aaa] hover:text-white border border-[#2c2c3c] flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       {copiedSql ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                       <span>
@@ -2287,7 +2287,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                   <form onSubmit={handleSaveSupabase} className="space-y-3">
                     <div>
-                      <label className="text-[11px] font-mono text-[#888] block mb-1">
+                      <label className="text-[11px] font-mono text-zinc-400 block mb-1">
                         Supabase Project URL
                       </label>
                       <input
@@ -2304,7 +2304,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </div>
 
                     <div>
-                      <label className="text-[11px] font-mono text-[#888] block mb-1">
+                      <label className="text-[11px] font-mono text-zinc-400 block mb-1">
                         Supabase Anon Public API Key
                       </label>
                       <input
@@ -2325,7 +2325,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         type="button"
                         onClick={handleTestConnection}
                         disabled={isTestingConnection}
-                        className="py-1.5 px-3 rounded-lg bg-[#181824] hover:bg-[#222234] border border-[#2c2c3c] text-white font-mono text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                        className="py-1.5 px-3 rounded-lg bg-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.08)] border border-[#2c2c3c] text-white font-mono text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                       >
                         <RefreshCw className={`w-3 h-3 ${isTestingConnection ? 'animate-spin' : ''}`} />
                         <span>
@@ -2348,13 +2348,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* Cross-Device Backup */}
-            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               <div>
                 <label className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
                   <Database className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   {getTranslation(language, 'profile.backupTitle')}
                 </label>
-                <p className="text-[11px] text-[#777] mt-1 font-mono">
+                <p className="text-[11px] text-zinc-400 mt-1 font-mono">
                   {getTranslation(language, 'profile.backupDesc')}
                 </p>
               </div>
@@ -2374,7 +2374,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
                       {getTranslation(language, 'profile.exportBackup')}
                     </p>
-                    <p className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'settings.exportBackupHint')}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{getTranslation(language, 'settings.exportBackupHint')}</p>
                   </div>
                 </button>
 
@@ -2392,7 +2392,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <p className="text-xs font-bold text-white group-hover:text-white transition-colors">
                       {getTranslation(language, 'profile.importBackup')}
                     </p>
-                    <p className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'settings.importBackupHint')}</p>
+                    <p className="text-[10px] text-zinc-400 font-mono">{getTranslation(language, 'settings.importBackupHint')}</p>
                   </div>
                 </button>
               </div>
@@ -2406,15 +2406,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navSystem')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.systemDescription')}
               </p>
             </div>
 
-            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-5 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               {/* Chế độ phát nền khi tắt màn hình điện thoại (Web / Mobile PWA) */}
               {onToggleBackgroundPlay && (
-                <div className="flex items-center justify-between pb-4 border-b border-[#1c1c28]">
+                <div className="flex items-center justify-between pb-4 border-b border-[rgba(255,255,255,0.06)]">
                   <div className="flex items-center gap-3">
                     <div
                       className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -2428,7 +2428,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           ? 'Phát nhạc nền khi tắt màn hình điện thoại'
                           : 'Background Audio on Screen Lock'}
                       </p>
-                      <p className="text-[11px] text-[#777] mt-0.5">
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
                         {isBackgroundPlayEnabled
                           ? language === 'vi'
                             ? 'Đang bật: Giữ nhạc phát & tự chuyển bài khi khóa màn hình hoặc ẩn trình duyệt'
@@ -2473,7 +2473,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                           {language === 'vi' ? 'Tự động đồng bộ GitHub' : 'Auto-synced with GitHub'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#777] mt-0.5">
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
                         {language === 'vi'
                           ? 'Bản Web luôn cập nhật trực tiếp từ GitHub Cloud, không cần kiểm tra bản vá lỗi thủ công.'
                           : 'Web app updates automatically from GitHub/Vercel—no manual update or patch needed.'}
@@ -2484,7 +2484,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               ) : (
                 <>
                   {/* Launch on Windows startup */}
-                  <div className="flex items-center justify-between pb-4 border-b border-[#1c1c28]">
+                  <div className="flex items-center justify-between pb-4 border-b border-[rgba(255,255,255,0.06)]">
                     <div className="flex items-center gap-3">
                       <div
                         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -2494,7 +2494,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       </div>
                       <div>
                         <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.launchWithWindows')}</p>
-                        <p className="text-[11px] text-[#777] mt-0.5">
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
                           {launchOnStartup
                             ? getTranslation(language, 'settings.launchEnabled')
                             : getTranslation(language, 'settings.launchDisabled')}
@@ -2528,7 +2528,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       </div>
                       <div>
                         <p className="text-xs font-bold text-white">{getTranslation(language, 'settings.trayTitle')}</p>
-                        <p className="text-[11px] text-[#777] mt-0.5">
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
                           {closeToTray 
                             ? getTranslation(language, 'settings.trayEnabled')
                             : getTranslation(language, 'settings.trayDisabled')}
@@ -2550,7 +2550,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </div>
 
                   {/* Version updater */}
-                  <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="pt-4 border-t border-[rgba(255,255,255,0.06)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div 
                         className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -2565,7 +2565,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             {getTranslation(language, 'settings.version')} v{CURRENT_VERSION}
                           </span>
                         </div>
-                        <p className="text-[11px] text-[#777] mt-0.5">
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
                           {getTranslation(language, 'settings.updateDescription')}
                         </p>
                         {updateStatusMsg && (
@@ -2597,7 +2597,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               )}
 
               {/* Spytify Vercel Website Card */}
-              <div className="pt-4 border-t border-[#1c1c28] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="pt-4 border-t border-[rgba(255,255,255,0.06)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div 
                     className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-white/5 border border-white/10"
@@ -2612,7 +2612,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         Vercel Live
                       </span>
                     </div>
-                    <p className="text-[11px] text-[#777] mt-0.5">
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
                       Trang web giới thiệu ứng dụng, tính năng Spytify và tải trực tiếp file cài đặt.
                     </p>
                     <div className="flex items-center gap-2 mt-1">
@@ -2627,7 +2627,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                             setSiteUrl(DEFAULT_WEBSITE_URL);
                             setTempSiteUrl(DEFAULT_WEBSITE_URL);
                           }}
-                          className="text-[9px] text-[#666] hover:text-[#aaa] underline cursor-pointer"
+                          className="text-[9px] text-zinc-500 hover:text-[#aaa] underline cursor-pointer"
                         >
                           (Đặt lại mặc định)
                         </button>
@@ -2661,12 +2661,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navLanguage')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.languageDescription')}
               </p>
             </div>
 
-            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+            <div className={`p-5 rounded-2xl border space-y-4 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {SUPPORTED_LANGUAGES.map((item) => {
                   const isSelected = language === item.code;
@@ -2676,13 +2676,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       onClick={() => onUpdateLanguage && onUpdateLanguage(item.code)}
                       className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-[#15151e] shadow-[0_0_12px_rgba(255,255,255,0.15)] scale-[1.02]'
+                          ? 'bg-[#111115]  scale-[1.02]'
                           : 'bg-[#0d0d12] border-[#1e1e28] hover:border-[#333] hover:bg-[#121218]'
                       }`}
                       style={isSelected ? { borderColor: accentColor } : undefined}
                     >
                       <div className="flex items-center justify-between w-full mb-2">
-                        <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-[#181824] text-white border border-[#2a2a3a]">
+                        <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-[rgba(255,255,255,0.06)] text-white border border-[#2a2a3a]">
                           {item.tag}
                         </span>
                         {isSelected && (
@@ -2693,7 +2693,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         <p className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-[#ccc]'}`}>
                           {item.nativeName}
                         </p>
-                        <p className="text-[10px] text-[#777] truncate font-mono mt-0.5">
+                        <p className="text-[10px] text-zinc-400 truncate font-mono mt-0.5">
                           {item.country}
                         </p>
                       </div>
@@ -2711,7 +2711,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <h2 className={`text-xl font-black ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>
                 {getTranslation(language, 'settings.navHistory')}
               </h2>
-              <p className="text-xs text-[#777] font-mono mt-0.5">
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">
                 {getTranslation(language, 'settings.historyDescription')}
               </p>
             </div>
@@ -2727,7 +2727,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Headphones className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-[11px] text-[#777] font-mono uppercase">{getTranslation(language, 'settings.totalPlays')}</p>
+                    <p className="text-[11px] text-zinc-400 font-mono uppercase">{getTranslation(language, 'settings.totalPlays')}</p>
                     <p className={`text-lg font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.total_played}</p>
                   </div>
                 </div>
@@ -2740,7 +2740,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Heart className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="text-[11px] text-[#777] font-mono uppercase">{getTranslation(language, 'settings.favoritesCount')}</p>
+                    <p className="text-[11px] text-zinc-400 font-mono uppercase">{getTranslation(language, 'settings.favoritesCount')}</p>
                     <p className={`text-lg font-bold mt-0.5 ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.favorite_count}</p>
                   </div>
                 </div>
@@ -2753,7 +2753,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Disc className="w-5 h-5" />
                   </div>
                   <div className="overflow-hidden">
-                    <p className="text-[11px] text-[#777] font-mono uppercase">{getTranslation(language, 'settings.topArtist')}</p>
+                    <p className="text-[11px] text-zinc-400 font-mono uppercase">{getTranslation(language, 'settings.topArtist')}</p>
                     <p className={`text-sm font-bold mt-0.5 truncate ${themeMode === 'light' ? 'text-slate-900' : 'text-white'}`}>{stats.top_artist || getTranslation(language, 'settings.unknown')}</p>
                   </div>
                 </div>
@@ -2761,13 +2761,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             )}
 
             {/* History List */}
-            <div className={`p-5 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#101018] border-[#1e1e2c]'}`}>
-              <div className="flex items-center justify-between pb-2 border-b border-[#1c1c28]">
+            <div className={`p-5 rounded-2xl border space-y-3 ${themeMode === 'light' ? 'bg-white border-[#e2e8f0]' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
+              <div className="flex items-center justify-between pb-2 border-b border-[rgba(255,255,255,0.06)]">
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   {getTranslation(language, 'settings.recentTracks')}
                 </h3>
-                <span className="text-[10px] text-[#777] font-mono">{getTranslation(language, 'settings.replayHint')}</span>
+                <span className="text-[10px] text-zinc-400 font-mono">{getTranslation(language, 'settings.replayHint')}</span>
               </div>
 
               {history.length === 0 ? (
@@ -2830,7 +2830,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                               <p className="text-xs font-semibold text-white truncate group-hover:text-white transition-colors">
                                 {h.track_title}
                               </p>
-                              <p className="text-[11px] text-[#777] truncate font-mono mt-0.5">{h.artist} • <span className="uppercase text-[10px] text-zinc-400">{h.source}</span></p>
+                              <p className="text-[11px] text-zinc-400 truncate font-mono mt-0.5">{h.artist} • <span className="uppercase text-[10px] text-zinc-400">{h.source}</span></p>
                             </div>
                           </div>
                           <span className="text-[10px] text-[#555] font-mono flex-shrink-0">
@@ -2850,7 +2850,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {show2FaModal && currentUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#0e0e14] border border-[#222230] rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#1c1c28] pb-3">
+            <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] pb-3">
               <div className="flex items-center gap-2.5">
                 <div 
                   className="w-8 h-8 rounded-lg flex items-center justify-center border"
@@ -2932,7 +2932,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <button
                       type="button"
                       onClick={handleCopySecret}
-                      className="px-2.5 py-1 rounded-lg bg-[#181824] hover:bg-[#222232] border border-[#303044] text-[11px] text-white flex items-center gap-1 cursor-pointer transition-colors"
+                      className="px-2.5 py-1 rounded-lg bg-[rgba(255,255,255,0.06)] hover:bg-[#222232] border border-[#303044] text-[11px] text-white flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       {copiedSecret ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedSecret ? 'Đã sao chép' : 'Sao chép'}</span>
@@ -2975,7 +2975,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </p>
                 )}
 
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1c1c28]">
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-[rgba(255,255,255,0.06)]">
                   <button
                     type="button"
                     onClick={() => setShow2FaModal(false)}
@@ -3019,7 +3019,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               Khi tắt xác thực 2 lớp, tài khoản của bạn sẽ không còn được bảo vệ bởi mã từ ứng dụng <strong className="text-white">Google Authenticator</strong>. Bất kỳ ai có mật khẩu đều có thể đăng nhập hoặc đặt lại mật khẩu trực tiếp.
             </p>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1c1c28]">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[rgba(255,255,255,0.06)]">
               <button
                 type="button"
                 onClick={() => setShowDisable2FaConfirmModal(false)}
@@ -3043,7 +3043,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {showChangePasswordModal && currentUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-[#0e0e14] border border-[#222230] rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-[#1c1c28] pb-3">
+            <div className="flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] pb-3">
               <div className="flex items-center gap-2.5">
                 <div 
                   className="w-8 h-8 rounded-lg flex items-center justify-center border"
@@ -3194,7 +3194,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1c1c28]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[rgba(255,255,255,0.06)]">
                 <button
                   type="button"
                   onClick={() => setShowChangePasswordModal(false)}

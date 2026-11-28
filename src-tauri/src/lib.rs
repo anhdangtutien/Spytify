@@ -772,64 +772,52 @@ async fn get_related_tracks(title: String, artist: String) -> Result<Vec<SearchR
         }
     }
 
-    // 1. Fetch diverse related music:
-    // Focus strongly on the actual song's genre and artist, avoiding obscure cover channel names
+    // 1. Fetch related music matching the artist and genre:
     let has_valid_artist = !clean_artist.is_empty() 
         && clean_artist.to_lowercase() != "unknown" 
         && !clean_artist.to_lowercase().contains("topic")
         && !clean_artist.to_lowercase().contains("vevo")
         && !clean_artist.to_lowercase().contains("records");
 
-    let yt_query1 = if has_valid_artist {
-        format!("music like {} {} top hits official audio", clean_artist, core_title)
+    // Query 1: Other top tracks by the SAME ARTIST (User priority: same artist!)
+    let yt_query_artist = if has_valid_artist {
+        format!("{} songs official audio", clean_artist)
     } else {
-        format!("songs like {} hits official audio", core_title)
+        format!("{} songs official audio", core_title)
     };
 
-    let yt_query2 = if has_valid_artist {
-        format!("{} top tracks official music video audio", clean_artist)
+    // Query 2: YouTube Music song radio / similar genre tracks
+    let yt_query_genre = if has_valid_artist {
+        format!("{} {} radio mix official", clean_artist, core_title)
     } else {
-        format!("{} similar music hits playlist", core_title)
+        format!("{} song radio official audio", core_title)
     };
 
     let sc_query = if has_valid_artist {
-        format!("{} {} remix hits", clean_artist, core_title)
-    } else {
-        format!("{} remix hits", core_title)
-    };
-
-    let audius_query = if has_valid_artist {
-        clean_artist.to_string()
+        format!("{} {}", clean_artist, core_title)
     } else {
         core_title.clone()
     };
 
     // Fast-path: YouTube is our primary provider (~200ms). Secondary sources get a 1500ms timeout.
-    let yt_fut1 = tokio::time::timeout(tokio::time::Duration::from_millis(3000), sources::youtube::search_youtube(&yt_query1));
-    let yt_fut2 = tokio::time::timeout(tokio::time::Duration::from_millis(3000), sources::youtube::search_youtube(&yt_query2));
+    let yt_fut_artist = tokio::time::timeout(tokio::time::Duration::from_millis(3000), sources::youtube::search_youtube(&yt_query_artist));
+    let yt_fut_genre = tokio::time::timeout(tokio::time::Duration::from_millis(3000), sources::youtube::search_youtube(&yt_query_genre));
     let sc_fut = tokio::time::timeout(tokio::time::Duration::from_millis(1500), sources::soundcloud::search_soundcloud(&sc_query));
-    let audius_fut = tokio::time::timeout(tokio::time::Duration::from_millis(1500), sources::audius::search_audius(&audius_query));
 
-    let (yt_res1, yt_res2, sc_res, audius_res) = tokio::join!(yt_fut1, yt_fut2, sc_fut, audius_fut);
+    let (yt_res_artist, yt_res_genre, sc_res) = tokio::join!(yt_fut_artist, yt_fut_genre, sc_fut);
 
-    let mut yt_list: Vec<SearchResult> = Vec::new();
-    if let Ok(Ok(yt1)) = yt_res1 { yt_list.extend(yt1); }
-    if let Ok(Ok(yt2)) = yt_res2 { yt_list.extend(yt2); }
+    let mut artist_tracks: Vec<SearchResult> = Vec::new();
+    if let Ok(Ok(tracks)) = yt_res_artist { artist_tracks.extend(tracks); }
+
+    let mut genre_tracks: Vec<SearchResult> = Vec::new();
+    if let Ok(Ok(tracks)) = yt_res_genre { genre_tracks.extend(tracks); }
 
     let sc_list: Vec<SearchResult> = match sc_res {
         Ok(Ok(sc)) => sc,
         _ => Vec::new(),
     };
 
-    let audius_list: Vec<SearchResult> = match audius_res {
-        Ok(Ok(audius)) => audius,
-        _ => Vec::new(),
-    };
-
     // 2. Strict Duration and Same-Song Filter:
-    // - Eliminate tracks that are just other versions/remixes of the SAME song (e.g. "Closer")
-    // - Eliminate audio longer than 10 minutes (600s)
-    // - Eliminate compilations / 1-hour / livestream tracks
     let long_indicators = [
         "1 hour", "1hour", "1 hr", "2 hour", "2hour", "3 hour", "10 hour",
         "full album", "compilation", "mixtape", "nonstop", "continuous mix",
@@ -838,10 +826,11 @@ async fn get_related_tracks(title: String, artist: String) -> Result<Vec<SearchR
 
     let filter_track = |r: &SearchResult| -> bool {
         let t = r.title.to_lowercase();
-        if core_lower.len() >= 3 && t.contains(&core_lower) {
+        // Skip if exact same title as current playing song
+        if core_lower.len() >= 3 && t == core_lower {
             return false;
         }
-        if r.duration_secs > 600 {
+        if r.duration_secs > 600 || r.duration_secs < 45 {
             return false;
         }
         if long_indicators.iter().any(|&k| t.contains(k)) {
@@ -850,26 +839,36 @@ async fn get_related_tracks(title: String, artist: String) -> Result<Vec<SearchR
         true
     };
 
-    yt_list.retain(filter_track);
-    let mut sc_filtered = sc_list;
-    sc_filtered.retain(filter_track);
-    let mut audius_filtered = audius_list;
-    audius_filtered.retain(filter_track);
+    artist_tracks.retain(filter_track);
+    genre_tracks.retain(filter_track);
 
-    // Multi-source round-robin interleaving:
-    // Guarantees rich variety across YouTube, SoundCloud, and Audius 320K
+    // Keep SoundCloud only if it genuinely matches the artist or song, avoiding random noise
+    let sc_filtered: Vec<SearchResult> = sc_list
+        .into_iter()
+        .filter(filter_track)
+        .filter(|r| {
+            let a_low = r.artist.to_lowercase();
+            let t_low = r.title.to_lowercase();
+            let artist_low = clean_artist.to_lowercase();
+            !artist_low.is_empty() && (a_low.contains(&artist_low) || t_low.contains(&artist_low) || t_low.contains(&core_lower))
+        })
+        .collect();
+
+    // Smart Interleaving:
+    // Alternate same-artist hits with same-genre discovery tracks:
+    // [Artist Song 1, Genre Song 1, Artist Song 2, Genre Song 2, SoundCloud Remix, ...]
     let mut combined: Vec<SearchResult> = Vec::new();
-    let max_len = yt_list.len().max(sc_filtered.len()).max(audius_filtered.len());
+    let max_len = artist_tracks.len().max(genre_tracks.len()).max(sc_filtered.len());
 
     for i in 0..max_len {
-        if i < yt_list.len() {
-            combined.push(yt_list[i].clone());
+        if i < artist_tracks.len() {
+            combined.push(artist_tracks[i].clone());
+        }
+        if i < genre_tracks.len() {
+            combined.push(genre_tracks[i].clone());
         }
         if i < sc_filtered.len() {
             combined.push(sc_filtered[i].clone());
-        }
-        if i < audius_filtered.len() {
-            combined.push(audius_filtered[i].clone());
         }
     }
 

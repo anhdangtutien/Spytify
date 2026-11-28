@@ -242,6 +242,17 @@ let spatialRoomFilterL: BiquadFilterNode | null = null;
 let spatialRoomFilterR: BiquadFilterNode | null = null;
 let spatialRoomGain: GainNode | null = null;
 
+// Real-Time Karaoke Vocal Remover (Center-Channel Phase Subtraction & Bass Retention)
+let vocalRemoverDryGain: GainNode | null = null;
+let vocalRemoverWetGain: GainNode | null = null;
+let vocalRemoverSplitter: ChannelSplitterNode | null = null;
+let vocalRemoverMerger: ChannelMergerNode | null = null;
+let vocalInverterR: GainNode | null = null;
+let vocalDiffL: GainNode | null = null;
+let vocalDiffR: GainNode | null = null;
+let vocalBassFilter: BiquadFilterNode | null = null;
+let isVocalCutActive = false;
+
 const connectedSources = new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>();
 
 export function getOrCreateAudioContext(): AudioContext | null {
@@ -267,7 +278,15 @@ export function ensureAudioContextRunning(): void {
 export function initAudioGraph(): boolean {
   const ctx = getOrCreateAudioContext();
   if (!ctx) return false;
-  if (filterNodes.length === EQ_FREQUENCIES.length && preampNode && masterGainNode && spatialDryGain && spatialWetGain) {
+  if (
+    filterNodes.length === EQ_FREQUENCIES.length &&
+    preampNode &&
+    masterGainNode &&
+    spatialDryGain &&
+    spatialWetGain &&
+    vocalRemoverDryGain &&
+    vocalRemoverWetGain
+  ) {
     return true;
   }
 
@@ -409,8 +428,59 @@ export function initAudioGraph(): boolean {
     spatialMerger.connect(spatialWetGain);
     spatialWetGain.connect(masterGainNode);
 
-    // Master -> Analyser -> Destination
-    masterGainNode.connect(analyserNode);
+    // --- Real-Time Karaoke Vocal Cut Processor ---
+    vocalRemoverDryGain = ctx.createGain();
+    vocalRemoverDryGain.gain.value = isVocalCutActive ? 0.0 : 1.0;
+
+    vocalRemoverWetGain = ctx.createGain();
+    vocalRemoverWetGain.gain.value = isVocalCutActive ? 1.0 : 0.0;
+
+    vocalRemoverSplitter = ctx.createChannelSplitter(2);
+    vocalRemoverMerger = ctx.createChannelMerger(2);
+
+    // Invert Right channel to perform (L - R) center cancellation
+    vocalInverterR = ctx.createGain();
+    vocalInverterR.gain.value = -1.0;
+
+    // Normalization & separation gain
+    vocalDiffL = ctx.createGain();
+    vocalDiffL.gain.value = 0.85;
+
+    vocalDiffR = ctx.createGain();
+    vocalDiffR.gain.value = -1.0; // Invert diff for stereo right channel (R - L)
+
+    // Bass Retention Filter (< 160Hz) to prevent losing kick drum & bassline
+    vocalBassFilter = ctx.createBiquadFilter();
+    vocalBassFilter.type = 'lowpass';
+    vocalBassFilter.frequency.value = 160;
+
+    // Connect input to dry path & vocal remover splitter
+    masterGainNode.connect(vocalRemoverDryGain);
+    masterGainNode.connect(vocalRemoverSplitter);
+
+    // L -> diffL, R -> inverterR -> diffL (L - R)
+    vocalRemoverSplitter.connect(vocalDiffL, 0);
+    vocalRemoverSplitter.connect(vocalInverterR, 1);
+    vocalInverterR.connect(vocalDiffL);
+
+    // Preserve stereo bass in mono
+    vocalRemoverSplitter.connect(vocalBassFilter, 0);
+    vocalRemoverSplitter.connect(vocalBassFilter, 1);
+
+    // Left channel output: (L - R) + Bass
+    vocalDiffL.connect(vocalRemoverMerger, 0, 0);
+    vocalBassFilter.connect(vocalRemoverMerger, 0, 0);
+
+    // Right channel output: (R - L) + Bass
+    vocalDiffL.connect(vocalDiffR);
+    vocalDiffR.connect(vocalRemoverMerger, 0, 1);
+    vocalBassFilter.connect(vocalRemoverMerger, 0, 1);
+
+    vocalRemoverMerger.connect(vocalRemoverWetGain);
+
+    // Dry & Wet outputs -> Analyser -> Destination
+    vocalRemoverDryGain.connect(analyserNode);
+    vocalRemoverWetGain.connect(analyserNode);
     analyserNode.connect(ctx.destination);
 
     // Initialize with saved state
@@ -566,4 +636,24 @@ export function getOrCreateMasterAudioStream(): MediaStream | null {
     }
   }
   return broadcastMediaStreamDest.stream;
+}
+
+export function isVocalCutEnabled(): boolean {
+  return isVocalCutActive;
+}
+
+export function setVocalCutEnabled(enabled: boolean): boolean {
+  isVocalCutActive = enabled;
+  const ctx = getOrCreateAudioContext();
+  if (!ctx) return false;
+  initAudioGraph();
+  if (vocalRemoverDryGain && vocalRemoverWetGain) {
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const now = ctx.currentTime;
+    vocalRemoverDryGain.gain.cancelScheduledValues(now);
+    vocalRemoverWetGain.gain.cancelScheduledValues(now);
+    vocalRemoverDryGain.gain.setValueAtTime(enabled ? 0.0 : 1.0, now);
+    vocalRemoverWetGain.gain.setValueAtTime(enabled ? 1.0 : 0.0, now);
+  }
+  return isVocalCutActive;
 }

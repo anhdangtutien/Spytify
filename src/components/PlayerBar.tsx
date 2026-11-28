@@ -1,16 +1,17 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   Play, Pause, SkipBack, SkipForward, Shuffle, Repeat,
   Volume2, VolumeX, Heart, Music, Sparkles, FolderPlus, Radio, Cast,
   Download, Check, Loader2, Moon, Clock, Minus, Plus, Eye, EyeOff,
   ChevronDown, ChevronUp, Disc, Activity, Sliders, SlidersHorizontal, Headphones, Tv, Pin,
-  Laptop, Smartphone, AudioLines, Mic2, ListMusic
+  Laptop, Smartphone, AudioLines, Mic2, ListMusic, Maximize2
 } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
 import { getContrastTextColor, optimizeThumbnailUrl, handleImageError } from '../utils/trackUtils';
 import { LanguageCode, getTranslation } from '../locales/i18n';
 import { MarqueeText } from './MarqueeText';
+import { fetchLyrics, LyricsData } from '../services/lyricsService';
 
 interface PlayerBarProps {
   currentTrack: Track | null;
@@ -50,8 +51,6 @@ interface PlayerBarProps {
   onUpdateCrossfadeDuration?: (durationSecs: number) => void;
   isCrossfading?: boolean;
   language?: LanguageCode;
-  isNextTrackPopupEnabled?: boolean;
-  onToggleNextTrackPopupEnabled?: () => void;
   isCompact?: boolean;
   isMinimized?: boolean;
   onMinimize?: () => void;
@@ -72,8 +71,11 @@ interface PlayerBarProps {
   onToggleConnectClient?: () => void;
   onOpenConnectModal?: () => void;
   onOpenKaraoke?: () => void;
+  isKaraokeOpen?: boolean;
   onOpenQueue?: () => void;
+  isQueueOpen?: boolean;
   onToggleMiniWidget?: () => void;
+  isPinned?: boolean;
 }
 
 export const PlayerBar: React.FC<PlayerBarProps> = ({
@@ -94,8 +96,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onUpdateCrossfadeDuration,
   isCrossfading = false,
   language = 'vi',
-  isNextTrackPopupEnabled = true,
-  onToggleNextTrackPopupEnabled,
   isCompact = false,
   isMinimized = false,
   onMinimize,
@@ -116,8 +116,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
   onToggleConnectClient,
   onOpenConnectModal,
   onOpenKaraoke,
+  isKaraokeOpen = false,
   onOpenQueue,
+  isQueueOpen = false,
   onToggleMiniWidget,
+  isPinned = false,
 }) => {
   const [prevVolume, setPrevVolume] = useState(volume || 0.8);
   const [isDragging, setIsDragging] = useState(false);
@@ -132,6 +135,105 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     const nextVal = typeof val === 'function' ? val(isMobileSheetOpen) : val;
     setInternalIsMobileSheetOpen(nextVal);
     onToggleMobilePlayer?.(nextVal);
+  };
+
+  // Mobile Synced Lyrics state & real-time sync
+  const [mobileLyrics, setMobileLyrics] = useState<LyricsData | null>(null);
+  const [isLoadingMobileLyrics, setIsLoadingMobileLyrics] = useState(false);
+  const [lyricsSyncOffset, setLyricsSyncOffset] = useState<number>(0);
+  const mobileLyricsContainerRef = useRef<HTMLDivElement | null>(null);
+  const mobileActiveLineRef = useRef<HTMLDivElement | null>(null);
+  const [isUserScrollingMobileLyrics, setIsUserScrollingMobileLyrics] = useState(false);
+  const userScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync lyrics offset from localStorage for currentTrack
+  useEffect(() => {
+    if (!currentTrack) {
+      setLyricsSyncOffset(0);
+      return;
+    }
+    const saved = localStorage.getItem(`spytify_lyrics_offset_${currentTrack.id}`);
+    if (saved !== null) {
+      const parsed = parseFloat(saved);
+      setLyricsSyncOffset(isNaN(parsed) ? 0 : parsed);
+    } else {
+      setLyricsSyncOffset(0);
+    }
+  }, [currentTrack?.id]);
+
+  // Fetch lyrics when mobile sheet is open (or opened) and currentTrack changes
+  const fetchMobileLyrics = useCallback(async () => {
+    if (!currentTrack) {
+      setMobileLyrics(null);
+      return;
+    }
+    setIsLoadingMobileLyrics(true);
+    try {
+      const data = await fetchLyrics(currentTrack.title, currentTrack.artist, currentTrack.duration_secs);
+      setMobileLyrics(data);
+    } catch (e) {
+      console.warn('Failed to fetch mobile lyrics:', e);
+      setMobileLyrics(null);
+    } finally {
+      setIsLoadingMobileLyrics(false);
+    }
+  }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.duration_secs]);
+
+  useEffect(() => {
+    if (isMobileSheetOpen && currentTrack) {
+      fetchMobileLyrics();
+    }
+  }, [isMobileSheetOpen, currentTrack?.id, fetchMobileLyrics]);
+
+  // Active lyric line index based on currentTime + lyricsSyncOffset
+  const activeMobileLyricIndex = useMemo(() => {
+    if (!mobileLyrics || !mobileLyrics.synced || !mobileLyrics.lines.length) return -1;
+    const lines = mobileLyrics.lines;
+    const leadTime = currentTime + lyricsSyncOffset + 0.15;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (leadTime >= lines[i].time) {
+        return i;
+      }
+    }
+    return -1;
+  }, [mobileLyrics, currentTime, lyricsSyncOffset]);
+
+  // Auto-scroll active lyric line to center of mobile lyrics container
+  useEffect(() => {
+    if (isUserScrollingMobileLyrics || activeMobileLyricIndex < 0 || !mobileActiveLineRef.current) return;
+    try {
+      mobileActiveLineRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    } catch {}
+  }, [activeMobileLyricIndex, isUserScrollingMobileLyrics]);
+
+  const handleMobileLyricsScroll = () => {
+    setIsUserScrollingMobileLyrics(true);
+    if (userScrollTimeoutRef.current) {
+      clearTimeout(userScrollTimeoutRef.current);
+    }
+    userScrollTimeoutRef.current = setTimeout(() => {
+      setIsUserScrollingMobileLyrics(false);
+    }, 2800);
+  };
+
+  const handleAdjustLyricsOffset = (delta: number) => {
+    if (!currentTrack) return;
+    const nextOffset = Math.round((lyricsSyncOffset + delta) * 10) / 10;
+    setLyricsSyncOffset(nextOffset);
+    if (nextOffset === 0) {
+      localStorage.removeItem(`spytify_lyrics_offset_${currentTrack.id}`);
+    } else {
+      localStorage.setItem(`spytify_lyrics_offset_${currentTrack.id}`, nextOffset.toString());
+    }
+  };
+
+  const handleResetLyricsOffset = () => {
+    if (!currentTrack) return;
+    setLyricsSyncOffset(0);
+    localStorage.removeItem(`spytify_lyrics_offset_${currentTrack.id}`);
   };
 
   const formatTimerRemaining = () => {
@@ -288,8 +390,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             }
             className={`text-[9px] font-bold px-2 py-0.5 rounded-lg inline-flex items-center gap-1 font-mono whitespace-nowrap shrink-0 transition-all cursor-pointer ${
               showMv
-                ? 'bg-rose-500/20 text-rose-300 border border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.35)] ring-1 ring-rose-500/50 hover:bg-rose-500/30'
-                : 'bg-[#14141a] hover:bg-[#1f1f28] text-[#ff4e6b] hover:text-white border border-[#ff4e6b]/40 hover:border-[#ff4e6b] shadow-sm'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                : 'bg-[#14141a] hover:bg-[#1f1f28] text-[#ff4e6b] hover:text-white border border-[#ff4e6b]/40 hover:border-[#ff4e6b]'
             }`}
           >
             {showMv ? (
@@ -356,7 +458,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
   return (
     <>
-    <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-50 relative transition-all duration-300 ease-in-out flex-shrink-0 ${
+    <footer className={`bg-[#060608] border-t border-[#14141a] select-none z-[110] relative transition-all duration-300 ease-in-out flex-shrink-0 ${
       isCompact ? 'h-[52px] px-2 sm:px-3 flex items-center justify-between' : 'h-22 px-3 sm:px-6 flex items-center justify-between'
     }`}>
       {/* Sleek Top-Edge Progress Bar in Compact Mode */}
@@ -443,7 +545,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               <button
                 onClick={onToggleFavorite}
                 className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                  isFavorite ? 'text-[var(--accent-color, #ff2a55)] drop-shadow-[0_0_8px_var(--accent-color, #ff2a55)]' : 'text-[#555] hover:text-white'
+                  isFavorite ? 'text-[var(--accent-color,#ff2a55)]' : 'text-[#555] hover:text-white'
                 }`}
                 title={isFavorite ? getTranslation(language, 'toast.favoriteRemoved') : getTranslation(language, 'toast.favoriteAdded')}
               >
@@ -500,17 +602,17 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         )}
       </div>
 
-      {/* Center: Controls + Spy Seekbar — Left-aligned on small screens, Dead Center on xl+ */}
-      <div className={`flex items-center justify-center shrink-0 z-20 pointer-events-auto transition-all ml-1 sm:ml-4 xl:ml-0 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2 ${
+      {/* Center: Controls + Spy Seekbar — Left-aligned when window is shrunk narrow (< lg), Dead Center on lg+ */}
+      <div className={`flex items-center justify-center shrink-0 z-20 pointer-events-auto transition-all ml-1 sm:ml-2 lg:ml-0 lg:absolute lg:left-1/2 lg:top-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 ${
         isCompact 
-          ? 'gap-1.5 sm:gap-3.5 whitespace-nowrap' 
-          : 'flex-col gap-1.5 w-full max-w-[580px] px-2'
+          ? 'gap-1.5 sm:gap-3 whitespace-nowrap' 
+          : 'flex-col gap-1.5 w-full max-w-[380px] lg:max-w-[480px] xl:max-w-[580px] px-2'
       }`}>
         <div className={`flex items-center ${isCompact ? 'gap-2 sm:gap-3.5' : 'gap-6'}`}>
           <button
             onClick={onToggleShuffle}
             title={getTranslation(language, 'player.shuffle')}
-            style={isShuffle ? { color: accentColor, filter: `drop-shadow(0 0 8px ${accentColor}80)` } : undefined}
+            style={isShuffle ? { color: accentColor } : undefined}
             className={`hidden sm:inline-flex transition-colors cursor-pointer ${
               isShuffle ? '' : 'text-[#666] hover:text-white'
             }`}
@@ -601,13 +703,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             onClick={onTogglePlay}
             disabled={!currentTrack}
             title={isPlaying ? getTranslation(language, 'player.pause') : getTranslation(language, 'player.play')}
-            style={{
-              backgroundColor: currentTrack ? accentColor : (themeMode === 'light' ? '#e2e8f0' : '#1c1c24'),
-              color: currentTrack ? getContrastTextColor(accentColor) : (themeMode === 'light' ? '#64748b' : '#64748b'),
-              boxShadow: currentTrack ? `0 0 16px ${accentColor}50` : (themeMode === 'light' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'),
-              borderColor: currentTrack ? 'transparent' : (themeMode === 'light' ? '#cbd5e1' : '#2a2a38'),
-            }}
-            className={`${isCompact ? 'w-8 h-8' : 'w-10 h-10'} rounded-full flex items-center justify-center transition-all cursor-pointer hover:scale-105 active:scale-95 disabled:cursor-not-allowed border`}
+            className={`${isCompact ? 'w-8 h-8' : 'w-10 h-10'} rounded-full flex items-center justify-center transition-transform shadow-md ${
+              currentTrack
+                ? 'bg-white text-black hover:scale-105 active:scale-95 cursor-pointer'
+                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
+            }`}
           >
             {isPlaying ? (
               <Pause className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'} fill-current`} />
@@ -720,54 +820,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             )}
           </button>
 
-          {/* AI Auto-Recommend Next Track (Endless Radio) */}
-          {(onCycleRecommendMode || onToggleAutoRecommend) && (
-            <button
-              onClick={onCycleRecommendMode || onToggleAutoRecommend}
-              title={
-                recommendMode === 'fresh'
-                  ? '🌟 ' + getTranslation(language, 'player.modeFresh')
-                  : recommendMode === 'mix'
-                  ? '🎵 ' + getTranslation(language, 'player.modeRecommend')
-                  : '⏹ ' + getTranslation(language, 'player.repeatOff')
-              }
-              className={`hidden sm:flex px-2 py-1 rounded-lg transition-all cursor-pointer relative items-center gap-1.5 border font-mono text-[10px] font-bold ${
-                recommendMode === 'fresh'
-                  ? 'shadow-sm'
-                  : recommendMode === 'mix'
-                  ? 'shadow-sm'
-                  : 'text-[#666] hover:text-white border-transparent'
-              }`}
-              style={{
-                color: recommendMode !== 'off' ? accentColor : undefined,
-                backgroundColor: recommendMode === 'fresh' ? `${accentColor}20` : recommendMode === 'mix' ? `${accentColor}10` : 'transparent',
-                borderColor: recommendMode !== 'off' ? `${accentColor}40` : 'transparent',
-              }}
-            >
-              {recommendMode === 'fresh' ? (
-                <>
-                  <Radio className="w-3.5 h-3.5" />
-                  <span className="leading-none">{getTranslation(language, 'player.modeFresh').split(' ')[0]}</span>
-                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                    <span 
-                      className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-                      style={{ backgroundColor: accentColor }}
-                    />
-                    <span 
-                      className="relative inline-flex rounded-full h-2 w-2"
-                      style={{ backgroundColor: accentColor }}
-                    />
-                  </span>
-                </>
-              ) : recommendMode === 'mix' ? (
-                <>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span className="leading-none">MIX</span>
-                </>
-              ) : (
-                <Sparkles className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />
-              )}
-            </button>
+          {/* Compact Mode Inline Time Display directly beside Repeat Button */}
+          {isCompact && (
+            <div className="hidden sm:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none ml-1.5 sm:ml-2 shrink-0 whitespace-nowrap tabular-nums">
+              <span className="font-semibold text-white/90">{formatTime(displayTime)}</span>
+              <span className="text-[#555]">/</span>
+              <span>{isLive ? 'LIVE' : formatTime(effectiveDuration)}</span>
+            </div>
           )}
         </div>
 
@@ -903,40 +962,6 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
 
         {/* Desktop Utils Group */}
         <div className={`hidden sm:flex items-center ${isCompact ? 'gap-1 sm:gap-1.5' : 'gap-2 sm:gap-3.5'}`}>
-          {/* Compact Mode Inline Time Display (Hidden on < xl to maximize space for core controls & YT stream) */}
-          {isCompact && (
-            <div className="hidden xl:flex items-center gap-1 font-mono text-[10px] text-[#8e8e9f] select-none mr-1 shrink-0 whitespace-nowrap">
-              <span className="font-semibold text-white/90">{formatTime(displayTime)}</span>
-              <span className="text-[#555]">/</span>
-              <span>{isLive ? 'LIVE' : formatTime(effectiveDuration)}</span>
-            </div>
-          )}
-
-          {/* Next Track Preview / Smart DJ Auto Suggestion Toggle */}
-        {onToggleNextTrackPopupEnabled && (
-          <button
-            onClick={onToggleNextTrackPopupEnabled}
-            title={
-              isNextTrackPopupEnabled
-                ? (language === 'vi' ? 'Smart DJ • Gợi ý bài tiếp theo (Đang bật)' : 'Smart DJ • Next Track Popup (Enabled)')
-                : (language === 'vi' ? 'Smart DJ • Bật gợi ý bài tiếp theo' : 'Smart DJ • Enable Next Track Popup')
-            }
-            style={isNextTrackPopupEnabled ? {
-              color: accentColor,
-              backgroundColor: `${accentColor}18`,
-              borderColor: `${accentColor}50`,
-              boxShadow: `0 0 10px ${accentColor}30`,
-            } : undefined}
-            className={`hidden 2xl:flex p-1.5 rounded-md transition-all cursor-pointer border items-center justify-center shrink-0 ${
-              isNextTrackPopupEnabled
-                ? ''
-                : 'text-[#666] hover:text-white border-transparent'
-            }`}
-          >
-            <AudioLines className={`w-4 h-4 ${isNextTrackPopupEnabled ? '' : 'opacity-50'}`} />
-          </button>
-        )}
-
         {/* Unified Audio Settings (Equalizer, Crossfade, Visualizer & Sleep Timer) */}
         {onOpenEqualizer && (
           <button
@@ -988,19 +1013,35 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             type="button"
             onClick={onOpenKaraoke}
             title={language === 'vi' ? 'Karaoke & Lời bài hát đồng bộ' : 'Karaoke & Synced Lyrics'}
-            className="hidden lg:flex p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent items-center justify-center shrink-0"
+            style={isKaraokeOpen ? {
+              color: accentColor,
+              backgroundColor: `${accentColor}20`,
+              borderColor: `${accentColor}50`,
+              boxShadow: `0 0 10px ${accentColor}30`,
+            } : undefined}
+            className={`hidden sm:flex p-1.5 rounded-md transition-all cursor-pointer border items-center justify-center shrink-0 ${
+              isKaraokeOpen ? '' : 'text-[#666] hover:text-white hover:bg-white/5 border-transparent'
+            }`}
           >
             <Mic2 className="w-4 h-4" />
           </button>
         )}
 
-        {/* Playback Queue */}
+        {/* Playback Queue (Slide-in Drawer) */}
         {onOpenQueue && (
           <button
             type="button"
             onClick={onOpenQueue}
             title={language === 'vi' ? 'Hàng đợi phát nhạc' : 'Playing Queue'}
-            className="p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent flex items-center justify-center shrink-0"
+            style={isQueueOpen ? {
+              color: accentColor,
+              backgroundColor: `${accentColor}20`,
+              borderColor: `${accentColor}50`,
+              boxShadow: `0 0 10px ${accentColor}30`,
+            } : undefined}
+            className={`p-1.5 rounded-md transition-all cursor-pointer border items-center justify-center shrink-0 ${
+              isQueueOpen ? '' : 'text-[#666] hover:text-white hover:bg-white/5 border-transparent'
+            }`}
           >
             <ListMusic className="w-4 h-4" />
           </button>
@@ -1012,67 +1053,17 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
             type="button"
             onClick={onToggleMiniWidget}
             title={language === 'vi' ? 'Mini Player nổi (Luôn ghim trên cùng màn hình)' : 'Floating Mini Player (Always on Top)'}
-            className="p-1.5 rounded-md transition-all cursor-pointer border text-[#666] hover:text-white hover:bg-white/5 border-transparent flex items-center justify-center shrink-0"
-          >
-            <Pin className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* Spytify Connect (Desktop Broadcaster via LiveKit & Supabase) */}
-        {onToggleConnectHost && (
-          <button
-            type="button"
-            onClick={onToggleConnectHost}
-            title={
-              isConnectHostActive
-                ? (language === 'vi' ? 'Trạm phát Spytify Connect đang bật (Phát lên iPhone)' : 'Spytify Connect Broadcaster is Active (Streaming to iPhone)')
-                : (language === 'vi' ? 'Bật Spytify Connect (Phát lên iPhone)' : 'Start Spytify Connect (Stream to iPhone)')
-            }
-            style={isConnectHostActive ? {
-              color: '#10b981',
-              backgroundColor: '#10b98118',
-              borderColor: '#10b98150',
-              boxShadow: '0 0 10px rgba(16, 185, 129, 0.3)',
+            style={isPinned ? {
+              color: '#f59e0b',
+              backgroundColor: '#f59e0b20',
+              borderColor: '#f59e0b50',
+              boxShadow: '0 0 10px rgba(245, 158, 11, 0.35)',
             } : undefined}
             className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
-              isConnectHostActive ? '' : 'text-[#666] hover:text-white border-transparent'
+              isPinned ? '' : 'text-zinc-300 hover:text-white hover:bg-white/10 border-transparent'
             }`}
           >
-            <Cast className={`w-4 h-4 ${isConnectHostActive ? 'text-emerald-400' : ''}`} />
-          </button>
-        )}
-
-        {/* Spytify Connect (Mobile Client Listener & Remote) — Only render on Web/Mobile when not Host */}
-        {!onToggleConnectHost && (onToggleConnectClient || onOpenConnectModal) && (
-          <button
-            type="button"
-            onClick={onOpenConnectModal || onToggleConnectClient}
-            title={
-              playbackTarget === 'desktop'
-                ? (language === 'vi' ? 'Đang điều khiển Spytify Desktop' : 'Controlling Spytify Desktop')
-                : (language === 'vi' ? 'Thiết bị phát nhạc (Connect)' : 'Connect Devices')
-            }
-            style={isConnectClientActive ? {
-              color: playbackTarget === 'desktop' ? '#38bdf8' : '#10b981',
-              backgroundColor: playbackTarget === 'desktop' ? '#38bdf820' : '#10b98120',
-              borderColor: playbackTarget === 'desktop' ? '#38bdf860' : '#10b98160',
-              boxShadow: playbackTarget === 'desktop' ? '0 0 12px rgba(56, 189, 248, 0.4)' : '0 0 12px rgba(16, 185, 129, 0.4)',
-            } : (isHostOnline ? {
-              color: '#38bdf8',
-              backgroundColor: '#38bdf818',
-              borderColor: '#38bdf850',
-            } : undefined)}
-            className={`p-1.5 rounded-md transition-all cursor-pointer border flex items-center justify-center shrink-0 ${
-              isConnectClientActive || isHostOnline ? '' : 'text-[#666] hover:text-white border-transparent'
-            }`}
-          >
-            {playbackTarget === 'desktop' ? (
-              <Laptop className="w-4 h-4 text-sky-400 animate-pulse" />
-            ) : playbackTarget === 'this_device' ? (
-              <Smartphone className="w-4 h-4 text-emerald-400" />
-            ) : (
-              <Cast className={`w-4 h-4 ${isHostOnline ? 'text-sky-400' : ''}`} />
-            )}
+            <Pin className={`w-4 h-4 ${isPinned ? 'text-amber-400 fill-amber-400/20' : 'text-zinc-300'}`} />
           </button>
         )}
 
@@ -1376,12 +1367,11 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               type="button"
               onClick={onTogglePlay}
               disabled={!currentTrack}
-              style={{
-                backgroundColor: currentTrack ? accentColor : '#27272a',
-                color: currentTrack ? getContrastTextColor(accentColor) : '#71717a',
-                boxShadow: currentTrack ? `0 0 24px ${accentColor}60` : 'none',
-              }}
-              className="w-16 h-16 rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform cursor-pointer"
+              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform ${
+                currentTrack
+                  ? 'bg-white text-black hover:scale-105 cursor-pointer'
+                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
+              }`}
             >
               {isPlaying ? <Pause className="w-7 h-7 fill-current" /> : <Play className="w-7 h-7 fill-current ml-0.5" />}
             </button>
@@ -1433,7 +1423,10 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   setIsMobileSheetOpen(false);
                   onOpenKaraoke();
                 }}
-                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 hover:text-white cursor-pointer"
+                style={isKaraokeOpen ? { color: accentColor } : undefined}
+                className={`flex flex-col items-center gap-1 p-2 rounded-xl cursor-pointer ${
+                  isKaraokeOpen ? '' : 'text-zinc-400 hover:text-white'
+                }`}
               >
                 <Mic2 className="w-4 h-4" />
                 <span className="text-[10px]">Karaoke</span>
@@ -1446,21 +1439,13 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                   setIsMobileSheetOpen(false);
                   onOpenQueue();
                 }}
-                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 hover:text-white cursor-pointer"
+                style={isQueueOpen ? { color: accentColor } : undefined}
+                className={`flex flex-col items-center gap-1 p-2 rounded-xl cursor-pointer ${
+                  isQueueOpen ? '' : 'text-zinc-400 hover:text-white'
+                }`}
               >
                 <ListMusic className="w-4 h-4" />
                 <span className="text-[10px]">Hàng đợi</span>
-              </button>
-            )}
-            {(onCycleRecommendMode || onToggleAutoRecommend) && (
-              <button
-                type="button"
-                onClick={onCycleRecommendMode || onToggleAutoRecommend}
-                className="flex flex-col items-center gap-1 p-2 rounded-xl text-zinc-400 cursor-pointer"
-                style={recommendMode !== 'off' ? { color: accentColor } : undefined}
-              >
-                <Radio className="w-4 h-4" />
-                <span className="text-[10px] font-mono uppercase">{recommendMode}</span>
               </button>
             )}
             {onAddToAlbum && (
@@ -1541,6 +1526,133 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 <span className="text-[10px]">{sleepTimerMinutes !== null ? formatTimerRemaining() || `${sleepTimerMinutes}m` : 'Timer'}</span>
               </button>
             )}
+          </div>
+
+          {/* Mobile Synced Lyrics Card (Spotify-style real-time synced lyrics) */}
+          <div 
+            className="w-full rounded-2xl p-4 mt-3 border border-white/10 shadow-xl relative overflow-hidden backdrop-blur-xl transition-all"
+            style={{
+              background: `linear-gradient(180deg, ${accentColor}22 0%, rgba(18,18,26,0.95) 100%)`,
+              boxShadow: `0 8px 30px rgba(0,0,0,0.6), 0 0 20px ${accentColor}15`
+            }}
+          >
+            {/* Lyrics Card Header */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Mic2 className="w-4 h-4" style={{ color: accentColor }} />
+                <span className="text-xs font-bold uppercase tracking-wider text-white">
+                  {language === 'vi' ? 'Lời bài hát' : 'Lyrics'}
+                </span>
+                {mobileLyrics?.synced && (
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    SYNCED
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {/* Micro timing calibration */}
+                {mobileLyrics?.synced && (
+                  <div className="flex items-center gap-1 bg-black/50 rounded-full px-2 py-0.5 border border-white/10 text-[10px] font-mono text-zinc-300">
+                    <button
+                      type="button"
+                      onClick={() => handleAdjustLyricsOffset(-0.5)}
+                      className="text-zinc-400 hover:text-white px-0.5 cursor-pointer active:scale-90"
+                      title="-0.5s"
+                    >
+                      -0.5s
+                    </button>
+                    <span
+                      onClick={handleResetLyricsOffset}
+                      className="cursor-pointer font-bold px-1"
+                      style={{ color: lyricsSyncOffset !== 0 ? accentColor : '#a1a1aa' }}
+                      title={language === 'vi' ? 'Nhấn để đặt lại 0s' : 'Click to reset'}
+                    >
+                      {lyricsSyncOffset > 0 ? `+${lyricsSyncOffset.toFixed(1)}s` : `${lyricsSyncOffset.toFixed(1)}s`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleAdjustLyricsOffset(0.5)}
+                      className="text-zinc-400 hover:text-white px-0.5 cursor-pointer active:scale-90"
+                      title="+0.5s"
+                    >
+                      +0.5s
+                    </button>
+                  </div>
+                )}
+
+                {/* Expand to Full Karaoke Modal */}
+                {onOpenKaraoke && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileSheetOpen(false);
+                      onOpenKaraoke();
+                    }}
+                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                    title={language === 'vi' ? 'Toàn màn hình Karaoke' : 'Full Karaoke'}
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Lyrics Viewport */}
+            <div
+              ref={mobileLyricsContainerRef}
+              onScroll={handleMobileLyricsScroll}
+              className="max-h-64 sm:max-h-72 overflow-y-auto space-y-3 py-3 pr-1 scroll-smooth select-none"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              {isLoadingMobileLyrics ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center text-zinc-400 gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: accentColor }} />
+                  <span className="text-xs">{language === 'vi' ? 'Đang tải lời bài hát đồng bộ...' : 'Loading synced lyrics...'}</span>
+                </div>
+              ) : mobileLyrics && mobileLyrics.synced && mobileLyrics.lines.length > 0 ? (
+                mobileLyrics.lines.map((line, idx) => {
+                  const isActive = idx === activeMobileLyricIndex;
+                  const isPast = idx < activeMobileLyricIndex;
+
+                  return (
+                    <div
+                      key={idx}
+                      ref={isActive ? mobileActiveLineRef : null}
+                      onClick={() => onSeek(line.time)}
+                      className={`transition-all duration-200 cursor-pointer text-left leading-relaxed ${
+                        isActive
+                          ? 'text-white font-extrabold text-base sm:text-lg scale-[1.02] origin-left'
+                          : isPast
+                          ? 'text-white/40 hover:text-white/70 font-semibold text-sm'
+                          : 'text-white/25 hover:text-white/60 font-semibold text-sm'
+                      }`}
+                    >
+                      {line.text}
+                    </div>
+                  );
+                })
+              ) : mobileLyrics && mobileLyrics.plainText ? (
+                <div className="text-xs sm:text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed py-1">
+                  {mobileLyrics.plainText}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-center text-zinc-400 gap-2">
+                  <span className="text-xs">
+                    {language === 'vi' ? 'Không tìm thấy lời bài hát đồng bộ' : 'No synced lyrics found'}
+                  </span>
+                  {currentTrack && (
+                    <button
+                      type="button"
+                      onClick={fetchMobileLyrics}
+                      className="px-3 py-1 rounded-full text-[11px] font-semibold bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
+                    >
+                      {language === 'vi' ? 'Thử tìm lại' : 'Retry'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

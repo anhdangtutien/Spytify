@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Search, Loader2, Play, Music, Disc3, Sparkles, ArrowUpRight, X, History } from 'lucide-react';
+import { Search, Loader2, Play, Music, Disc3, Sparkles, ArrowUpRight, X, History, FolderPlus } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { SearchResult, Track } from '../types';
 import { getContrastTextColor, optimizeThumbnailUrl, handleImageError, sanitizeTrackTitle } from '../utils/trackUtils';
@@ -16,6 +16,7 @@ interface SearchViewProps {
   language?: LanguageCode;
   initialQuery?: string;
   onQueryChange?: (query: string) => void;
+  onAddToAlbum?: (track: Track) => void;
 }
 
 const POPULAR = ['Die With A Smile', 'APT. ROSÉ', 'Sơn Tùng M-TP', 'Creepy Nuts', 'Alan Walker', 'V-Pop 2025', 'Lo-Fi Beats', 'Billie Eilish'];
@@ -55,6 +56,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   language = 'vi',
   initialQuery = '',
   onQueryChange,
+  onAddToAlbum,
 }) => {
   const [query, setQuery] = useState(initialQuery);
   const [filter, setFilter] = useState<Filter>('all');
@@ -293,13 +295,35 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   return (
     <div className="flex-1 w-full pb-16">
-      <div className="w-full max-w-4xl xl:max-w-5xl mb-6">
+      {/* Desktop Search Header: Trên desktop chỉ hiển thị tiêu đề và trạng thái, dùng ô search trên thanh window */}
+      <div className="hidden md:flex items-center justify-between mb-4 pb-2 border-b border-white/5">
+        <div className="flex items-center gap-2.5">
+          <Search className="w-4 h-4 text-zinc-400" />
+          <h2 className="text-base font-semibold text-white tracking-tight">
+            {getTranslation(language, 'search.title')}
+          </h2>
+          {query.trim() && (
+            <span className="text-xs text-zinc-400 font-normal">
+              — {language === 'vi' ? 'Kết quả cho:' : 'Results for:'} <span className="text-zinc-200 font-medium font-mono">"{query}"</span>
+            </span>
+          )}
+        </div>
+        {loading && (
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>{language === 'vi' ? 'Đang tìm kiếm...' : 'Searching...'}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile Search Bar: Giữ lại trên điện thoại (màn hình nhỏ) */}
+      <div className="w-full max-w-4xl xl:max-w-5xl mb-4 md:hidden">
         <h2 className="text-lg font-bold tracking-tight text-white mb-3">
           {getTranslation(language, 'search.title')}
         </h2>
         <div className="relative z-10" ref={searchContainerRef}>
           <form onSubmit={handleSubmit} className="relative flex items-center">
-            <Search className="w-4 h-4 text-[#666] absolute left-3.5 pointer-events-none" />
+            <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
             <input
               ref={inputRef}
               type="text"
@@ -310,8 +334,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
               }}
               onKeyDown={handleKeyDown}
               placeholder={getTranslation(language, 'search.placeholder')}
-              className="w-full pl-10 pr-32 py-2.5 bg-[#0a0a0d] hover:bg-[#121216] focus:bg-[#121216] text-white rounded-lg text-xs outline-none border border-[#1e1e26] transition-all"
-              style={{ borderColor: query ? `${accentColor}60` : undefined }}
+              className="w-full pl-10 pr-28 py-2.5 bg-zinc-900/80 hover:bg-zinc-900 focus:bg-zinc-900 text-white rounded-xl text-xs outline-none border border-white/10 transition-all"
+              style={{ borderColor: query ? `${accentColor}80` : undefined }}
             />
             {query && (
               <button
@@ -323,7 +347,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   setIsTyping(false);
                   inputRef.current?.focus();
                 }}
-                className="absolute right-16 p-1 text-[#666] hover:text-white transition-colors cursor-pointer"
+                className="absolute right-16 p-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"
                 title={getTranslation(language, 'search.clear')}
               >
                 <X className="w-3.5 h-3.5" />
@@ -335,9 +359,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
               style={{
                 backgroundColor: accentColor,
                 color: getContrastTextColor(accentColor),
-                boxShadow: `0 0 10px ${accentColor}40`,
               }}
-              className="absolute right-1.5 px-4 py-1.5 hover:opacity-90 active:scale-95 disabled:opacity-50 text-[11px] font-bold rounded-md cursor-pointer transition-all flex items-center gap-1.5"
+              className="absolute right-1.5 px-3.5 py-1.5 hover:opacity-90 active:scale-95 disabled:opacity-50 text-[11px] font-semibold rounded-lg cursor-pointer transition-all flex items-center gap-1.5"
             >
               {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : getTranslation(language, 'search.btn')}
             </button>
@@ -346,28 +369,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
           {/* Keyword Suggestions Dropdown */}
           {showSuggestions && suggestions.length > 0 && (
             <div 
-              className="absolute top-full left-0 right-0 mt-2 py-1.5 rounded-xl bg-[#0e0e14] border shadow-2xl z-50 font-sans"
-              style={{
-                borderColor: `${accentColor}50`,
-                boxShadow: `0 16px 36px rgba(0,0,0,0.9), 0 0 16px ${accentColor}25`
-              }}
+              className="absolute top-full left-0 right-0 mt-2 py-1.5 rounded-xl bg-zinc-900 border border-white/10 shadow-2xl z-50 font-sans"
             >
-              <div className="px-3.5 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] flex items-center justify-between border-b border-[#1c1c28] mb-1">
-                <span className="flex items-center gap-1.5" style={{ color: accentColor }}>
-                  <Sparkles className="w-3 h-3" />
+              <div className="px-3.5 py-1.5 text-[10px] font-mono font-medium text-zinc-400 flex items-center justify-between border-b border-white/5 mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Search className="w-3 h-3 text-zinc-400" />
                   {getTranslation(language, 'search.suggestions')}
                 </span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-[#555]">{getTranslation(language, 'search.hintNav')}</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowSuggestions(false)}
-                    className="p-0.5 rounded hover:bg-[#222] text-[#777] hover:text-white transition-colors cursor-pointer"
-                    title={getTranslation(language, 'popup.close')}
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
+                <span className="text-[9px] text-zinc-500 font-normal">ESC</span>
               </div>
               <div className="max-h-72 overflow-y-auto">
                 {suggestions.map((sug, idx) => (
@@ -380,33 +389,34 @@ export const SearchView: React.FC<SearchViewProps> = ({
                     }}
                     className={`px-3.5 py-2 text-xs flex items-center justify-between cursor-pointer transition-colors ${
                       selectedIndex === idx 
-                        ? 'bg-[#181824] text-white font-semibold' 
-                        : 'text-[#bbb] hover:text-white hover:bg-[#14141c]'
+                        ? 'bg-white/10 text-white font-medium' 
+                        : 'text-zinc-300 hover:text-white hover:bg-white/5'
                     }`}
-                    style={selectedIndex === idx ? { color: accentColor } : undefined}
                   >
                     <div className="flex items-center gap-2.5 overflow-hidden">
-                      <Search className="w-3.5 h-3.5 text-[#666] flex-shrink-0" />
+                      <Search className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
                       <span className="truncate">{sug}</span>
                     </div>
-                    <ArrowUpRight className="w-3 h-3 text-[#555] opacity-0 group-hover:opacity-100 flex-shrink-0" />
+                    <ArrowUpRight className="w-3 h-3 text-zinc-500 opacity-0 group-hover:opacity-100 flex-shrink-0" />
                   </div>
                 ))}
               </div>
             </div>
           )}
         </div>
+      </div>
 
-        {/* Filter Pills */}
-        <div className="flex gap-1.5 mt-3 flex-wrap">
+      {/* Filter Pills — Unslop: clean minimal monochrome / subtle borders, no glow */}
+      <div className="w-full max-w-4xl xl:max-w-5xl mb-5">
+        <div className="flex gap-1.5 flex-wrap">
           {filters.map(f => (
             <button
               key={f.id}
               onClick={() => handleFilterChange(f.id)}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer border ${
                 filter === f.id
-                  ? 'bg-white text-black font-bold shadow-[0_0_8px_rgba(255,255,255,0.2)]'
-                  : 'bg-[#0d0d10] text-[#888899] hover:text-white hover:bg-[#16161e] border border-[#1c1c24]'
+                  ? 'bg-white text-zinc-950 font-semibold border-white'
+                  : 'bg-zinc-900/60 text-zinc-400 hover:text-white hover:bg-zinc-800/80 border-white/5'
               }`}
             >
               {f.icon}{f.label}
@@ -582,9 +592,33 @@ export const SearchView: React.FC<SearchViewProps> = ({
                       {sanitizeTrackTitle(r.title)}
                     </p>
                     <p className="text-[11px] text-[#8e8e9f] truncate mt-0.5">{r.artist}</p>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      {sourceIcon(r.source, true)}
-                      <span className="text-[10px] text-[#666] font-mono uppercase">{r.source}</span>
+                    <div className="flex items-center justify-between gap-1.5 mt-1">
+                      <div className="flex items-center gap-1.5">
+                        {sourceIcon(r.source, true)}
+                        <span className="text-[10px] text-[#666] font-mono uppercase">{r.source}</span>
+                      </div>
+                      {onAddToAlbum && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddToAlbum({
+                              id: r.url_or_id,
+                              title: r.title,
+                              artist: r.artist,
+                              album: r.album || 'Spytify Search',
+                              duration_secs: r.duration_secs || 210,
+                              path_or_url: r.url_or_id,
+                              cover_art: r.thumbnail,
+                              source: r.source || 'youtube',
+                            });
+                          }}
+                          className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                          title={language === 'vi' ? 'Thêm vào Album' : 'Add to Album'}
+                        >
+                          <FolderPlus className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, RotateCcw, Power, Sliders, Volume2, Sparkles, 
   Headphones, Flame, Check, AlertCircle, CheckCircle2, Music, Activity,
-  BookmarkPlus, Trash2, Bookmark, ChevronLeft, ChevronRight, Moon, Clock, Minus, Plus
+  BookmarkPlus, Trash2, Bookmark, ChevronLeft, ChevronRight, Moon, Clock, Minus, Plus,
+  ListMusic, AudioLines
 } from 'lucide-react';
 import { 
   EQ_FREQUENCIES, EQ_LABELS, EQ_PRESETS, EqualizerState, CustomEqualizerPreset,
@@ -321,15 +322,15 @@ export const EqualizerModal: React.FC<EqualizerModalProps> = ({
     >
       <div 
         className={`relative w-full max-w-4xl max-h-[88dvh] sm:max-h-[92vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden transition-all duration-300 ${
-          isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#0b0b12] border-[#222232] text-white'
+          isLight ? 'bg-white border-slate-200 text-slate-800' : 'bg-zinc-950 border-white/10 text-white'
         }`}
         onClick={e => e.stopPropagation()}
         style={{
-          boxShadow: eqState.enabled ? `0 10px 40px ${accentColor}25, 0 0 1px ${accentColor}50` : undefined,
+          // clean modal
         }}
       >
         {/* Top Header — Solid opaque background to prevent any background bleed */}
-        <div className={`flex items-center justify-between gap-2 px-3 sm:px-5 py-2.5 border-b shrink-0 ${isLight ? 'border-slate-200 bg-slate-100' : 'border-[#1a1a26] bg-[#101018]'}`}>
+        <div className={`flex items-center justify-between gap-2 px-3 sm:px-5 py-2.5 border-b shrink-0 ${isLight ? 'border-slate-200 bg-slate-100' : 'border-white/5 bg-zinc-950'}`}>
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             <div 
               className="w-7 h-7 rounded-lg flex items-center justify-center transition-transform shadow-inner shrink-0"

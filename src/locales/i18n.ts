@@ -20,7 +20,7 @@ export const SUPPORTED_LANGUAGES: LanguageInfo[] = [
 export const translations: Record<LanguageCode, Record<string, string>> = {
   'vi': {
     // Sidebar
-    'nav.trending': 'Trang chủ',
+    'nav.trending': 'Trang chủ & Smart DJ',
     'nav.search': 'Tìm kiếm',
     'nav.myAlbums': 'Album của bạn',
     'nav.community': 'Spy Jam',
@@ -643,7 +643,7 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
 
   'en-US': {
     // Sidebar
-    'nav.trending': 'Home',
+    'nav.trending': 'Home & Smart DJ',
     'nav.search': 'Search',
     'nav.myAlbums': 'Your Albums',
     'nav.community': 'Spy Jam',
@@ -1266,7 +1266,7 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
 
   'ja': {
     // Sidebar
-    'nav.trending': 'ホーム',
+    'nav.trending': 'ホーム & Smart DJ',
     'nav.search': '検索',
     'nav.myAlbums': 'マイアルバム',
     'nav.community': 'Spy Jam',
@@ -1889,7 +1889,7 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
 
   'zh-CN': {
     // Sidebar
-    'nav.trending': '首页',
+    'nav.trending': '首页 & 智能 DJ',
     'nav.search': '搜索',
     'nav.myAlbums': '我的专辑',
     'nav.community': 'Spy Jam',
@@ -2510,7 +2510,7 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
     'community.activationThreshold': '激活门限: {level}',
   },
   'ko': {
-    'nav.trending': "홈",
+    'nav.trending': "홈 & 스마트 DJ",
     'nav.search': "검색",
     'nav.myAlbums': "내 앨범",
     'nav.community': "Spy Jam",
@@ -3103,10 +3103,24 @@ export const translations: Record<LanguageCode, Record<string, string>> = {
 };
 
 /**
+ * Normalizes any language string or code (e.g. 'en', 'en-US', 'zh', 'zh-CN') to supported LanguageCode
+ */
+export function normalizeLanguageCode(code?: string | null): LanguageCode {
+  if (!code) return 'vi';
+  const clean = code.toLowerCase().trim();
+  if (clean === 'en' || clean.startsWith('en')) return 'en-US';
+  if (clean === 'ja' || clean.startsWith('ja')) return 'ja';
+  if (clean === 'ko' || clean.startsWith('ko')) return 'ko';
+  if (clean === 'zh' || clean.startsWith('zh')) return 'zh-CN';
+  return 'vi';
+}
+
+/**
  * Translation helper function with fallback to Vietnamese then English
  */
-export function getTranslation(lang: LanguageCode, key: string, params?: Record<string, string | number>): string {
-  const currentDict = translations[lang] || translations['en-US'] || translations['vi'];
+export function getTranslation(lang: LanguageCode | string, key: string, params?: Record<string, string | number>): string {
+  const norm = normalizeLanguageCode(lang);
+  const currentDict = translations[norm] || translations['en-US'] || translations['vi'];
   let text = currentDict[key] || translations['en-US']?.[key] || translations['vi']?.[key] || key;
   
   if (params) {

@@ -4,6 +4,19 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
+// Tự động kích hoạt hiển thị slider thanh cuộn chỉ khi người dùng lăn chuột hoặc cuộn trang
+let scrollTimer: ReturnType<typeof setTimeout> | null = null;
+const handleScrollActivity = () => {
+  document.documentElement.classList.add('is-scrolling');
+  if (scrollTimer) clearTimeout(scrollTimer);
+  scrollTimer = setTimeout(() => {
+    document.documentElement.classList.remove('is-scrolling');
+  }, 1000);
+};
+window.addEventListener('wheel', handleScrollActivity, { capture: true, passive: true });
+window.addEventListener('scroll', handleScrollActivity, { capture: true, passive: true });
+window.addEventListener('touchmove', handleScrollActivity, { capture: true, passive: true });
+
 // Catch any unhandled error so we never get a silent black screen
 window.addEventListener('error', (event) => {
   console.error('[Global Error]', event.error || event.message);

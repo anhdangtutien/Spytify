@@ -181,25 +181,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
 
-      {/* Main Nav */}
+      {/* Main Nav: Hợp nhất Smart DJ và Trang chủ làm 1, icon Smart DJ (AudioLines) */}
       <div className={`space-y-0.5 ${isCollapsed ? 'p-2' : 'p-3'}`}>
-        {navItem('library', getTranslation(language, 'nav.trending'), <ModernHomeIcon className="w-4 h-4" active={currentView === 'library'} />)}
+        {navItem(
+          'library',
+          language === 'vi' ? 'Trang chủ & Smart DJ' : 'Home & Smart DJ',
+          <AudioLines className="w-4 h-4" />
+        )}
         {navItem('search', getTranslation(language, 'nav.search'), <Search className="w-4 h-4" />)}
         {navItem('community', getTranslation(language, 'nav.community'), <SpyJamIcon className="w-4 h-4" />)}
         {navItem('albums', getTranslation(language, 'nav.myAlbums'), <Layers className="w-4 h-4" />,
-          <span className="text-[10px] text-[#666] font-mono">{albumCount}</span>
-        )}
-        {navItem('ai_mix', getTranslation(language, 'nav.aiMix'), <AudioLines className="w-4 h-4" />,
-          <span 
-            className="text-[8.5px] px-1.5 py-0.2 rounded-full font-mono font-black border flex items-center shadow-sm"
-            style={{ 
-              color: accentColor, 
-              backgroundColor: `${accentColor}15`, 
-              borderColor: `${accentColor}30` 
-            }}
-          >
-            DJ
-          </span>
+          <span className="text-[10px] text-zinc-500 font-mono">{albumCount}</span>
         )}
       </div>
 

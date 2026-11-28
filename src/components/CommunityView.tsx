@@ -1044,6 +1044,54 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   onScreenShareFpsChange,
 }) => {
   const isLight = themeMode === 'light';
+
+  // Server Template Presets synchronized with language and app accentColor
+  const serverPresets = useMemo(() => [
+    {
+      key: 'cyber',
+      label: 'Cyber Lounge',
+      icon: '⚡',
+      color: accentColor,
+      desc: language === 'vi' ? 'Trạm phát Synthwave, Cyberpunk Beats & Giác đấu ban đêm.' : 'Synthwave, Cyberpunk Beats & Late night vibes station.',
+      defaultChannels: [
+        { name: 'general-chat', type: 'text' as const },
+        { name: language === 'vi' ? 'Phòng Thoại Voice' : 'Voice Chat Room', type: 'voice' as const },
+      ]
+    },
+    {
+      key: 'lofi',
+      label: 'Lofi Chill Hub',
+      icon: '☕',
+      color: '#10B981',
+      desc: language === 'vi' ? 'Không gian thư thái, học tập, đọc sách và tập trung cao độ.' : 'Relaxed space for studying, reading, and deep focus.',
+      defaultChannels: [
+        { name: 'chill-chat', type: 'text' as const },
+        { name: language === 'vi' ? 'Phòng Học Tập & Chill' : 'Study & Chill Voice', type: 'voice' as const },
+      ]
+    },
+    {
+      key: 'club',
+      label: language === 'vi' ? 'Bar & Nightclub' : 'Bar & Nightclub',
+      icon: '🍸',
+      color: '#8B5CF6',
+      desc: language === 'vi' ? 'Quầy Bar sôi động, EDM, Deep House, Bassline tiệc tùng.' : 'Vibrant bar, EDM, Deep House & party beats.',
+      defaultChannels: [
+        { name: 'quay-bar-talk', type: 'text' as const },
+        { name: language === 'vi' ? 'VIP Lounge Voice' : 'VIP Lounge Voice', type: 'voice' as const },
+      ]
+    },
+    {
+      key: 'custom',
+      label: language === 'vi' ? 'Tự do sáng tạo' : 'Create Your Own',
+      icon: '🎧',
+      color: '#F43F5E',
+      desc: language === 'vi' ? 'Tự đặt tên, biểu tượng và màu sắc theo cá tính riêng của bạn.' : 'Customize name, icon, and colors to match your style.',
+      defaultChannels: [
+        { name: 'general-talk', type: 'text' as const },
+        { name: language === 'vi' ? 'Phòng Thoại Chung' : 'Voice Call Room', type: 'voice' as const },
+      ]
+    }
+  ], [language, accentColor]);
   // Load user-created custom servers scoped strictly to logged-in user (empty when logged out)
   const [servers, setServers] = useState<CommunityServer[]>(() => loadUserServersFromStorage(currentUser?.id));
   const serversRef = useRef(servers);
@@ -1610,10 +1658,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [createServerStep, setCreateServerStep] = useState<1 | 2 | 3>(1);
   const [newServerPreset, setNewServerPreset] = useState('cyber');
-  const [newServerName, setNewServerName] = useState('My Cyber Lounge');
-  const [newServerDesc, setNewServerDesc] = useState('Trạm phát sóng âm nhạc');
+  const [newServerName, setNewServerName] = useState('Cyber Lounge');
+  const [newServerDesc, setNewServerDesc] = useState('Trạm phát Synthwave, Cyberpunk Beats');
   const [newServerIcon, setNewServerIcon] = useState('⚡');
-  const [newServerColor, setNewServerColor] = useState('#00E5FF');
+  const [newServerColor, setNewServerColor] = useState(accentColor || '#FFFFFF');
+
+  useEffect(() => {
+    if (isCreateModalOpen && newServerPreset === 'cyber') {
+      setNewServerColor(accentColor);
+    }
+  }, [isCreateModalOpen, accentColor]);
 
   // ──────── CUSTOM BOT MODAL & STATE (CHIA THÀNH 2 LOẠI: BOT TRẠM LIVE 24/7 & BOT THEO YÊU CẦU) ────────
   const [isBotModalOpen, setIsBotModalOpen] = useState(false);
@@ -10248,7 +10302,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
   // ──────── TỰ TẠO SERVER MỚI (CUSTOM SERVER CREATION) ────────
   const handleSelectPreset = (presetKey: string) => {
-    const p = SERVER_PRESETS.find(x => x.key === presetKey);
+    const p = serverPresets.find(x => x.key === presetKey);
     if (!p) return;
     setNewServerPreset(presetKey);
     setNewServerName(p.label);
@@ -10261,7 +10315,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
     e.preventDefault();
     if (!newServerName.trim()) return;
 
-    const p = SERVER_PRESETS.find(x => x.key === newServerPreset) || SERVER_PRESETS[0];
+    const p = serverPresets.find(x => x.key === newServerPreset) || serverPresets[0];
     const srvId = `srv_custom_${Date.now()}`;
 
     const newChannels: CommunityChannel[] = p.defaultChannels.map((c, idx) => ({
@@ -11239,7 +11293,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
           <div
             className={`w-full mt-5 p-3.5 rounded-xl border text-left space-y-2.5 ${
-              isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#08080e] border-[#181824]'
+              isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#08080e] border-[rgba(255,255,255,0.08)]'
             }`}
           >
             <div className="flex items-center gap-2.5 text-xs">
@@ -11448,7 +11502,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         } h-full flex-shrink-0`}
       >
       {/* ──────────────── 1. DISCORD-STYLE SERVER RAIL (FAR LEFT) ──────────────── */}
-      <div className={`w-16 flex flex-col items-center py-3 gap-2 flex-shrink-0 z-20 border-r ${isLight ? 'bg-[#f1f5f9] border-[#e2e8f0]' : 'bg-[#040407] border-[#14141c]'}`}>
+      <div className={`w-16 flex flex-col items-center py-3 gap-2 flex-shrink-0 z-20 border-r ${isLight ? 'bg-[#f1f5f9] border-[#e2e8f0]' : 'bg-zinc-950 border-white/5'}`}>
         {/* Top: Discord Direct Messages / Friends Button */}
         {(() => {
           const totalUnreadDms = Object.values(unreadDmCounts).reduce((acc, c) => acc + (c || 0), 0);
@@ -11462,7 +11516,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   ? 'rounded-xl border'
                   : isLight
                   ? 'rounded-2xl hover:rounded-xl bg-[#ffffff] border border-[#cbd5e1] text-[#334155] hover:text-[#0f172a]'
-                  : 'rounded-2xl hover:rounded-xl bg-[#0e0e16] border border-[#222230] text-white hover:border-white/40'
+                  : 'rounded-2xl hover:rounded-xl bg-[#111115] border border-[#222230] text-white hover:border-white/40'
               }`}
               style={{
                 backgroundColor: isFriendsTabActive ? `${accentColor}25` : undefined,
@@ -11473,7 +11527,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             >
               <SpyJamIcon className="w-6 h-6 group-hover:scale-110 transition-transform" />
               {totalFriendsBadge > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#040407] shadow-md animate-bounce">
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#09090b] shadow-md animate-bounce">
                   {totalFriendsBadge > 99 ? '99+' : totalFriendsBadge}
                 </span>
               )}
@@ -11594,7 +11648,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   )}
                   {srvUnreadCount > 0 && (
                     <span
-                      className="absolute -bottom-1 -right-1 z-30 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#040407] shadow-md pointer-events-none"
+                      className="absolute -bottom-1 -right-1 z-30 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-mono font-black flex items-center justify-center border-2 border-[#09090b] shadow-md pointer-events-none"
                       title={`${srvUnreadCount} tin nhắn chưa đọc`}
                       aria-label={`${srvUnreadCount} tin nhắn chưa đọc`}
                     >
@@ -11603,7 +11657,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   )}
                   {connectedVoiceServerId === srv.id && connectedVoiceChannel && (
                     <span
-                      className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-emerald-500 text-black flex items-center justify-center border-2 border-[#040407] shadow-md shadow-emerald-500/50 animate-pulse pointer-events-none"
+                      className="absolute -bottom-1 -left-1 w-4 h-4 rounded-full bg-emerald-500 text-black flex items-center justify-center border-2 border-[#09090b] shadow-md shadow-emerald-500/50 animate-pulse pointer-events-none"
                       title="Đang trong phòng thoại tại máy chủ này"
                     >
                       <Volume2 className="w-2.5 h-2.5 stroke-[2.5]" />
@@ -11686,11 +11740,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       </div>
 
       {/* ──────────────── 2. CHANNELS LIST OR FRIENDS NAVIGATION COLUMN ──────────────── */}
-      <div className={`w-56 flex flex-col flex-shrink-0 z-10 border-r ${isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#09090e] border-[#15151e]'}`}>
+      <div className={`w-56 flex flex-col flex-shrink-0 z-10 border-r ${isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#09090e] border-[rgba(255,255,255,0.08)]'}`}>
         {isFriendsTabActive ? (
           <>
             {/* Friends Navigation Header */}
-            <div className={`p-3.5 border-b flex items-center justify-between ${isLight ? 'border-[#e2e8f0]' : 'border-[#15151e]'}`}>
+            <div className={`p-3.5 border-b flex items-center justify-between ${isLight ? 'border-[#e2e8f0]' : 'border-[rgba(255,255,255,0.08)]'}`}>
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4" style={{ color: accentColor }} />
                 <span className={`text-xs font-black uppercase tracking-wider ${isLight ? 'text-[#0f172a]' : 'text-white'}`}>
@@ -11777,7 +11831,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 }}
                 className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
                   !activeDmFriend && friendsTab === 'add'
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    ? 'bg-white/10 text-white font-medium border border-white/15'
                     : 'text-emerald-500 hover:bg-emerald-500/10'
                 }`}
               >
@@ -11928,7 +11982,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         ) : (
           <>
             {/* Server Header */}
-            <div className={`p-3.5 border-b flex items-center justify-between gap-2 ${isLight ? 'border-[#e2e8f0]' : 'border-[#15151e]'}`}>
+            <div className={`p-3.5 border-b flex items-center justify-between gap-2 ${isLight ? 'border-[#e2e8f0]' : 'border-[rgba(255,255,255,0.08)]'}`}>
               <div className="min-w-0 flex-1 overflow-hidden pr-1">
                 <MarqueeText
                   text={selectedServer.name}
@@ -12022,7 +12076,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] border outline-none ${
                     isLight
                       ? 'bg-white border-slate-300 text-slate-900 focus:border-slate-500'
-                      : 'bg-[#12121c] border-[#262638] text-white focus:border-white/50'
+                      : 'bg-[#111115] border-[#262638] text-white focus:border-white/50'
                   }`}
                 />
                 <div className="flex items-center justify-end gap-1">
@@ -12193,7 +12247,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   className={`w-full px-2.5 py-1.5 rounded-lg text-[11px] border outline-none ${
                     isLight
                       ? 'bg-white border-slate-300 text-slate-900 focus:border-slate-500'
-                      : 'bg-[#12121c] border-[#262638] text-white focus:border-white/50'
+                      : 'bg-[#111115] border-[#262638] text-white focus:border-white/50'
                   }`}
                 />
 
@@ -12558,7 +12612,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
         {/* Persistent Bottom Voice Status Bar */}
         {connectedVoiceChannel && (
-          <div className={`p-2.5 border-t flex flex-col gap-2 animate-in fade-in duration-200 ${isLight ? 'bg-[#f1f5f9] border-[#e2e8f0]' : 'bg-[#0c0c14] border-[#181824]'}`}>
+          <div className={`p-2.5 border-t flex flex-col gap-2 animate-in fade-in duration-200 ${isLight ? 'bg-[#f1f5f9] border-[#e2e8f0]' : 'bg-[#0c0c14] border-[rgba(255,255,255,0.08)]'}`}>
             <div className="flex items-center justify-between text-xs">
               <div
                 className="flex items-center gap-1.5 cursor-pointer hover:opacity-85 transition-opacity min-w-0"
@@ -12649,7 +12703,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             type="button"
             onClick={() => setIsStatusMenuOpen(p => !p)}
             className={`flex items-center gap-2 p-1 rounded-lg flex-1 min-w-0 text-left transition-colors cursor-pointer ${
-              isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#141420]'
+              isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#111115]'
             }`}
             title="Bấm để đổi trạng thái (Trực tuyến / Bận / Vô hình) hoặc tên hiển thị trên Server"
           >
@@ -12793,7 +12847,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     type="button"
                     onClick={() => setMobileNavDrawerOpen(true)}
                     className={`md:hidden p-1.5 rounded-lg border cursor-pointer flex-shrink-0 ${
-                      isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#141420] border-[#262638] text-[#ccc]'
+                      isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#111115] border-[#262638] text-[#ccc]'
                     }`}
                     aria-label="Mở danh sách Server / Bạn bè"
                   >
@@ -12805,7 +12859,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     className={`px-2.5 py-1 rounded-lg text-xs font-mono border cursor-pointer transition-colors ${
                       isLight
                         ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
-                        : 'bg-[#141420] hover:bg-[#1e1e30] border-[#262638] text-[#aaa] hover:text-white'
+                        : 'bg-[#111115] hover:bg-[#1e1e30] border-[#262638] text-[#aaa] hover:text-white'
                     }`}
                   >
                     ← Bạn bè
@@ -12900,7 +12954,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     className={`p-2 rounded-xl border transition-colors cursor-pointer ${
                       isLight
                         ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
-                        : 'bg-[#141420] hover:bg-[#1e1e30] border-[#262638] text-[#aaa] hover:text-white'
+                        : 'bg-[#111115] hover:bg-[#1e1e30] border-[#262638] text-[#aaa] hover:text-white'
                     }`}
                     title="Xem hồ sơ"
                   >
@@ -12924,7 +12978,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
                           : isLight
                           ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'
-                          : 'bg-[#141420] hover:bg-[#1e1e30] border-[#262638] text-[#aaa] hover:text-white'
+                          : 'bg-[#111115] hover:bg-[#1e1e30] border-[#262638] text-[#aaa] hover:text-white'
                       }`}
                       title={language === 'vi' ? 'Cài đặt đoạn chat' : 'Chat settings'}
                     >
@@ -12932,8 +12986,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       {currentDmAutoDeleteHours !== 0 && (
                         <span className={`absolute -top-1 -right-1 px-1 min-w-[15px] h-3.5 rounded-full font-mono font-bold text-[9px] flex items-center justify-center shadow-md ${
                           currentDmAutoDeleteHours === -1
-                            ? 'bg-amber-400 text-black shadow-[0_0_8px_rgba(251,191,36,0.6)] animate-pulse'
-                            : 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.6)]'
+                            ? 'bg-amber-400 text-black  animate-pulse'
+                            : 'bg-cyan-500 text-black '
                         }`}>
                           {currentDmAutoDeleteHours === -1 ? '⚡' : `${currentDmAutoDeleteHours}h`}
                         </span>
@@ -12951,7 +13005,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           className={`absolute right-0 top-full mt-2 w-64 rounded-2xl border shadow-2xl p-3 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl ${
                             isLight
                               ? 'bg-white/95 border-slate-200 text-slate-800'
-                              : 'bg-[#141420]/95 border-[#28283c] text-white'
+                              : 'bg-[#111115]/95 border-[#28283c] text-white'
                           }`}
                         >
                           {/* Menu Header */}
@@ -13052,7 +13106,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   className={`p-4 border-b flex flex-col items-center justify-between gap-4 ${
                     isLight
                       ? 'bg-slate-100/90 border-slate-200'
-                      : 'bg-gradient-to-r from-[#091512] via-[#0b0e17] to-[#091512] border-emerald-500/30'
+                      : 'bg-zinc-900/60 border-white/10'
                   }`}
                 >
                   {/* Discord-style Screen Share Stage trong cuộc gọi riêng 1-1 */}
@@ -13068,7 +13122,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       <div
                         className={`w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center font-black text-xl text-white border-2 transition-all relative ${
                           isUserSpeaking && !isMuted
-                            ? 'border-emerald-400 shadow-[0_0_24px_rgba(16,185,129,0.55)] scale-105'
+                            ? 'border-emerald-400  scale-105'
                             : 'border-white/20'
                         }`}
                         style={{ backgroundColor: '#161622' }}
@@ -13350,7 +13404,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                 isInviteExpired
                                   ? isLight
                                     ? 'bg-slate-100 border-slate-300 opacity-60'
-                                    : 'bg-[#101018] border-white/10 opacity-60'
+                                    : 'bg-[#111115] border-white/10 opacity-60'
                                   : isLight
                                   ? 'bg-emerald-50/80 border-emerald-200'
                                   : 'bg-[#0a1416] border-emerald-500/30'
@@ -13406,7 +13460,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           {msg.track_embed && (
                             <div
                               className={`mt-2 max-w-sm p-2.5 rounded-xl border flex items-center justify-between gap-3 ${
-                                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#12121c] border-[#222234]'
+                                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[#222234]'
                               }`}
                             >
                               <div className="truncate flex-1">
@@ -13580,7 +13634,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
                         : isLight
                         ? 'bg-slate-100 border-slate-300 text-slate-600 hover:text-slate-900'
-                        : 'bg-[#101018] border-[#222232] text-[#888] hover:text-white'
+                        : 'bg-[#111115] border-[#222232] text-[#888] hover:text-white'
                     }`}
                     title="Gửi file ảnh trong cuộc trò chuyện này"
                   >
@@ -13597,7 +13651,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300'
                         : isLight
                         ? 'bg-slate-100 border-slate-300 text-slate-600 hover:text-slate-900'
-                        : 'bg-[#101018] border-[#222232] text-[#888] hover:text-white'
+                        : 'bg-[#111115] border-[#222232] text-[#888] hover:text-white'
                     }`}
                   >
                     <Share2 className="w-4 h-4" />
@@ -13612,7 +13666,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.35)] animate-pulse'
                         : isLight
                         ? 'bg-slate-100 border-slate-300 text-slate-600 hover:text-amber-600'
-                        : 'bg-[#101018] border-[#222232] text-[#888] hover:text-amber-400'
+                        : 'bg-[#111115] border-[#222232] text-[#888] hover:text-amber-400'
                     }`}
                     title={
                       currentDmAutoDeleteHours === -1
@@ -13637,7 +13691,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         ? 'border-amber-500/50 bg-[#16120e] text-white placeholder-amber-400/60 focus:border-amber-400'
                         : isLight
                         ? 'bg-[#f8fafc] text-[#0f172a] border-[#cbd5e1] placeholder-[#94a3b8] focus:border-[#64748b]'
-                        : 'bg-[#101018] text-white border-[#222232] placeholder-[#666] focus:border-white/50'
+                        : 'bg-[#111115] text-white border-[#222232] placeholder-[#666] focus:border-white/50'
                     }`}
                   />
 
@@ -13664,7 +13718,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     type="button"
                     onClick={() => setMobileNavDrawerOpen(true)}
                     className={`md:hidden p-1.5 rounded-lg border cursor-pointer flex-shrink-0 ${
-                      isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#141420] border-[#262638] text-[#ccc]'
+                      isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#111115] border-[#262638] text-[#ccc]'
                     }`}
                     aria-label="Mở danh sách Server / Bạn bè"
                   >
@@ -13750,7 +13804,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     className={`max-w-4xl p-4 rounded-2xl border space-y-3 animate-in fade-in duration-200 ${
                       isLight
                         ? 'bg-cyan-50/90 border-cyan-300'
-                        : 'bg-gradient-to-r from-cyan-950/40 via-[#0d1420] to-purple-950/30 border-cyan-500/40 shadow-lg'
+                        : 'bg-zinc-900/60 border-white/10'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -13775,7 +13829,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               isInvExpired
                                 ? isLight
                                   ? 'bg-slate-100 border-slate-300 opacity-60'
-                                  : 'bg-[#101018] border-white/10 opacity-60'
+                                  : 'bg-[#111115] border-white/10 opacity-60'
                                 : isLight ? 'bg-white border-cyan-200' : 'bg-[#0b0e18]/90 border-cyan-500/30'
                             }`}
                           >
@@ -13859,7 +13913,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     className={`max-w-4xl p-4 rounded-2xl border space-y-3 animate-in fade-in duration-200 ${
                       isLight
                         ? 'bg-emerald-50/80 border-emerald-300'
-                        : 'bg-gradient-to-r from-emerald-950/35 via-[#0d1618] to-cyan-950/25 border-emerald-500/40 shadow-lg'
+                        : 'bg-zinc-900/60 border-white/10'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -13997,7 +14051,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             <div 
                               key={u.id}
                               className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0e16] border-[#1e1e2c]'
+                                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'
                               }`}
                             >
                               <div className="flex items-center gap-3 truncate">
@@ -14102,7 +14156,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             className={`p-3 rounded-2xl border flex items-center justify-between gap-4 transition-all ${
                               isLight 
                                 ? 'bg-white hover:bg-slate-50 border-slate-200 shadow-sm' 
-                                : 'bg-[#0d0d14] hover:bg-[#12121e] border-[#1e1e2c]'
+                                : 'bg-[#0d0d14] hover:bg-[#12121e] border-[rgba(255,255,255,0.08)]'
                             }`}
                           >
                             <div className="flex items-center gap-3.5 truncate">
@@ -14170,7 +14224,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                                     ? 'bg-red-500/15 hover:bg-red-500/25 border-red-500/40 text-white'
                                     : isLight
                                     ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-                                    : 'bg-[#181824] hover:bg-[#222234] border-[#2c2c3e] text-zinc-200 hover:text-white'
+                                    : 'bg-[rgba(255,255,255,0.08)] hover:bg-[#222234] border-[#2c2c3e] text-zinc-200 hover:text-white'
                                 }`}
                                 title={`Nhắn tin riêng với ${fr.display_name}`}
                               >
@@ -14186,7 +14240,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               <button
                                 onClick={() => handleStartPrivateCall(fr)}
                                 className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-                                  isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-[#181824] hover:bg-[#222234] border-[#2c2c3e] text-zinc-300 hover:text-white'
+                                  isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-[rgba(255,255,255,0.08)] hover:bg-[#222234] border-[#2c2c3e] text-zinc-300 hover:text-white'
                                 }`}
                                 title={`Gọi thoại riêng với ${fr.display_name}`}
                               >
@@ -14196,7 +14250,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               <button
                                 onClick={() => setSelectedProfileUser(fr)}
                                 className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-semibold transition-colors cursor-pointer ${
-                                  isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800' : 'bg-[#181824] hover:bg-[#222234] border-[#2c2c3e] text-zinc-300 hover:text-white'
+                                  isLight ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800' : 'bg-[rgba(255,255,255,0.08)] hover:bg-[#222234] border-[#2c2c3e] text-zinc-300 hover:text-white'
                                 }`}
                               >
                                 Xem hồ sơ
@@ -14211,7 +14265,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
               {/* ──────── 3.2 CỘT "ĐANG HOẠT ĐỘNG" BÊN PHẢI (ACTIVE NOW THEO THIẾT KẾ DISCORD) ──────── */}
               <div className={`hidden lg:flex w-80 border-l p-4 flex-col gap-3 overflow-y-auto flex-shrink-0 ${
-                isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#09090f] border-[#181824]'
+                isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#09090b] border-[rgba(255,255,255,0.08)]'
               }`}>
                 <h3 className={`text-sm font-bold tracking-tight uppercase font-mono ${isLight ? 'text-slate-900' : 'text-white'}`}>
                   Đang hoạt động
@@ -14221,14 +14275,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   const activeFriends = registeredUsers.filter(u => {
                     if (!isMutualFriend(u) && !followingUserIds.has(u.id)) return false;
                     const eff = getEffectiveStatus(u);
+                    const isOnline = eff === 'online' || eff === 'dnd';
+                    if (!isOnline) return false;
                     const inVoice = voiceParticipants.some(p => p.id === u.id);
-                    return eff === 'online' || eff === 'dnd' || Boolean(u.listening || (u as any).custom_status || inVoice);
+                    return Boolean(u.listening || inVoice);
                   });
 
                   if (activeFriends.length === 0) {
                     return (
                       <div className={`p-4 rounded-2xl border text-center space-y-2 ${
-                        isLight ? 'bg-white border-slate-200 text-slate-500' : 'bg-[#101018] border-[#1e1e2c] text-[#777]'
+                        isLight ? 'bg-white border-slate-200 text-slate-500' : 'bg-[#111115] border-[rgba(255,255,255,0.08)] text-[#777]'
                       }`}>
                         <Radio className="w-8 h-8 mx-auto text-[#555]" />
                         <p className="text-xs font-semibold">Chưa có ai đang hoạt động</p>
@@ -14279,7 +14335,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                             {/* Activity 1: Listening on Spytify */}
                             {af.listening && (
-                              <div className="p-2.5 rounded-xl bg-gradient-to-r from-cyan-950/40 to-black/60 border border-cyan-500/30 space-y-1.5">
+                              <div className="p-2.5 rounded-xl bg-zinc-900/50 border border-white/10 space-y-1.5">
                                 <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-cyan-400">
                                   <Activity className="w-3 h-3 animate-pulse" />
                                   <span>Đang nghe trên Spytify</span>
@@ -14297,7 +14353,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                             {/* Activity 2: In Voice Channel */}
                             {inVoice && (
-                              <div className="p-2.5 rounded-xl bg-gradient-to-r from-emerald-950/40 to-black/60 border border-emerald-500/30 space-y-1.5">
+                              <div className="p-2.5 rounded-xl bg-zinc-900/50 border border-white/10 space-y-1.5">
                                 <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400">
                                   <Mic className="w-3 h-3 animate-bounce" />
                                   <span>Đang trong phòng thoại</span>
@@ -14339,7 +14395,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               type="button"
               onClick={() => setMobileNavDrawerOpen(true)}
               className={`md:hidden p-1.5 rounded-lg border cursor-pointer flex-shrink-0 ${
-                isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#141420] border-[#262638] text-[#ccc]'
+                isLight ? 'bg-slate-100 border-slate-300 text-slate-700' : 'bg-[#111115] border-[#262638] text-[#ccc]'
               }`}
               aria-label="Mở danh sách Server & Kênh"
             >
@@ -14382,22 +14438,14 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono text-[#777]">
-            {/* Discord-style Member List Toggle Button (Single User Icon) */}
+            {/* Member List Toggle Button — Minimal & Modern */}
             <button
               onClick={toggleMemberList}
               title={getTranslation(language, 'community.toggleMemberList')}
-              style={isMemberListVisible ? {
-                backgroundColor: `${accentColor}25`,
-                borderColor: `${accentColor}60`,
-                color: accentColor,
-                boxShadow: `0 0 10px ${accentColor}30`,
-              } : undefined}
               className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-center ${
                 isMemberListVisible
-                  ? ''
-                  : isLight
-                  ? 'bg-[#ffffff] hover:bg-[#f1f5f9] border-[#cbd5e1] text-[#64748b] hover:text-[#0f172a]'
-                  : 'bg-[#12121c] hover:bg-[#1a1a2a] border-[#222234] text-[#888899] hover:text-white'
+                  ? 'bg-white/15 border-white/30 text-white'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-400 hover:text-white'
               }`}
             >
               <Users className="w-4 h-4" />
@@ -14408,7 +14456,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
         {/* ──────── 3A. DISCORD VOICE CALL ROOM VIEW ──────── */}
         {isVoice ? (
           <div className={`flex-1 flex flex-col p-6 items-center justify-between overflow-y-auto ${
-            isLight ? 'bg-gradient-to-b from-[#f8fafc] to-[#f1f5f9]' : 'bg-gradient-to-b from-[#08080f] to-[#040407]'
+            isLight ? 'bg-gradient-to-b from-[#f8fafc] to-[#f1f5f9]' : 'bg-gradient-to-b from-[#09090b] to-[#09090b]'
           }`}>
             {/* Discord-style Multi-Screen Share Stage View (Chia Tab chọn từng màn hình đang phát) */}
             {renderScreenShareStage()}
@@ -14886,7 +14934,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     title={isCameraOn ? "Tắt Camera" : "Bật Camera"}
                     className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
                       isCameraOn
-                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/40'
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-sm'
                         : 'bg-[#2b2d31] hover:bg-[#35373c] text-white hover:text-emerald-400'
                     }`}
                   >
@@ -14899,7 +14947,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     title={isScreenSharing ? "Dừng chia sẻ màn hình" : "Chia sẻ màn hình"}
                     className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
                       isScreenSharing
-                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/40 animate-pulse'
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-sm animate-pulse'
                         : 'bg-[#2b2d31] hover:bg-[#35373c] text-white hover:text-emerald-400'
                     }`}
                   >
@@ -14956,7 +15004,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
           <>
             {/* Live Stage DJ Booth Banner */}
             {isStage && (
-              <div className="m-3 p-4 rounded-xl bg-gradient-to-r from-[#0d0d16] via-[#10101c] to-[#0d0d16] border border-[#202030] shadow-xl relative overflow-hidden flex-shrink-0">
+              <div className="m-3 p-4 rounded-xl bg-zinc-900/60 border border-white/10 relative overflow-hidden flex-shrink-0">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3.5">
                     <div 
@@ -15007,7 +15055,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     {currentTrack && (
                       <button
                         onClick={handleBroadcastMyTrackAsHost}
-                        className="px-3 py-1.5 rounded-lg bg-[#181824] hover:bg-[#202030] border border-[#303044] text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer transition-colors"
+                        className="px-3 py-1.5 rounded-lg bg-[rgba(255,255,255,0.08)] hover:bg-[#202030] border border-[#303044] text-xs font-semibold text-white flex items-center gap-1.5 cursor-pointer transition-colors"
                         title="Phát bài bạn đang nghe lên sân khấu cho mọi người cùng thưởng thức"
                       >
                         <Disc className="w-3.5 h-3.5 text-cyan-400" />
@@ -15153,7 +15201,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               isInviteExpired
                                 ? isLight
                                   ? 'bg-slate-100 border-slate-300 opacity-60'
-                                  : 'bg-[#101018] border-white/10 opacity-60'
+                                  : 'bg-[#111115] border-white/10 opacity-60'
                                 : isLight
                                 ? 'bg-emerald-50/80 border-emerald-200'
                                 : 'bg-[#0a1416] border-emerald-500/30'
@@ -15209,7 +15257,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         {/* Embedded Track Card */}
                         {msg.track_embed && (
                           <div className={`mt-2 max-w-sm p-2.5 rounded-xl border transition-colors flex items-center justify-between gap-3 shadow-md ${
-                            isLight ? 'bg-[#ffffff] border-[#cbd5e1] hover:border-[#94a3b8]' : 'bg-[#12121c] border-[#222234] hover:border-white/30'
+                            isLight ? 'bg-[#ffffff] border-[#cbd5e1] hover:border-[#94a3b8]' : 'bg-[#111115] border-[#222234] hover:border-white/30'
                           }`}>
                             <div className="flex items-center gap-2.5 truncate">
                               <div className={`w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center flex-shrink-0 ${
@@ -15328,7 +15376,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       : -1;
                   return (
                     <div className={`absolute bottom-full left-3 right-3 mb-2 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-xl z-50 transition-all ${
-                      isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#101018]/95 border-cyan-500/30 text-white'
+                      isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#111115]/95 border-cyan-500/30 text-white'
                     }`}>
                       <div className={`px-3 py-2 border-b flex items-center justify-between text-[10px] font-mono uppercase tracking-wider font-bold ${
                         isLight ? 'bg-slate-100/90 text-slate-600 border-slate-200' : 'bg-black/70 text-cyan-400 border-white/10'
@@ -15412,7 +15460,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 if (chatMentionQueryVal !== null && filteredChatMentions.length > 0) {
                   return (
                     <div className={`absolute bottom-full left-3 right-3 mb-2 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-xl z-50 transition-all ${
-                      isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#101018]/95 border-purple-500/30 text-white'
+                      isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#111115]/95 border-purple-500/30 text-white'
                     }`}>
                       <div className={`px-3 py-2 border-b flex items-center justify-between text-[10px] font-mono uppercase tracking-wider font-bold ${
                         isLight ? 'bg-slate-100/90 text-slate-600 border-slate-200' : 'bg-black/70 text-purple-400 border-white/10'
@@ -15494,7 +15542,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 const prefixCmd = slashMentionMatch![1];
                 return (
                   <div className={`absolute bottom-full left-3 right-3 mb-2 rounded-2xl border shadow-2xl overflow-hidden backdrop-blur-xl z-50 transition-all ${
-                    isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#101018]/95 border-cyan-500/30 text-white'
+                    isLight ? 'bg-white/95 border-slate-300 text-slate-800' : 'bg-[#111115]/95 border-cyan-500/30 text-white'
                   }`}>
                     <div className={`px-3 py-2 border-b flex items-center justify-between text-[10px] font-mono uppercase tracking-wider font-bold ${
                       isLight ? 'bg-slate-100/90 text-slate-600 border-slate-200' : 'bg-black/70 text-cyan-400 border-white/10'
@@ -15776,20 +15824,16 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs border outline-none transition-colors font-sans ${
                     isLight 
                       ? 'bg-[#f8fafc] text-[#0f172a] border-[#cbd5e1] placeholder-[#94a3b8] focus:border-[#64748b]' 
-                      : 'bg-[#101018] text-white border-[#222232] placeholder-[#666] focus:border-white/50'
+                      : 'bg-[#111115] text-white border-[#222232] placeholder-[#666] focus:border-white/50'
                   }`}
                 />
 
                 <button
                   type="submit"
                   disabled={isUploadingChatFile || (!inputText.trim() && !attachCurrentTrack && !pendingChatImage && !pendingChatFile)}
-                  className="p-2.5 rounded-xl text-black font-bold flex items-center justify-center transition-all cursor-pointer disabled:opacity-40"
-                  style={{
-                    backgroundColor: accentColor,
-                    color: accentColor === '#FFFFFF' ? '#000000' : '#FFFFFF',
-                  }}
+                  className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-semibold flex items-center justify-center transition-colors cursor-pointer disabled:opacity-30 disabled:hover:bg-white"
                 >
-                  {isUploadingChatFile ? <span className="text-[9px] font-bold">...</span> : <Send className="w-4 h-4" />}
+                  {isUploadingChatFile ? <span className="text-[10px] font-mono">...</span> : <Send className="w-4 h-4" />}
                 </button>
               </form>
             </div>
@@ -15803,7 +15847,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       {hasActiveServer && (
         <div 
           className={`border-l flex flex-col overflow-y-auto no-scrollbar text-xs select-none transition-all duration-300 ease-in-out ${
-            isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-[#07070b] border-[#15151e]'
+            isLight ? 'bg-[#f8fafc] border-[#e2e8f0]' : 'bg-zinc-950 border-white/5'
           } ${
             isMemberListVisible 
               ? 'fixed inset-y-0 right-0 z-40 md:static w-56 md:w-52 p-3 opacity-100 flex-shrink-0 shadow-2xl md:shadow-none pt-[env(safe-area-inset-top,0px)] md:pt-3 pb-[env(safe-area-inset-bottom,0px)] md:pb-3' 
@@ -15869,7 +15913,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         });
                       }}
                       className={`flex flex-col p-1.5 rounded-lg transition-all cursor-pointer group ${
-                        isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#12121c]'
+                        isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#111115]'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -15973,7 +16017,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         });
                       }}
                       className={`flex flex-col p-1.5 rounded-lg transition-all cursor-pointer group ${
-                        isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#12121c]'
+                        isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#111115]'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -16098,7 +16142,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         });
                       }}
                       className={`flex flex-col p-1.5 rounded-lg transition-all cursor-pointer group opacity-60 hover:opacity-100 ${
-                        isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#12121c]'
+                        isLight ? 'hover:bg-[#e2e8f0]' : 'hover:bg-[#111115]'
                       }`}
                     >
                       <div className="flex items-center gap-2">
@@ -16288,7 +16332,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               const currentVol = userVolumes[memberMenu.member.id] ?? (isTargetBot ? 80 : 100);
 
               return (
-                <div className="px-2.5 py-2 border-y border-[#1e1e2c] my-1 bg-black/40 rounded-lg">
+                <div className="px-2.5 py-2 border-y border-[rgba(255,255,255,0.08)] my-1 bg-black/40 rounded-lg">
                   <div className="flex items-center justify-between text-[11px] font-mono text-[#aaa] mb-1.5">
                     <span className="flex items-center gap-1.5 font-semibold text-zinc-300">
                       <Volume2 className="w-3.5 h-3.5" style={{ color: accentColor }} />
@@ -17016,11 +17060,15 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       {/* ──────────────── 5. MODAL TỰ TẠO TRẠM SÓNG / SERVER MỚI (DISCORD-STYLE STEP WIZARD) ──────────────── */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-[#0c0c14] border border-[#222234] rounded-2xl p-6 shadow-2xl relative text-white">
+          <div className={`w-full max-w-lg rounded-2xl p-6 shadow-2xl relative border ${
+            isLight ? 'bg-white border-zinc-200 text-zinc-900' : 'bg-[#0c0c14] border-white/10 text-white'
+          }`}>
             {/* Close */}
             <button
               onClick={() => setIsCreateModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full text-[#666] hover:text-white hover:bg-[#181824] transition-colors cursor-pointer"
+              className={`absolute top-4 right-4 p-1.5 rounded-full transition-colors cursor-pointer ${
+                isLight ? 'text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100' : 'text-zinc-500 hover:text-white hover:bg-white/10'
+              }`}
             >
               <X className="w-4 h-4" />
             </button>
@@ -17028,22 +17076,28 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {/* Header with Step Progress */}
             <div className="flex items-center gap-3 mb-4">
               <div 
-                className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base bg-zinc-800/80"
+                className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-base ${
+                  isLight ? 'bg-zinc-100' : 'bg-zinc-800/80'
+                }`}
                 style={{ color: newServerColor, border: `1px solid ${newServerColor}60` }}
               >
                 <Sparkles className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <h3 className="text-base font-black tracking-tight text-white flex items-center gap-2">
-                  <span>Tạo Server Spy Jam</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                    Bước {createServerStep}/3
+                <h3 className={`text-base font-black tracking-tight flex items-center gap-2 ${
+                  isLight ? 'text-zinc-900' : 'text-white'
+                }`}>
+                  <span>{language === 'vi' ? 'Tạo Server Spy Jam' : 'Create Spy Jam Server'}</span>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                    isLight ? 'bg-zinc-100 text-zinc-700 border-zinc-200' : 'bg-white/10 text-zinc-300 border-white/15'
+                  }`}>
+                    {language === 'vi' ? `Bước ${createServerStep}/3` : `Step ${createServerStep}/3`}
                   </span>
                 </h3>
-                <p className="text-[11px] text-[#777] font-mono">
-                  {createServerStep === 1 && 'Chọn phong cách mẫu hoặc dán link mời tham gia'}
-                  {createServerStep === 2 && 'Đặt tên máy chủ và chọn biểu tượng / logo'}
-                  {createServerStep === 3 && 'Tùy biến màu theme Neon & xem trước diện mạo'}
+                <p className={`text-[11px] font-mono ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                  {createServerStep === 1 && (language === 'vi' ? 'Chọn phong cách mẫu hoặc dán link mời tham gia' : 'Choose a template or paste an invite link')}
+                  {createServerStep === 2 && (language === 'vi' ? 'Đặt tên máy chủ và chọn biểu tượng / logo' : 'Name your server and choose an icon / logo')}
+                  {createServerStep === 3 && (language === 'vi' ? 'Tùy biến màu theme & xem trước diện mạo' : 'Customize theme color & preview appearance')}
                 </p>
               </div>
             </div>
@@ -17055,7 +17109,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   key={step}
                   onClick={() => setCreateServerStep(step as 1 | 2 | 3)}
                   className={`h-1.5 flex-1 rounded-full cursor-pointer transition-all ${
-                    createServerStep >= step ? 'shadow-sm' : 'bg-white/10'
+                    createServerStep >= step ? 'shadow-sm' : (isLight ? 'bg-zinc-200' : 'bg-white/10')
                   }`}
                   style={{
                     backgroundColor: createServerStep >= step ? newServerColor : undefined,
@@ -17068,9 +17122,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {createServerStep === 1 && (
               <div className="space-y-4">
                 {/* Quick Join Server by Invite Link */}
-                <form onSubmit={handleJoinServerByLinkForm} className="p-3 rounded-xl bg-[#11111c] border border-cyan-500/30 space-y-2">
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400">
-                    🔗 HOẶC THAM GIA BẰNG LINK MỜI:
+                <form onSubmit={handleJoinServerByLinkForm} className={`p-3 rounded-xl border space-y-2 ${
+                  isLight ? 'bg-zinc-50 border-zinc-200' : 'bg-zinc-900/60 border-white/10'
+                }`}>
+                  <label className={`block text-[10px] font-mono font-medium uppercase tracking-wider ${
+                    isLight ? 'text-zinc-600' : 'text-zinc-400'
+                  }`}>
+                    🔗 {language === 'vi' ? 'HOẶC THAM GIA BẰNG LINK MỜI:' : 'OR JOIN WITH INVITE LINK:'}
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -17080,30 +17138,40 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         setJoinServerLinkInput(e.target.value);
                         setJoinServerErrorMsg(null);
                       }}
-                      placeholder="Dán link spytify://station/join/... vào đây"
-                      className="flex-1 px-3 py-2 rounded-xl bg-[#0b0b12] border border-[#252538] text-cyan-300 text-xs font-mono outline-none focus:border-cyan-400 transition-colors"
+                      placeholder={language === 'vi' ? 'Dán link spytify://station/join/... vào đây' : 'Paste spytify://station/join/... link here'}
+                      className={`flex-1 px-3 py-2 rounded-xl text-xs font-mono outline-none border transition-colors ${
+                        isLight 
+                          ? 'bg-white border-zinc-300 text-zinc-900 focus:border-zinc-500' 
+                          : 'bg-zinc-950 border-white/10 text-white focus:border-white/30'
+                      }`}
                     />
                     <button
                       type="submit"
-                      className="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs font-mono cursor-pointer transition-transform hover:scale-105 shrink-0"
+                      className={`px-4 py-2 rounded-xl font-semibold text-xs font-mono cursor-pointer transition-colors shrink-0 ${
+                        isLight
+                          ? 'bg-zinc-900 hover:bg-zinc-800 text-white'
+                          : 'bg-white hover:bg-zinc-200 text-zinc-950'
+                      }`}
                     >
-                      Tham gia
+                      {language === 'vi' ? 'Tham gia' : 'Join'}
                     </button>
                   </div>
                   {joinServerErrorMsg && (
-                    <p className="text-[11px] font-mono text-red-400">{joinServerErrorMsg}</p>
+                    <p className="text-[11px] font-mono text-red-500">{joinServerErrorMsg}</p>
                   )}
                   {joinServerStatusMsg && (
-                    <p className="text-[11px] font-mono text-emerald-400">{joinServerStatusMsg}</p>
+                    <p className="text-[11px] font-mono text-emerald-500">{joinServerStatusMsg}</p>
                   )}
                 </form>
 
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-2">
-                    Chọn phong cách trạm sóng mẫu (Discord Style):
+                  <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-2 ${
+                    isLight ? 'text-zinc-600' : 'text-zinc-400'
+                  }`}>
+                    {language === 'vi' ? 'Chọn phong cách trạm sóng mẫu (Discord Style):' : 'Choose Server Template Style (Discord Style):'}
                   </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {SERVER_PRESETS.map(p => {
+                    {serverPresets.map(p => {
                       const isSel = newServerPreset === p.key;
                       return (
                         <button
@@ -17112,8 +17180,8 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           onClick={() => handleSelectPreset(p.key)}
                           className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                             isSel 
-                              ? 'bg-[#151524] shadow-md' 
-                              : 'bg-[#0e0e16] hover:bg-[#13131e] border-[#1e1e2c]'
+                              ? (isLight ? 'bg-zinc-100 shadow-sm' : 'bg-zinc-900/90 shadow-md')
+                              : (isLight ? 'bg-zinc-50 hover:bg-zinc-100 border-zinc-200' : 'bg-zinc-900/50 hover:bg-zinc-900 border-white/10')
                           }`}
                           style={{
                             borderColor: isSel ? p.color : undefined,
@@ -17123,34 +17191,46 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="text-xl">{p.icon}</span>
                             {isSel && (
-                              <span className="p-0.5 rounded-full bg-white text-black">
+                              <span 
+                                className="p-0.5 rounded-full text-black font-bold"
+                                style={{ backgroundColor: p.color }}
+                              >
                                 <Check className="w-2.5 h-2.5" />
                               </span>
                             )}
                           </div>
-                          <p className="text-xs font-bold text-white">{p.label}</p>
-                          <p className="text-[10px] text-[#777] font-mono line-clamp-1 mt-0.5">{p.desc}</p>
+                          <p className={`text-xs font-bold ${isLight ? 'text-zinc-900' : 'text-white'}`}>{p.label}</p>
+                          <p className={`text-[10px] font-mono line-clamp-1 mt-0.5 ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>{p.desc}</p>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                <div className="pt-3 flex items-center justify-end gap-2 border-t border-[#1e1e2c]">
+                <div className={`pt-3 flex items-center justify-end gap-2 border-t ${
+                  isLight ? 'border-zinc-200' : 'border-white/10'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setIsCreateModalOpen(false)}
-                    className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+                    className={`px-4 py-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${
+                      isLight 
+                        ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border-zinc-300' 
+                        : 'bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border-white/10'
+                    }`}
                   >
-                    Hủy
+                    {language === 'vi' ? 'Hủy' : 'Cancel'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setCreateServerStep(2)}
-                    className="px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-1.5 cursor-pointer shadow-lg transition-transform hover:scale-105"
-                    style={{ backgroundColor: newServerColor }}
+                    className={`px-5 py-2 rounded-xl font-semibold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow transition-colors ${
+                      isLight 
+                        ? 'bg-zinc-900 hover:bg-zinc-800 text-white' 
+                        : 'bg-white hover:bg-zinc-200 text-zinc-950'
+                    }`}
                   >
-                    <span>Tiếp tục (Tên & Logo)</span>
+                    <span>{language === 'vi' ? 'Tiếp tục (Tên & Logo)' : 'Continue (Name & Logo)'}</span>
                     <span>➔</span>
                   </button>
                 </div>
@@ -17161,40 +17241,56 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {createServerStep === 2 && (
               <div className="space-y-4 font-sans">
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1">
-                    Tên máy chủ / Trạm sóng:
+                  <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-1 ${
+                    isLight ? 'text-zinc-600' : 'text-zinc-400'
+                  }`}>
+                    {language === 'vi' ? 'Tên máy chủ / Trạm sóng:' : 'Server / Station Name:'}
                   </label>
                   <input
                     type="text"
                     required
                     value={newServerName}
                     onChange={e => setNewServerName(e.target.value)}
-                    placeholder="Ví dụ: Neon Club 2077, Lofi Study Corner..."
-                    className="w-full px-3 py-2.5 rounded-xl bg-[#12121c] border border-[#252538] text-white text-xs outline-none focus:border-cyan-400 transition-colors"
+                    placeholder={language === 'vi' ? 'Ví dụ: Neon Club, Lofi Study Corner...' : 'e.g. Neon Club, Lofi Study Corner...'}
+                    className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-colors ${
+                      isLight 
+                        ? 'bg-zinc-50 border-zinc-300 text-zinc-900 focus:border-zinc-600' 
+                        : 'bg-zinc-900 border-white/10 text-white focus:border-white/30'
+                    }`}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1">
-                    Mô tả trạm sóng:
+                  <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-1 ${
+                    isLight ? 'text-zinc-600' : 'text-zinc-400'
+                  }`}>
+                    {language === 'vi' ? 'Mô tả trạm sóng:' : 'Server Description:'}
                   </label>
                   <input
                     type="text"
                     value={newServerDesc}
                     onChange={e => setNewServerDesc(e.target.value)}
-                    placeholder="Mô tả ngắn về thể loại âm nhạc hoặc đối tượng tham gia..."
-                    className="w-full px-3 py-2.5 rounded-xl bg-[#12121c] border border-[#252538] text-white text-xs outline-none focus:border-cyan-400 transition-colors"
+                    placeholder={language === 'vi' ? 'Mô tả ngắn về thể loại âm nhạc hoặc đối tượng tham gia...' : 'Short description of music genre or audience...'}
+                    className={`w-full px-3 py-2.5 rounded-xl border text-xs outline-none transition-colors ${
+                      isLight 
+                        ? 'bg-zinc-50 border-zinc-300 text-zinc-900 focus:border-zinc-600' 
+                        : 'bg-zinc-900 border-white/10 text-white focus:border-white/30'
+                    }`}
                   />
                 </div>
 
                 {/* Logo / Biểu tượng Máy Chủ */}
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
-                    Logo / Biểu tượng Máy Chủ (Tải ảnh hoặc chọn Icon):
+                  <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-1.5 ${
+                    isLight ? 'text-zinc-600' : 'text-zinc-400'
+                  }`}>
+                    {language === 'vi' ? 'Logo / Biểu tượng Máy Chủ (Tải ảnh hoặc chọn Icon):' : 'Server Logo / Icon (Upload image or select Icon):'}
                   </label>
                   <div className="flex items-center gap-3 flex-wrap">
                     <div
-                      className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center font-bold text-lg shrink-0 border bg-zinc-800/80 shadow-md"
+                      className={`w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center font-bold text-lg shrink-0 border shadow-md ${
+                        isLight ? 'bg-zinc-100' : 'bg-zinc-900'
+                      }`}
                       style={{
                         borderColor: newServerColor,
                         color: newServerColor,
@@ -17203,8 +17299,12 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       {renderServerIconContent(newServerIcon, newServerName || 'Server', newServerColor, 'w-6 h-6')}
                     </div>
 
-                    <label className="px-3 py-1.5 rounded-xl bg-[#161626] hover:bg-[#1e1e34] border border-cyan-500/40 text-cyan-300 text-[11px] font-mono font-bold cursor-pointer transition-colors flex items-center gap-1.5">
-                      <span>📷 Tải ảnh Logo</span>
+                    <label className={`px-3 py-1.5 rounded-xl border text-[11px] font-mono font-bold cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      isLight 
+                        ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border-zinc-300' 
+                        : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                    }`}>
+                      <span>📷 {language === 'vi' ? 'Tải ảnh Logo' : 'Upload Logo'}</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -17218,13 +17318,13 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       onClick={() => setNewServerIcon('spy_logo')}
                       className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
                         newServerIcon === 'spy_logo'
-                          ? 'bg-white/20 border-white text-white scale-105'
-                          : 'bg-[#141420] border-[#262638] text-[#bbb] hover:text-white'
+                          ? (isLight ? 'bg-zinc-900 border-zinc-900 text-white scale-105' : 'bg-white border-white text-black scale-105')
+                          : (isLight ? 'bg-zinc-100 border-zinc-300 text-zinc-700 hover:text-zinc-900' : 'bg-zinc-900 border-white/10 text-zinc-300 hover:text-white')
                       }`}
-                      title="Dùng biểu tượng Điệp viên Spy Jam"
+                      title={language === 'vi' ? 'Dùng biểu tượng Điệp viên Spy Jam' : 'Use Spy Jam Logo'}
                     >
                       <SpyJamIcon className="w-3.5 h-3.5" style={{ color: newServerColor, backgroundColor: newServerColor }} />
-                      <span>Logo Spy</span>
+                      <span>{language === 'vi' ? 'Logo Spy' : 'Spy Logo'}</span>
                     </button>
 
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -17234,7 +17334,9 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                           type="button"
                           onClick={() => setNewServerIcon(ico)}
                           className={`w-7 h-7 rounded-lg text-sm flex items-center justify-center cursor-pointer transition-transform ${
-                            newServerIcon === ico ? 'scale-110 bg-white/20 border border-white' : 'hover:scale-105 bg-[#141420]'
+                            newServerIcon === ico 
+                              ? (isLight ? 'scale-110 bg-zinc-200 border border-zinc-400' : 'scale-110 bg-white/20 border border-white') 
+                              : (isLight ? 'hover:scale-105 bg-zinc-100' : 'hover:scale-105 bg-zinc-900')
                           }`}
                         >
                           {ico}
@@ -17244,22 +17346,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3 flex items-center justify-between border-t border-[#1e1e2c]">
+                <div className={`pt-3 flex items-center justify-between border-t ${
+                  isLight ? 'border-zinc-200' : 'border-white/10'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setCreateServerStep(1)}
-                    className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                      isLight 
+                        ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700' 
+                        : 'bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white'
+                    }`}
                   >
-                    ⬅️ Quay lại
+                    {language === 'vi' ? '⬅️ Quay lại' : '⬅️ Back'}
                   </button>
                   <button
                     type="button"
                     disabled={!newServerName.trim()}
                     onClick={() => setCreateServerStep(3)}
-                    className="px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-1.5 cursor-pointer shadow-lg transition-transform hover:scale-105 disabled:opacity-40"
-                    style={{ backgroundColor: newServerColor }}
+                    className={`px-5 py-2 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-lg transition-transform hover:scale-105 disabled:opacity-40 ${
+                      isLight ? 'bg-zinc-900 hover:bg-zinc-800 text-white' : 'bg-white hover:bg-zinc-200 text-zinc-950'
+                    }`}
                   >
-                    <span>Tiếp tục (Màu & Xem trước)</span>
+                    <span>{language === 'vi' ? 'Tiếp tục (Màu & Xem trước)' : 'Continue (Color & Preview)'}</span>
                     <span>➔</span>
                   </button>
                 </div>
@@ -17270,17 +17379,21 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {createServerStep === 3 && (
               <form onSubmit={handleCreateServer} className="space-y-4 font-sans">
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
-                    Màu Theme Neon chủ đạo:
+                  <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-1.5 ${
+                    isLight ? 'text-zinc-600' : 'text-zinc-400'
+                  }`}>
+                    {language === 'vi' ? 'Màu Theme chủ đạo:' : 'Primary Theme Color:'}
                   </label>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {['#00E5FF', '#FF2A55', '#00FF66', '#E040FB', '#FFE600', '#9C27B0', '#FFFFFF'].map(clr => (
+                    {[accentColor, '#00E5FF', '#FF2A55', '#10B981', '#8B5CF6', '#F59E0B', '#FFFFFF'].filter((v, i, a) => a.indexOf(v) === i).map(clr => (
                       <button
                         key={clr}
                         type="button"
                         onClick={() => setNewServerColor(clr)}
                         className={`w-7 h-7 rounded-full cursor-pointer transition-transform flex items-center justify-center ${
-                          newServerColor.toLowerCase() === clr.toLowerCase() ? 'scale-125 border-2 border-white shadow-lg' : 'hover:scale-110 opacity-70 hover:opacity-100'
+                          newServerColor.toLowerCase() === clr.toLowerCase() 
+                            ? 'scale-125 border-2 border-white shadow-lg' 
+                            : 'hover:scale-110 opacity-70 hover:opacity-100'
                         }`}
                         style={{ backgroundColor: clr, boxShadow: `0 0 8px ${clr}50` }}
                       >
@@ -17294,11 +17407,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     <label
                       className="relative w-7 h-7 rounded-full border-2 border-white flex items-center justify-center cursor-pointer transition-transform hover:scale-110 shadow-sm"
                       style={{ backgroundColor: newServerColor }}
-                      title="Chọn bảng màu tùy biến"
+                      title={language === 'vi' ? 'Chọn bảng màu tùy biến' : 'Pick custom color'}
                     >
                       <input
                         type="color"
-                        value={newServerColor.startsWith('#') && newServerColor.length === 7 ? newServerColor : '#00E5FF'}
+                        value={newServerColor.startsWith('#') && newServerColor.length === 7 ? newServerColor : (accentColor || '#00E5FF')}
                         onChange={e => setNewServerColor(e.target.value)}
                         className="opacity-0 w-0 h-0 absolute pointer-events-none"
                       />
@@ -17310,32 +17423,44 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       value={newServerColor}
                       onChange={e => setNewServerColor(e.target.value)}
                       placeholder="#00E5FF"
-                      className="w-20 px-2 py-1 rounded-lg text-xs font-mono border border-white/20 bg-black/40 text-white outline-none focus:border-cyan-400 uppercase"
+                      className={`w-20 px-2 py-1 rounded-lg text-xs font-mono border uppercase outline-none transition-colors ${
+                        isLight 
+                          ? 'bg-zinc-100 border-zinc-300 text-zinc-900 focus:border-zinc-500' 
+                          : 'bg-black/40 border-white/20 text-white focus:border-white/40'
+                      }`}
                     />
                   </div>
                 </div>
 
                 {/* Thẻ xem trước máy chủ (Server Live Preview) */}
                 <div>
-                  <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5">
-                    Xem trước diện mạo máy chủ (Preview):
+                  <label className={`block text-[10px] font-mono font-bold uppercase tracking-wider mb-1.5 ${
+                    isLight ? 'text-zinc-600' : 'text-zinc-400'
+                  }`}>
+                    {language === 'vi' ? 'Xem trước diện mạo máy chủ (Preview):' : 'Server Live Preview:'}
                   </label>
                   <div
-                    className="p-4 rounded-2xl border bg-[#101018] flex items-center gap-3.5 shadow-xl transition-all"
+                    className={`p-4 rounded-2xl border flex items-center gap-3.5 shadow-xl transition-all ${
+                      isLight ? 'bg-zinc-50' : 'bg-zinc-900'
+                    }`}
                     style={{
                       borderColor: `${newServerColor}50`,
                       boxShadow: `0 0 20px ${newServerColor}20`,
                     }}
                   >
                     <div
-                      className="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center font-bold text-xl shrink-0 border bg-zinc-800/80 shadow-md"
+                      className={`w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center font-bold text-xl shrink-0 border shadow-md ${
+                        isLight ? 'bg-zinc-100' : 'bg-zinc-800'
+                      }`}
                       style={{ borderColor: newServerColor, color: newServerColor }}
                     >
                       {renderServerIconContent(newServerIcon, newServerName || 'Server', newServerColor, 'w-7 h-7')}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-sm text-white truncate">{newServerName || 'Tên Máy Chủ'}</h4>
+                        <h4 className={`font-bold text-sm truncate ${isLight ? 'text-zinc-900' : 'text-white'}`}>
+                          {newServerName || (language === 'vi' ? 'Tên Máy Chủ' : 'Server Name')}
+                        </h4>
                         <span
                           className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border uppercase"
                           style={{
@@ -17344,23 +17469,29 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             borderColor: `${newServerColor}40`,
                           }}
                         >
-                          MỚI
+                          {language === 'vi' ? 'MỚI' : 'NEW'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#888] line-clamp-1 mt-0.5 font-sans">
-                        {newServerDesc || 'Trạm phát sóng âm nhạc cộng đồng Spytify'}
+                      <p className={`text-[11px] line-clamp-1 mt-0.5 font-sans ${isLight ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                        {newServerDesc || (language === 'vi' ? 'Trạm phát sóng âm nhạc cộng đồng Spytify' : 'Spytify community music streaming station')}
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-3 flex items-center justify-between border-t border-[#1e1e2c]">
+                <div className={`pt-3 flex items-center justify-between border-t ${
+                  isLight ? 'border-zinc-200' : 'border-white/10'
+                }`}>
                   <button
                     type="button"
                     onClick={() => setCreateServerStep(2)}
-                    className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                      isLight 
+                        ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700' 
+                        : 'bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white'
+                    }`}
                   >
-                    ⬅️ Quay lại
+                    {language === 'vi' ? '⬅️ Quay lại' : '⬅️ Back'}
                   </button>
                   <button
                     type="submit"
@@ -17371,7 +17502,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     }}
                   >
                     <Sparkles className="w-4 h-4" />
-                    <span>Tạo Máy Chủ Ngay!</span>
+                    <span>{language === 'vi' ? 'Tạo Máy Chủ Ngay!' : 'Create Server Now!'}</span>
                   </button>
                 </div>
               </form>
@@ -17527,7 +17658,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       onChange={e => setBotDraftStreamUrl(e.target.value)}
                       placeholder="https://www.youtube.com/watch?v=... hoặc Video ID"
                       className={`w-full px-3 py-2 rounded-xl text-xs border outline-none font-mono ${
-                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#101018] border-[#222232] text-white focus:border-amber-400'
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#111115] border-[#222232] text-white focus:border-amber-400'
                       }`}
                     />
                   </div>
@@ -17542,7 +17673,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       onChange={e => setBotDraftBackupUrls(e.target.value)}
                       placeholder="https://www.youtube.com/watch?v=...&#10;https://www.youtube.com/watch?v=..."
                       className={`w-full px-3 py-1.5 rounded-xl text-xs border outline-none font-mono resize-none ${
-                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#101018] border-[#222232] text-white focus:border-amber-400'
+                        isLight ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#111115] border-[#222232] text-white focus:border-amber-400'
                       }`}
                     />
                     <p className="text-[9px] text-[#777] font-mono mt-0.5">
@@ -17650,7 +17781,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   setIsBotModalOpen(false);
                   setEditingBotTargetId(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-[#141420] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[#111115] hover:bg-[#1a1a2a] text-xs font-semibold text-[#888] hover:text-white transition-colors cursor-pointer"
               >
                 Hủy
               </button>
@@ -17723,7 +17854,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 setIsAudioSettingsOpen(false);
               }}
               className={`absolute top-4 right-4 p-1.5 rounded-full transition-colors cursor-pointer ${
-                isLight ? 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]' : 'text-[#666] hover:text-white hover:bg-[#181824]'
+                isLight ? 'text-[#64748b] hover:text-[#0f172a] hover:bg-[#f1f5f9]' : 'text-[#666] hover:text-white hover:bg-[rgba(255,255,255,0.08)]'
               }`}
             >
               <X className="w-4 h-4" />
@@ -17895,7 +18026,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
 
                   {/* Live Mic Test Meter */}
-                  <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c]">
+                  <div className="pt-3 border-t border-slate-200 dark:border-[rgba(255,255,255,0.08)]">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-mono text-zinc-400 flex items-center gap-1.5 font-bold">
                         <Activity className="w-3.5 h-3.5" style={{ color: accentColor }} />
@@ -18034,7 +18165,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
 
                   {/* Speaker Test Sound Button */}
-                  <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c] flex items-center justify-between">
+                  <div className="pt-3 border-t border-slate-200 dark:border-[rgba(255,255,255,0.08)] flex items-center justify-between">
                     <span className="text-[11px] font-mono text-[#777]">Âm lượng tai nghe / loa</span>
                     <button
                       type="button"
@@ -18084,11 +18215,11 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
 
                   {/* Audio Filters (Noise Suppression & Echo Cancellation) */}
-                  <div className="pt-3 border-t border-slate-200 dark:border-[#1e1e2c] grid grid-cols-2 gap-2 text-xs">
+                  <div className="pt-3 border-t border-slate-200 dark:border-[rgba(255,255,255,0.08)] grid grid-cols-2 gap-2 text-xs">
                     <label 
                       style={noiseSuppression ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}10` } : undefined}
                       className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                        isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[#252538]'
+                        isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[rgba(255,255,255,0.1)]'
                       }`}
                     >
                       <input
@@ -18108,7 +18239,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     <label 
                       style={echoCancellation ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}10` } : undefined}
                       className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
-                        isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[#252538]'
+                        isLight ? 'bg-white border-slate-200' : 'bg-[#181826] border-[rgba(255,255,255,0.1)]'
                       }`}
                     >
                       <input
@@ -18153,7 +18284,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
                             : isLight
                             ? 'bg-white border-slate-200 text-slate-600 hover:border-emerald-500/40'
-                            : 'bg-[#181826] border-[#252538] text-zinc-300 hover:border-emerald-500/40'
+                            : 'bg-[#181826] border-[rgba(255,255,255,0.1)] text-zinc-300 hover:border-emerald-500/40'
                         }`}
                       >
                         {fps} FPS
@@ -18167,7 +18298,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="pt-4 mt-5 border-t border-slate-200 dark:border-[#1e1e2c] flex items-center justify-between shrink-0">
+            <div className="pt-4 mt-5 border-t border-slate-200 dark:border-[rgba(255,255,255,0.08)] flex items-center justify-between shrink-0">
               <button
                 type="button"
                 onClick={() => {
@@ -18241,7 +18372,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             {/* Vertical Sub-Tabs (Discord Style) */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <div className={`w-52 shrink-0 border-r p-3.5 flex flex-col gap-1 overflow-y-auto ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#09090f] border-[#181824]'
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#09090b] border-[rgba(255,255,255,0.08)]'
               }`}>
                 <div className="px-2.5 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-[#666] mb-1">
                   {canManageServer ? 'CÀI ĐẶT MÁY CHỦ' : 'TÙY CHỌN CỦA BẠN'}
@@ -18306,7 +18437,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               {serverSettingsTab === 'overview' && !canManageServer && (
                 <div className="space-y-5 max-w-xl">
                   {/* Hồ sơ thành viên trong máy chủ */}
-                  <div className={`p-4 rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                  <div className={`p-4 rounded-2xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
                     <div className="flex items-center gap-3.5 mb-3">
                       <div className="w-12 h-12 rounded-xl bg-zinc-800 overflow-hidden flex items-center justify-center font-bold text-sm text-white shrink-0 border border-white/10">
                         {renderAvatarContent(myServerDisplayName, currentUser?.avatar)}
@@ -18391,7 +18522,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </form>
 
                   {/* Thông tin máy chủ (Read-only) */}
-                  <div className={`p-4 rounded-xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                  <div className={`p-4 rounded-xl border space-y-2 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
                     <div className="flex items-center justify-between text-xs font-mono">
                       <span className="text-[#888]">MÁY CHỦ:</span>
                       <span className="font-bold text-white">{selectedServer.name}</span>
@@ -18587,7 +18718,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   </div>
 
                   {/* Quyền Mời Thành Viên Của Member Thường (Chỉ Chủ Server thiết lập) */}
-                  <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                  <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
@@ -18639,7 +18770,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </div>
                   </div>
 
-                  <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'}`}>
+                  <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'}`}>
                     <label className="block text-[10px] font-mono font-bold uppercase tracking-wider text-[#888] mb-1.5 flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-cyan-400" />
                       <span>Tự động xóa tin nhắn kênh chat sau khoảng thời gian:</span>
@@ -18666,7 +18797,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-[#1e1e2c] flex justify-end">
+                  <div className="pt-4 border-t border-[rgba(255,255,255,0.08)] flex justify-end">
                     <button
                       type="submit"
                       className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black flex items-center gap-2 cursor-pointer shadow-lg hover:scale-105 active:scale-95 transition-all"
@@ -18712,7 +18843,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         <div
                           key={mem.id}
                           className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'
+                            isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'
                           }`}
                         >
                           <div className="flex items-center gap-3">
@@ -18902,7 +19033,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                               ? 'border-cyan-400 bg-cyan-950/40 shadow-md scale-[1.02]'
                               : isLight
                               ? 'bg-white border-slate-200 hover:border-slate-300'
-                              : 'bg-[#101018] border-[#222232] hover:border-white/20'
+                              : 'bg-[#111115] border-[#222232] hover:border-white/20'
                           }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -18964,7 +19095,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
                   {/* Form Tạo Tag Mới (Chỉ dành cho Chủ Server) */}
                   {isServerOwner && (
-                    <div className={`p-4 rounded-xl border space-y-3 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#222232]'}`}>
+                    <div className={`p-4 rounded-xl border space-y-3 ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[#222232]'}`}>
                       <h5 className="text-xs font-bold text-cyan-400 font-mono uppercase tracking-wider flex items-center gap-1.5">
                         <Plus className="w-3.5 h-3.5" />
                         Tạo Tag Mới Cho Server
@@ -19046,7 +19177,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                         <div
                           key={tag.id}
                           className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#101018] border-[#222232]'
+                            isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#111115] border-[#222232]'
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
@@ -19106,7 +19237,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                       readOnly
                       value={`spytify://station/join/${selectedServer.id}`}
                       className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs font-mono border outline-none ${
-                        isLight ? 'bg-slate-100 text-slate-900 border-slate-300' : 'bg-[#101018] text-cyan-300 border-[#242436]'
+                        isLight ? 'bg-slate-100 text-slate-900 border-slate-300' : 'bg-[#111115] text-cyan-300 border-[#242436]'
                       }`}
                     />
                     <button
@@ -19145,7 +19276,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                             <div
                               key={u.id}
                               className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 ${
-                                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#101018] border-[#1e1e2c]'
+                                isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#111115] border-[rgba(255,255,255,0.08)]'
                               }`}
                             >
                               <div className="flex items-center gap-2.5 truncate">
@@ -19270,7 +19401,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
       {selectedProfileUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className={`w-full max-w-md border rounded-2xl shadow-2xl relative overflow-hidden ${
-            isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#0e0e16] border-[#222234] text-white'
+            isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#111115] border-[#222234] text-white'
           }`}>
             {/* Banner with Accent Glow */}
             <div 
@@ -19294,7 +19425,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                 <div className="relative group/profAvt">
                   <div 
                     className="w-20 h-20 rounded-2xl overflow-hidden bg-[#14141e] border-4 flex items-center justify-center font-black text-2xl text-white shadow-2xl"
-                    style={{ borderColor: isLight ? '#ffffff' : '#0e0e16' }}
+                    style={{ borderColor: isLight ? '#ffffff' : '#111115' }}
                   >
                     {renderAvatarContent(
                       selectedProfileUser.display_name,
@@ -19405,7 +19536,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
               </div>
 
               {/* Mutual Relationship Badge */}
-              <div className="mt-3 p-2.5 rounded-xl bg-[#141420] border border-[#222234] text-xs font-mono flex items-center justify-between">
+              <div className="mt-3 p-2.5 rounded-xl bg-[#111115] border border-[#222234] text-xs font-mono flex items-center justify-between">
                 <span className="text-[#888]">Mối quan hệ:</span>
                 {isMutualFriend(selectedProfileUser) ? (
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
@@ -19450,7 +19581,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
 
               {/* Listening Activity Card */}
               {selectedProfileUser.listening && (
-                <div className="mt-4 p-3 rounded-xl bg-gradient-to-r from-cyan-950/30 to-black border border-cyan-500/30 flex items-center justify-between gap-3 shadow-md">
+                <div className="mt-4 p-3 rounded-xl bg-zinc-900/60 border border-white/10 flex items-center justify-between gap-3 shadow-md">
                   <div className="truncate flex-1">
                     <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1 mb-0.5">
                       <Activity className="w-3 h-3 animate-pulse" />
@@ -19523,7 +19654,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-sans border outline-none transition-colors ${
                     isLight
                       ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-500'
-                      : 'bg-[#12121c] border-[#242436] text-white focus:border-white/50'
+                      : 'bg-[#111115] border-[#242436] text-white focus:border-white/50'
                   }`}
                 />
                 <p className="text-[10px] text-[#777] font-mono mt-1.5">
@@ -19604,7 +19735,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-sans border outline-none resize-none transition-colors ${
                     isLight
                       ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-500'
-                      : 'bg-[#12121c] border-[#242436] text-white focus:border-white/50'
+                      : 'bg-[#111115] border-[#242436] text-white focus:border-white/50'
                   }`}
                 />
                 <div className="flex items-center justify-between text-[10px] text-[#777] font-mono mt-1.5">
@@ -19688,7 +19819,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-sans border outline-none transition-colors ${
                     isLight
                       ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-500'
-                      : 'bg-[#12121c] border-[#242436] text-white focus:border-white/50'
+                      : 'bg-[#111115] border-[#242436] text-white focus:border-white/50'
                   }`}
                 />
                 <div className="flex items-center justify-between text-[10px] text-[#777] font-mono mt-1.5">
@@ -19731,7 +19862,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
                   type="button"
                   onClick={() => setIsEditingThoughtModal(false)}
                   className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer ${
-                    isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-[#181824] hover:bg-[#202030] text-[#aaa] hover:text-white'
+                    isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-[rgba(255,255,255,0.08)] hover:bg-[#202030] text-[#aaa] hover:text-white'
                   }`}
                 >
                   {getTranslation(language, 'community.cancel')}
@@ -20172,7 +20303,7 @@ export const CommunityView: React.FC<CommunityViewProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className={`flex items-center justify-end gap-2.5 px-5 py-3 border-t ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#09090f] border-[#1a1a2c]'}`}>
+            <div className={`flex items-center justify-end gap-2.5 px-5 py-3 border-t ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#09090b] border-[#1a1a2c]'}`}>
               <button
                 type="button"
                 onClick={() => setIsTagSelectModalOpen(false)}

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Mic2, RefreshCw, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { X, Mic2, RefreshCw, Play, Pause, SkipBack, SkipForward, VolumeX, Sparkles } from 'lucide-react';
 import { Track } from '../types';
 import { fetchLyrics, LyricsData, LyricLine } from '../services/lyricsService';
+import { isVocalCutEnabled, setVocalCutEnabled } from '../services/equalizer';
 
 function formatTime(secs: number): string {
   if (isNaN(secs) || secs < 0) return '0:00';
@@ -21,6 +22,7 @@ interface KaraokeModalProps {
   onPrev?: () => void;
   onNext?: () => void;
   onSeek: (time: number) => void;
+  onToggleVocalCut?: (enabled: boolean) => void;
   accentColor?: string;
   language?: string;
 }
@@ -36,13 +38,28 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
   onPrev,
   onNext,
   onSeek,
+  onToggleVocalCut,
   accentColor = '#ff2a55',
   language = 'vi',
 }) => {
   const [lyricsData, setLyricsData] = useState<LyricsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [isVocalCut, setIsVocalCut] = useState(() => isVocalCutEnabled());
   const [syncOffset, setSyncOffset] = useState<number>(0);
+
+  useEffect(() => {
+    setIsVocalCut(isVocalCutEnabled());
+  }, [isOpen]);
+
+  const handleToggleVocalCut = () => {
+    const next = !isVocalCut;
+    setIsVocalCut(next);
+    setVocalCutEnabled(next);
+    if (onToggleVocalCut) {
+      onToggleVocalCut(next);
+    }
+  };
   const scrollTimeoutRef = useRef<any>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
   const activeLineElRef = useRef<HTMLDivElement | null>(null);
@@ -143,10 +160,10 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
 
   return (
     <div className="fixed inset-x-0 top-0 bottom-0 md:bottom-[52px] z-[100] flex flex-col bg-[#050508] text-white select-none animate-fadeIn">
-      {/* Dynamic Ambient Background Blur */}
+      {/* Clean Subtle Ambient Background */}
       {currentTrack?.cover_art && (
         <div
-          className="absolute inset-0 pointer-events-none opacity-25 filter blur-[100px] scale-125 transition-all duration-1000 -z-10"
+          className="absolute inset-0 pointer-events-none opacity-10 filter blur-3xl scale-110 transition-all duration-700 -z-10"
           style={{
             backgroundImage: `url(${currentTrack.cover_art})`,
             backgroundPosition: 'center',
@@ -209,6 +226,28 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
               </button>
             </div>
           )}
+
+          {/* Real-time Vocal Remover (Karaoke Mode: Tách lời ca sĩ) */}
+          <button
+            type="button"
+            onClick={handleToggleVocalCut}
+            style={isVocalCut ? {
+              backgroundColor: `${accentColor}25`,
+              borderColor: `${accentColor}70`,
+              color: accentColor,
+              boxShadow: `0 0 16px ${accentColor}40`,
+            } : undefined}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-bold transition-all cursor-pointer ${
+              isVocalCut
+                ? 'border-transparent shadow-lg ring-2 ring-white/20'
+                : 'bg-white/5 border-white/15 text-zinc-300 hover:text-white hover:bg-white/10'
+            }`}
+            title={isVocalCut ? (language === 'vi' ? 'Đang bật chế độ tách giọng ca sĩ (Nhấn để tắt)' : 'Vocal remover active (Click to restore)') : (language === 'vi' ? 'Bật chế độ tách giọng ca sĩ để tự hát Karaoke' : 'Remove vocals to sing Karaoke')}
+          >
+            <VolumeX className="w-3.5 h-3.5" style={{ color: isVocalCut ? accentColor : undefined }} />
+            <span>{isVocalCut ? (language === 'vi' ? 'ĐÃ TÁCH GIỌNG' : 'VOCALS REMOVED') : (language === 'vi' ? 'TÁCH GIỌNG CA SĨ' : 'REMOVE VOCALS')}</span>
+            {isVocalCut && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5" />}
+          </button>
 
           <div
             className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-semibold tracking-wider"
@@ -289,10 +328,7 @@ export const KaraokeModal: React.FC<KaraokeModalProps> = ({
                     }`}
                     style={
                       isActive
-                        ? {
-                            color: '#ffffff',
-                            textShadow: `0 0 24px ${accentColor}, 0 0 45px ${accentColor}80`,
-                          }
+                        ? { color: '#ffffff' }
                         : undefined
                     }
                   >

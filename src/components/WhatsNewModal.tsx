@@ -23,44 +23,36 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({
 
   const features = [
     {
+      icon: <Sparkles className="w-5 h-5 text-amber-400" />,
+      tag: isVi ? 'Mới • Giao diện' : 'New • UI Animation',
+      title: isVi ? 'Tìm kiếm cuộn kính lúp & Banner Crossfade điện ảnh' : 'Animated Search & Cinematic Banner Crossfade',
+      desc: isVi
+        ? 'Ô tìm kiếm thu nhỏ thành nút tròn thanh lịch, cuộn xoay kính lúp mượt mà khi mở rộng và thu gọn. Banner nghệ sĩ trên Trang chủ chuyển cảnh crossfade & Ken Burns zoom mượt mà, đẳng cấp.'
+        : 'Sleek search pill smoothly rolls the magnifying glass when expanding or collapsing. The Home hero showcase features smooth cinematic crossfade transitions with subtle zoom.',
+    },
+    {
+      icon: <Layout className="w-5 h-5 text-emerald-400" />,
+      tag: isVi ? 'Thiết kế • Unslop' : 'Design • Minimal',
+      title: isVi ? 'Phong cách Minimal & Modern chuẩn Unslop' : 'Clean Minimal & Modern Aesthetic',
+      desc: isVi
+        ? 'Loại bỏ gradient màu mè, tối giản hóa bố cục bảng điều khiển, đồng bộ giao diện Dark/Light mode và hỗ trợ song ngữ toàn diện cho Spy Jam, Hồ sơ và Cài đặt âm thanh.'
+        : 'Clean matte surfaces without neon gradient bloat, full Dark/Light theme sync, and comprehensive bilingual support across Spy Jam, Profile, and Settings.',
+    },
+    {
+      icon: <Sliders className="w-5 h-5 text-sky-400" />,
+      tag: isVi ? 'Khám phá • Nhạc' : 'Discovery • Music',
+      title: isVi ? 'Bộ lọc thể loại Top 10 gọn gàng & Smart DJ tối ưu' : 'Streamlined Top 10 Genres & Smart DJ',
+      desc: isVi
+        ? 'Thay thế thanh tag cồng kềnh bằng menu chọn thể loại 22 dòng nhạc phong phú. Nút phát bài nguyên bản Spotify và luồng phát Smart DJ theo thời gian chính xác.'
+        : 'Replaced cluttered multi-row pill tags with an elegant dropdown supporting 22 genres, restored classic solid play buttons, and accurate time-of-day flow mixes.',
+    },
+    {
       icon: <Pin className="w-5 h-5 text-rose-400" />,
-      tag: isVi ? 'Mới • Tiện ích' : 'New • Utility',
+      tag: isVi ? 'Tiện ích' : 'Utility',
       title: isVi ? 'Thanh Mini Player nổi (Desktop Mini Bar)' : 'Floating Mini Player Bar',
       desc: isVi
         ? 'Thu nhỏ Spytify thành thanh phát nhạc mini siêu gọn (380x76px). Luôn nổi trên cùng (Always-on-Top), kéo rê tự do khắp màn hình, ẩn toàn bộ thanh window và phát nhạc liền mạch.'
         : 'Shrink Spytify directly into a compact floating mini player bar (380x76px). Always-on-Top, smoothly draggable, frameless, and seamless playback.',
-    },
-    {
-      icon: <Layout className="w-5 h-5 text-emerald-400" />,
-      tag: isVi ? 'Giao diện' : 'UI Design',
-      title: isVi ? 'Thanh Window Custom phong cách Spotify' : 'Spotify-style Custom Titlebar',
-      desc: isVi
-        ? 'Thanh tiêu đề tích hợp đồng bộ hoàn hảo với app: tìm kiếm bài hát thông minh ngay trên đầu, menu điều hướng nhanh và các nút điều khiển cửa sổ tinh tế.'
-        : 'Frameless custom titlebar with integrated search bar, quick navigation menu, and sleek window controls.',
-    },
-    {
-      icon: <Sliders className="w-5 h-5 text-sky-400" />,
-      tag: isVi ? 'Tối ưu hóa' : 'Optimization',
-      title: isVi ? 'Tự động thích ứng khi thu nhỏ cửa sổ' : 'Adaptive Compact Window Layout',
-      desc: isVi
-        ? 'Tự động giấu số thời gian khi thu nhỏ để nhường không gian cho nút xem MV YouTube (YT STREAM), thanh trượt âm lượng và nút thu nhỏ thanh phát nhạc.'
-        : 'Smart responsive controls: hides time stamps on narrow windows to keep YT STREAM, volume slider, and minimize button fully accessible.',
-    },
-    {
-      icon: <AudioLines className="w-5 h-5 text-amber-400" />,
-      tag: isVi ? 'AI Mix' : 'Smart DJ',
-      title: isVi ? 'Cải tiến Smart DJ Grid & Chi tiết bài hát' : 'Improved Smart DJ Grid',
-      desc: isVi
-        ? 'Lưới responsive 2-4 cột mới giúp tên bài hát và thời lượng hiển thị trọn vẹn, không còn bị cắt chữ hay che khuất thông tin.'
-        : 'Responsive 2-4 column grid displaying complete track titles, durations, and streaming badges without truncation.',
-    },
-    {
-      icon: <Move className="w-5 h-5 text-violet-400" />,
-      tag: isVi ? 'Trải nghiệm' : 'Performance',
-      title: isVi ? 'Kéo thả cửa sổ Native siêu tốc' : 'Instant Native Window Dragging',
-      desc: isVi
-        ? 'Hỗ trợ kéo di chuyển cửa sổ tức thì và mượt mà ở cả chế độ thanh Bar lẫn chế độ thu nhỏ tối thiểu.'
-        : 'Instantaneous native window dragging across all window sizes and floating mini bar mode.',
     },
   ];
 

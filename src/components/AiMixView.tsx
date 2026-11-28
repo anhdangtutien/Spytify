@@ -36,7 +36,7 @@ interface AiMixViewProps {
 
 // Default featured artists are imported from ../utils/artistAvatars
 
-const DEFAULT_GENRES = [
+export const DEFAULT_GENRES = [
   // ─── MOOD & LIFESTYLE VIBE PLAYLISTS ───
   'Low Cortisol & Chill',
   'Deep Focus & Working',
@@ -72,7 +72,7 @@ const DEFAULT_GENRES = [
   'Nightcore & Speed Up Remix',
 ];
 
-const GENRE_SEARCH_QUERIES: Record<string, string> = {
+export const GENRE_SEARCH_QUERIES: Record<string, string> = {
   // Mood & Activity Playlists
   'Low Cortisol & Chill': 'low cortisol playlist peaceful chill study relax aesthetic',
   'Deep Focus & Working': 'deep focus music for working study coding lofi ambient chill',

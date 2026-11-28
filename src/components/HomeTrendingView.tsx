@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { 
-  Flame, Play, Disc, Sparkles, TrendingUp, Music, 
+  AudioLines, Flame, Play, Disc, Sparkles, TrendingUp, Music, 
   Crown, Loader2, RefreshCw, Compass, Headphones, Radio, Mic2,
-  Shuffle, X, Heart, Clock, ChevronLeft, ChevronRight, ListMusic,
+  Shuffle, X, Heart, Clock, ChevronLeft, ChevronRight, ChevronDown, ListMusic,
   FolderPlus, FolderCheck, Library, Check
 } from 'lucide-react';
 import { SearchResult, Track, User, ArtistMix, UserAlbum } from '../types';
@@ -31,26 +31,28 @@ interface HomeTrendingViewProps {
   onSaveArtistMixAsAlbum?: (mix: ArtistMix) => void;
   onNavigateToAlbums?: () => void;
   onPlayArtistMix?: (mix: ArtistMix, startTrackOrIndex?: SearchResult | number) => void;
+  onAddToAlbum?: (track: Track) => void;
 }
 
 interface CategoryFilter {
   id: string;
   label: string;
   icon: string;
+  group?: string;
 }
 
 const CATEGORIES: CategoryFilter[] = [
-  { id: 'all', label: 'Tổng Hợp Top Hits', icon: '🔥' },
-  { id: 'cortisol', label: 'Low Cortisol & Chill', icon: '🌅' },
-  { id: 'working', label: 'Deep Focus & Work', icon: '💻' },
-  { id: 'lockin', label: 'Lock In & Grind', icon: '🎯' },
-  { id: 'gym', label: 'Gym & Beast Workout', icon: '🏋️' },
-  { id: 'nightdrive', label: 'Late Night Drive', icon: '🌃' },
-  { id: 'usuk', label: 'Billboard US/UK Hot 100', icon: '🌍' },
-  { id: 'kpop_jpop', label: 'J-Pop & K-Pop Thịnh Hành', icon: '🎌' },
-  { id: 'vpop', label: 'V-Pop Đỉnh Chóp', icon: '🇻🇳' },
-  { id: 'lofi', label: 'Lo-Fi Chillout', icon: '☕' },
-  { id: 'audius', label: 'Audius 320K Charts', icon: '⚡' },
+  { id: 'all', label: 'Tất cả Top Hits', icon: '' },
+  { id: 'cortisol', label: 'Low Cortisol & Chill', icon: '' },
+  { id: 'working', label: 'Deep Focus & Work', icon: '' },
+  { id: 'lockin', label: 'Lock In & Grind', icon: '' },
+  { id: 'gym', label: 'Gym & Workout', icon: '' },
+  { id: 'nightdrive', label: 'Late Night Drive', icon: '' },
+  { id: 'usuk', label: 'Billboard Hot 100', icon: '' },
+  { id: 'kpop_jpop', label: 'J-Pop & K-Pop', icon: '' },
+  { id: 'vpop', label: 'V-Pop Thịnh Hành', icon: '' },
+  { id: 'lofi', label: 'Lo-Fi Chillout', icon: '' },
+  { id: 'audius', label: 'Audius 320K', icon: '' },
 ];
 
 // Curated Top Hits categorized: Real songs only, strictly no chart review / ranking countdown videos
@@ -996,12 +998,27 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   onSaveArtistMixAsAlbum,
   onNavigateToAlbums,
   onPlayArtistMix,
+  onAddToAlbum,
 }) => {
   const [trendingTracks, setTrendingTracks] = useState<SearchResult[]>(CURATED_BY_CATEGORY.usuk);
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('usuk');
-  const [trendingKeywords, setTrendingKeywords] = useState<string[]>([]);
-  const [keywordsLoading, setKeywordsLoading] = useState(false);
+  const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(e.target as Node)) {
+        setIsCategoryMenuOpen(false);
+      }
+    };
+    if (isCategoryMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCategoryMenuOpen]);
 
   // Nghệ sĩ hay nghe của tài khoản hiện tại
   const [recentArtists, setRecentArtists] = useState<RecentArtistItem[]>(DEFAULT_FEATURED_ARTISTS);
@@ -1236,42 +1253,30 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
     }
   };
 
-  // Thể loại động: sinh từ khóa theo top trending (YouTube autocomplete) — fallback: nghệ sĩ hot nhất
-  const loadTrendingKeywords = async () => {
-    setKeywordsLoading(true);
-    try {
-      const kws = await invoke<string[]>('get_trending_keywords', { language });
-      if (kws && kws.length > 0) {
-        setTrendingKeywords(kws);
-        return;
-      }
-      throw new Error('empty');
-    } catch {
-      const freq = new Map<string, number>();
-      Object.values(CURATED_BY_CATEGORY).flat().forEach(t => {
-        const a = (t.artist || '').split(/,|&| x | ft\.?| feat\.?/i)[0].trim();
-        if (a && a.length > 1) freq.set(a, (freq.get(a) || 0) + 1);
-      });
-      setTrendingKeywords([...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => k));
-    } finally {
-      setKeywordsLoading(false);
-    }
+  const GENRE_SEARCH_FALLBACK: Record<string, string> = {
+    rnb: 'top r&b soul songs playlist official audio',
+    classical: 'classical music study piano masterpiece',
+    jazz: 'relaxing jazz music coffee shop cafe chill',
+    phonk: 'drift phonk playlist bass boosted gym aggressive',
   };
-
-  useEffect(() => {
-    loadTrendingKeywords();
-  }, [language]);
 
   const fetchTrending = async (category: string) => {
     setLoading(true);
     setTrendingTracks([]);
 
     try {
-      const isKeyword = category.startsWith('kw:');
-      const results = isKeyword
-        ? await invoke<SearchResult[]>('search_online', { query: category.slice(3), source: 'youtube' })
-        : await invoke<SearchResult[]>('get_trending_hits', { category });
-      const curated = isKeyword ? [] : (CURATED_BY_CATEGORY[category] || []);
+      let results: SearchResult[] = [];
+      if (GENRE_SEARCH_FALLBACK[category]) {
+        try {
+          results = await invoke<SearchResult[]>('search_youtube_stream', { query: GENRE_SEARCH_FALLBACK[category] });
+        } catch {
+          results = await invoke<SearchResult[]>('get_trending_hits', { category });
+        }
+      } else {
+        results = await invoke<SearchResult[]>('get_trending_hits', { category });
+      }
+
+      const curated = CURATED_BY_CATEGORY[category] || [];
       const pool = results && results.length > 0
         ? (category === 'lofi' ? [...curated, ...results] : [...results, ...curated])
         : curated;
@@ -1346,37 +1351,56 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
   const remaining = trendingTracks.slice(10);
 
   const categories: CategoryFilter[] = [
-    { id: 'usuk', label: getTranslation(language, 'trending.tagUsuk') || 'Billboard US/UK Hot 100', icon: '🌍' },
-    { id: 'jpop', label: getTranslation(language, 'trending.tagJpop'), icon: '🌸' },
-    { id: 'kpop', label: getTranslation(language, 'trending.tagKpop'), icon: '⚡' },
-    { id: 'vpop', label: getTranslation(language, 'trending.tagVpop'), icon: '🇻🇳' },
-    { id: 'anime', label: getTranslation(language, 'trending.tagAnime'), icon: '🎌' },
-    { id: 'audius', label: getTranslation(language, 'trending.tagAudius') || 'Audius 320K Charts', icon: '⚡' },
-    { id: 'soundcloud', label: getTranslation(language, 'trending.tagSoundcloud'), icon: '☁️' },
-    { id: 'all', label: getTranslation(language, 'trending.tagAll'), icon: '🔥' },
-    { id: 'edm', label: getTranslation(language, 'trending.tagEdm'), icon: '🎛️' },
-    { id: 'hiphop', label: getTranslation(language, 'trending.tagHiphop'), icon: '🎤' },
-    { id: 'lofi', label: getTranslation(language, 'trending.tagLofi') || 'Lo-Fi Chillout', icon: '☕' },
-    { id: 'rock', label: getTranslation(language, 'trending.tagRock'), icon: '🎸' },
-    { id: 'acoustic', label: getTranslation(language, 'trending.tagAcoustic'), icon: '🪕' },
+    // Phổ biến & Bảng xếp hạng
+    { id: 'all', label: getTranslation(language, 'trending.tagAll') || 'Tất cả Top Hits', icon: '🔥', group: language === 'vi' ? 'Bảng xếp hạng & Xu hướng' : 'Charts & Trends' },
+    { id: 'usuk', label: getTranslation(language, 'trending.tagUsuk') || 'Billboard Hot 100', icon: '🇺🇸', group: language === 'vi' ? 'Bảng xếp hạng & Xu hướng' : 'Charts & Trends' },
+    { id: 'vpop', label: getTranslation(language, 'trending.tagVpop') || 'V-Pop Thịnh Hành', icon: '🇻🇳', group: language === 'vi' ? 'Bảng xếp hạng & Xu hướng' : 'Charts & Trends' },
+    { id: 'kpop', label: getTranslation(language, 'trending.tagKpop') || 'K-Pop Viral Hits', icon: '🇰🇷', group: language === 'vi' ? 'Bảng xếp hạng & Xu hướng' : 'Charts & Trends' },
+    { id: 'jpop', label: getTranslation(language, 'trending.tagJpop') || 'J-Pop Hits', icon: '🇯🇵', group: language === 'vi' ? 'Bảng xếp hạng & Xu hướng' : 'Charts & Trends' },
+    { id: 'anime', label: getTranslation(language, 'trending.tagAnime') || 'Anime OST & Opening', icon: '🎌', group: language === 'vi' ? 'Bảng xếp hạng & Xu hướng' : 'Charts & Trends' },
+
+    // Tâm trạng & Không gian nghe nhạc
+    { id: 'lofi', label: getTranslation(language, 'trending.tagLofi') || 'Lo-Fi Chillout & Study', icon: '☕', group: language === 'vi' ? 'Tâm trạng & Tập trung' : 'Moods & Focus' },
+    { id: 'cortisol', label: language === 'vi' ? 'Low Cortisol & Thư giãn' : 'Low Cortisol & Relax', icon: '🌿', group: language === 'vi' ? 'Tâm trạng & Tập trung' : 'Moods & Focus' },
+    { id: 'working', label: language === 'vi' ? 'Deep Focus & Coding' : 'Deep Focus & Coding', icon: '💻', group: language === 'vi' ? 'Tâm trạng & Tập trung' : 'Moods & Focus' },
+    { id: 'lockin', label: language === 'vi' ? 'Lock In & Tập trung cao độ' : 'Lock In & Grind', icon: '🎯', group: language === 'vi' ? 'Tâm trạng & Tập trung' : 'Moods & Focus' },
+    { id: 'gym', label: language === 'vi' ? 'Gym & Tập luyện năng lượng' : 'Gym & Beast Mode', icon: '🏋️', group: language === 'vi' ? 'Tâm trạng & Tập trung' : 'Moods & Focus' },
+    { id: 'nightdrive', label: language === 'vi' ? 'Late Night Drive' : 'Late Night Drive', icon: '🌃', group: language === 'vi' ? 'Tâm trạng & Tập trung' : 'Moods & Focus' },
+
+    // Thể loại âm nhạc đa dạng
+    { id: 'edm', label: getTranslation(language, 'trending.tagEdm') || 'EDM & Cyber Bass', icon: '⚡', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+    { id: 'hiphop', label: getTranslation(language, 'trending.tagHiphop') || 'Hip-Hop & Trap', icon: '🎤', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+    { id: 'rock', label: getTranslation(language, 'trending.tagRock') || 'Rock & Alternative', icon: '🎸', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+    { id: 'rnb', label: 'R&B & Neo-Soul', icon: '🎷', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+    { id: 'jazz', label: language === 'vi' ? 'Coffee Jazz & Relax' : 'Coffee Jazz & Relax', icon: '🎺', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+    { id: 'classical', label: language === 'vi' ? 'Cổ điển & Piano êm dịu' : 'Classical & Piano', icon: '🎹', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+    { id: 'phonk', label: 'Drift Phonk & Bass', icon: '🏎️', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+    { id: 'acoustic', label: getTranslation(language, 'trending.tagAcoustic') || 'Acoustic & Indie Folk', icon: '🌱', group: language === 'vi' ? 'Thể loại âm nhạc' : 'Genres & Styles' },
+
+    // Nguồn trực tuyến
+    { id: 'soundcloud', label: getTranslation(language, 'trending.tagSoundcloud') || 'Top SoundCloud Remix', icon: '☁️', group: language === 'vi' ? 'Nền tảng âm nhạc' : 'Streaming Platforms' },
+    { id: 'audius', label: getTranslation(language, 'trending.tagAudius') || 'Audius 320K Hi-Fi', icon: '🟣', group: language === 'vi' ? 'Nền tảng âm nhạc' : 'Streaming Platforms' },
   ];
+
+  const currentCategory = categories.find(c => c.id === activeCategory);
+  const currentCategoryLabel = currentCategory ? currentCategory.label : 'Top Hits';
 
   return (
     <div className="flex-1 w-full pb-16 space-y-7 select-none">
-      {/* ─── HOME HEADER & GREETING ─────────────────────────────────────────── */}
+      {/* ─── HOME & SMART DJ HEADER (UNIFIED) ───────────────────────────────── */}
       <div className="flex items-center justify-between border-b border-white/5 pb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span 
-              className="text-[10px] font-bold uppercase tracking-widest font-mono px-2 py-0.5 rounded border flex items-center gap-1.5"
+              className="text-[11px] font-medium font-mono px-2.5 py-0.5 rounded-full border flex items-center gap-1.5"
               style={{
                 color: accentColor,
                 backgroundColor: `${accentColor}15`,
                 borderColor: `${accentColor}30`,
               }}
             >
-              <ModernHomeIcon className="w-3.5 h-3.5" active />
-              <span>{getTranslation(language, 'nav.trending')}</span>
+              <AudioLines className="w-3.5 h-3.5" />
+              <span>{language === 'vi' ? 'Trang chủ & Smart DJ' : 'Home & Smart DJ'}</span>
             </span>
             {currentUser?.username && (
               <span className="text-[11px] text-zinc-400 font-mono">
@@ -1384,11 +1408,13 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
               </span>
             )}
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-            {getTranslation(language, 'home.discoverMusic')}
+          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+            {language === 'vi' ? 'Khám phá âm nhạc cùng Smart DJ' : 'Discover Music & Smart DJ'}
           </h1>
         </div>
       </div>
+
+
 
       {/* ─── HERO SHOWCASE BILLBOARD: CHỌN NGHỆ SĨ TỪ DANH SÁCH ĐỀ XUẤT ──── */}
       {heroArtists.length > 0 && (
@@ -1403,29 +1429,28 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
             return (
               <div
                 key={artist.artist + idx}
-                className={`absolute inset-0 transition-opacity duration-700 ease-in-out flex items-center justify-between p-3.5 sm:p-7 md:p-8 ${
-                  isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
+                className={`absolute inset-0 flex items-center justify-between p-3.5 sm:p-7 md:p-8 transition-all duration-1000 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[opacity,transform] ${
+                  isActive ? 'opacity-100 scale-100 translate-x-0 z-10 pointer-events-auto' : 'opacity-0 scale-[1.02] translate-x-2 z-0 pointer-events-none'
                 }`}
               >
-                {/* Background Blurred Ambient Image */}
+                {/* Clean Modern Surface — Unslop: No loud gradients or blur bloat */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <div className="absolute inset-0 bg-zinc-950/95" />
                   <img
                     src={artist.avatar}
-                    alt={artist.artist}
+                    alt=""
+                    aria-hidden="true"
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover scale-110 filter blur-3xl opacity-35 transition-transform duration-700 ease-out"
-                  />
-                  {/* Gradient Overlays for contrast */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-[#09090e] via-[#09090e]/85 to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#09090e] via-transparent to-[#09090e]/40" />
-                  <div 
-                    className="absolute -top-24 -left-24 w-96 h-96 rounded-full blur-[100px] opacity-25 pointer-events-none"
-                    style={{ backgroundColor: accentColor }}
+                    className={`w-full h-full object-cover opacity-15 filter grayscale pointer-events-none transition-transform duration-1000 ease-[cubic-bezier(0.25,1,0.5,1)] ${
+                      isActive ? 'scale-105' : 'scale-110'
+                    }`}
                   />
                 </div>
 
                 {/* Left Column: Information & Actions */}
-                <div className="relative z-10 flex-1 min-w-0 pr-2 flex flex-col justify-center space-y-1.5 sm:space-y-4">
+                <div className={`relative z-10 flex-1 min-w-0 pr-2 flex flex-col justify-center space-y-1.5 sm:space-y-4 transition-all duration-700 ease-out ${
+                  isActive ? 'opacity-100 translate-y-0 delay-100' : 'opacity-0 translate-y-2'
+                }`}>
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <span
                       className="text-[9px] sm:text-xs font-bold uppercase tracking-widest font-mono px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border flex items-center gap-1 sm:gap-1.5 shadow-sm"
@@ -1484,7 +1509,9 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                 </div>
 
                 {/* Right Column: Hero Artist Card Showcase (Visible on both mobile & desktop) */}
-                <div className="relative z-10 flex flex-col items-center justify-center flex-shrink-0 pr-1 sm:pr-2 gap-2">
+                <div className={`relative z-10 flex flex-col items-center justify-center flex-shrink-0 pr-1 sm:pr-2 gap-2 transition-all duration-700 ease-out ${
+                  isActive ? 'opacity-100 scale-100 delay-150' : 'opacity-0 scale-95'
+                }`}>
                   <div 
                     onClick={() => handleOpenArtistMix(artist)}
                     className="relative w-20 h-20 sm:w-40 sm:h-40 md:w-48 md:h-48 rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl border-2 border-white/20 ring-2 sm:ring-4 ring-black/40 group/card cursor-pointer hover:border-white/30 transition-all duration-300 hover:scale-105"
@@ -1675,98 +1702,13 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
         </div>
       )}
 
-      {/* ─── CATEGORY FILTER PILLS ────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          {categories.map((cat) => {
-            const isActive = activeCategory === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
-                style={isActive ? {
-                  backgroundColor: accentColor,
-                  color: getContrastTextColor(accentColor),
-                  boxShadow: `0 0 14px ${accentColor}40`,
-                  borderColor: accentColor,
-                } : undefined}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
-                  isActive
-                    ? 'font-bold'
-                    : 'bg-[#0e0e12] text-[#888899] hover:text-white hover:bg-[#16161e] border-[#1c1c24]'
-                }`}
-              >
-                <span>{cat.icon}</span>
-                <span>{cat.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={() => fetchTrending(activeCategory)}
-          disabled={loading}
-          className="p-2 rounded-lg bg-[#0e0e12] hover:bg-[#16161e] text-[#888] hover:text-white border border-[#1e1e26] transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-mono"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} style={{ color: loading ? accentColor : undefined }} />
-          <span className="hidden sm:inline">{getTranslation(language, 'aimix.refresh')}</span>
-        </button>
-      </div>
-
-      {/* ─── DYNAMIC TRENDING KEYWORD GENRES ───────────────────────────────── */}
-      {(keywordsLoading || trendingKeywords.length > 0) && (
-        <div className="flex items-center gap-2 flex-wrap -mt-3">
-          <span
-            className="text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-1 mr-1"
-            style={{ color: accentColor }}
-          >
-            <Sparkles className="w-3 h-3" />
-            {getTranslation(language, 'home.trendingNow')}
-          </span>
-          {keywordsLoading && trendingKeywords.length === 0
-            ? Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-7 w-24 rounded-xl bg-white/5 border border-[#1c1c24] animate-pulse" />
-              ))
-            : trendingKeywords.map((kw) => {
-                const id = `kw:${kw}`;
-                const isActive = activeCategory === id;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => setActiveCategory(id)}
-                    title={kw}
-                    style={isActive ? {
-                      backgroundColor: accentColor,
-                      color: getContrastTextColor(accentColor),
-                      boxShadow: `0 0 14px ${accentColor}40`,
-                      borderColor: accentColor,
-                    } : { borderColor: `${accentColor}30` }}
-                    className={`px-3 py-1 rounded-xl text-[11px] font-semibold transition-all cursor-pointer border max-w-[200px] truncate ${
-                      isActive ? 'font-bold' : 'bg-[#0e0e12] text-[#a0a0b2] hover:text-white hover:bg-[#16161e]'
-                    }`}
-                  >
-                    #{kw}
-                  </button>
-                );
-              })}
-          <button
-            onClick={loadTrendingKeywords}
-            disabled={keywordsLoading}
-            className="p-1.5 rounded-lg text-[#666] hover:text-white transition-colors cursor-pointer"
-            title={getTranslation(language, 'home.refreshKeywords')}
-          >
-            <RefreshCw className={`w-3 h-3 ${keywordsLoading ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      )}
-
       {/* ─── REDESIGNED TRENDING TOP 10 SHOWCASE ─────────────────────────── */}
       <div className="space-y-4 pt-1">
         {/* Section Header */}
-        <div className="flex items-center justify-between border-b border-[#161620] pb-2.5">
-          <div className="flex items-center gap-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#161620] pb-2.5 gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <div 
-              className="w-7 h-7 rounded-lg flex items-center justify-center shadow-md"
+              className="w-7 h-7 rounded-lg flex items-center justify-center shadow-md shrink-0"
               style={{
                 backgroundColor: `${accentColor}20`,
                 color: accentColor,
@@ -1774,17 +1716,100 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
             >
               <TrendingUp className="w-4 h-4" />
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                <span>{getTranslation(language, 'trending.title')}</span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/10 font-bold">
-                  TOP 10
-                </span>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-white tracking-wide">
+                {getTranslation(language, 'trending.title')}
               </h2>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-white/90 border border-white/10 font-bold shrink-0">
+                TOP 10
+              </span>
+            </div>
+
+            {/* ─── GENRE / CATEGORY SELECTOR DROPDOWN ─── */}
+            <div className="relative" ref={categoryDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsCategoryMenuOpen(!isCategoryMenuOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-white border border-white/10 text-xs font-semibold cursor-pointer transition-all shadow-sm hover:border-white/25 active:scale-95"
+                title={language === 'vi' ? 'Bấm để đổi thể loại' : 'Click to select genre'}
+              >
+                <Music className="w-3.5 h-3.5 text-zinc-400" />
+                <span className="max-w-[140px] sm:max-w-[180px] truncate">
+                  {currentCategoryLabel}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${isCategoryMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* DROPDOWN MENU */}
+              {isCategoryMenuOpen && (
+                <div className="absolute left-0 mt-2 w-72 max-h-96 overflow-y-auto py-1.5 rounded-2xl bg-[#0c0c12]/95 backdrop-blur-xl border border-white/15 shadow-2xl z-50 hover-scrollbar animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-400 border-b border-white/5 flex items-center justify-between">
+                    <span>{language === 'vi' ? 'Chọn thể loại Top 10' : 'Select Top 10 Genre'}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fetchTrending(activeCategory);
+                      }}
+                      disabled={loading}
+                      title={language === 'vi' ? 'Làm mới danh sách' : 'Refresh'}
+                      className="p-1 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  <div className="p-1 space-y-0.5">
+                    {categories.map((cat, idx) => {
+                      const isSel = activeCategory === cat.id;
+                      const prevCat = categories[idx - 1];
+                      const showGroupHeader = !prevCat || prevCat.group !== cat.group;
+
+                      return (
+                        <React.Fragment key={cat.id}>
+                          {showGroupHeader && cat.group && (
+                            <div className="pt-2 pb-1 px-3 text-[10px] font-mono font-bold uppercase tracking-wider text-zinc-500 border-t border-white/5 first:border-t-0 first:pt-1">
+                              {cat.group}
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveCategory(cat.id);
+                              setIsCategoryMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                              isSel
+                                ? 'bg-white text-zinc-950 font-bold shadow-sm'
+                                : 'text-zinc-300 hover:text-white hover:bg-white/10'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              {cat.icon && <span className="text-sm shrink-0">{cat.icon}</span>}
+                              <span className="truncate">{cat.label}</span>
+                            </div>
+                            {isSel && <Check className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              onClick={() => fetchTrending(activeCategory)}
+              disabled={loading}
+              title={language === 'vi' ? 'Làm mới' : 'Refresh'}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-zinc-900/70 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/10 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-mono"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} style={{ color: loading ? accentColor : undefined }} />
+              <span className="hidden md:inline">{getTranslation(language, 'aimix.refresh')}</span>
+            </button>
+
             {top10.length > 0 && !loading && (
               <button
                 type="button"
@@ -1800,9 +1825,6 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                 <span>{language === 'vi' ? 'Phát Top 10' : 'Play Top 10'}</span>
               </button>
             )}
-            <span className="text-xs text-[#777] font-mono hidden sm:inline">
-              {getTranslation(language, 'trending.top10')}
-            </span>
           </div>
         </div>
 
@@ -1848,34 +1870,20 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                   onClick={() => onPlaySearchResult(rank1, top10)}
                   className="relative w-full lg:w-[350px] xl:w-[380px] rounded-2xl overflow-hidden border border-white/10 p-5 flex flex-col justify-between group cursor-pointer shadow-xl transition-all duration-300 hover:border-white/30 hover:shadow-2xl flex-shrink-0"
                   style={{
-                    background: 'linear-gradient(145deg, rgba(16,16,24,0.95) 0%, rgba(9,9,14,0.98) 100%)',
-                    borderColor: isCurrent ? accentColor : undefined,
-                    boxShadow: isCurrent ? `0 0 24px ${accentColor}35` : undefined,
+                    backgroundColor: '#111116',
+                    borderColor: isCurrent ? accentColor : 'rgba(255,255,255,0.1)',
                   }}
                 >
-                  {/* Ambient Bloom */}
-                  <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    <img
-                      src={optimizeThumbnailUrl(rank1.thumbnail || undefined, rank1.url_or_id)}
-                      alt=""
-                      aria-hidden="true"
-                      className="w-full h-full object-cover filter blur-3xl opacity-30 scale-125"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#09090d] via-[#09090d]/80 to-transparent" />
-                  </div>
+                  {/* Clean Modern Card Surface — No blur slop */}
+                  <div className="absolute inset-0 bg-zinc-900/40 pointer-events-none" />
 
                   {/* Top Header inside Card */}
                   <div className="relative z-10 flex items-center justify-between">
                     <div 
-                      className="px-2.5 py-1 rounded-full border flex items-center gap-1.5 text-[10px] font-mono font-black uppercase tracking-wider shadow-lg"
-                      style={{
-                        backgroundColor: '#fbbf2420',
-                        borderColor: '#fbbf2450',
-                        color: '#fbbf24',
-                      }}
+                      className="px-2.5 py-1 rounded-md border border-white/10 bg-white/5 flex items-center gap-1.5 text-[11px] font-medium text-zinc-200"
                     >
-                      <Crown className="w-3.5 h-3.5 fill-current" />
-                      <span>{language === 'vi' ? 'QUÁN QUÂN #1' : 'GLOBAL #1'}</span>
+                      <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                      <span>{language === 'vi' ? 'Top 1 Thịnh Hành' : 'Top 1 Trending'}</span>
                     </div>
 
                     <div className="flex items-center gap-1.5">
@@ -1981,7 +1989,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                     style={{
                       borderColor: isCurrent ? accentColor : undefined,
                       backgroundColor: isCurrent ? `${accentColor}18` : undefined,
-                      boxShadow: isCurrent ? `0 0 14px ${accentColor}30` : undefined,
+                      // clean border, no glow
                     }}
                     className={`p-2.5 rounded-xl bg-[#09090d] hover:bg-[#13131c] border transition-all flex items-center justify-between gap-2.5 group cursor-pointer shadow-sm ${
                       isCurrent ? '' : 'border-[#171722] hover:border-white/20'
@@ -2038,7 +2046,29 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                     </div>
 
                     {/* Metadata Right */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                      {onAddToAlbum && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddToAlbum({
+                              id: item.url_or_id,
+                              title: item.title,
+                              artist: item.artist,
+                              album: item.album || 'Spytify Top 10',
+                              duration_secs: item.duration_secs || 210,
+                              path_or_url: item.url_or_id,
+                              cover_art: item.thumbnail,
+                              source: item.source || 'youtube',
+                            });
+                          }}
+                          className="p-1 rounded-md text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                          title={language === 'vi' ? 'Thêm vào Album' : 'Add to Album'}
+                        >
+                          <FolderPlus className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       {getSourceBadge(item.source)}
                       <span className="text-[11px] font-mono text-zinc-500">
                         {item.duration_secs && item.duration_secs > 0 ? formatTime(item.duration_secs) : 'LIVE'}
@@ -2190,6 +2220,8 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
           </div>
         </div>
       )}
+
+
 
       {/* ─── ARTIST ALBUM MIX MODAL (POWERED BY RUST BACKEND) ──────────────── */}
       {activeArtistMix && (() => {
@@ -2415,7 +2447,30 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
                     </div>
 
                     {/* Duration & Actions */}
-                    <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
+                      {onAddToAlbum && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddToAlbum({
+                              id: track.url_or_id,
+                              title: track.title,
+                              artist: track.artist,
+                              album: track.album || 'Spytify',
+                              duration_secs: track.duration_secs,
+                              path_or_url: track.url_or_id,
+                              cover_art: track.thumbnail,
+                              source: 'youtube',
+                            });
+                          }}
+                          className="p-1 sm:p-1.5 rounded-lg text-zinc-500 hover:text-white transition-colors cursor-pointer"
+                          title={language === 'vi' ? 'Thêm bài hát vào Album' : 'Add to Album'}
+                        >
+                          <FolderPlus className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={(e) => {

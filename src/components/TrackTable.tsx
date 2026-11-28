@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap, GripVertical, Tv, AudioLines } from 'lucide-react';
+import { Play, Pause, Clock3, Heart, Music, HardDrive, FolderPlus, Download, Loader2, Check, ArrowUpDown, ArrowUp, ArrowDown, Search, Zap, GripVertical, Tv, AudioLines, Volume2, Volume1, VolumeX } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon } from './Icons';
 import { Track } from '../types';
 import { HoverMarquee } from './HoverMarquee';
@@ -24,6 +24,8 @@ interface TrackTableProps {
   onOpenMobilePlayer?: () => void;
   onToggleMv?: () => void;
   showMv?: boolean;
+  volume?: number;
+  onVolumeChange?: (vol: number) => void;
 }
 
 const ROW_HEIGHT = 54;
@@ -46,6 +48,8 @@ export const TrackTable: React.FC<TrackTableProps> = ({
   onOpenMobilePlayer,
   onToggleMv,
   showMv = false,
+  volume = 0.8,
+  onVolumeChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -346,7 +350,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
     <div ref={containerRef} className="w-full text-xs select-none pb-28 sm:pb-32">
       {/* Top Fast Filter & Status Bar */}
       {tracks.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 py-2 mb-2 bg-[#09090c] rounded-xl border border-[#161620]">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 px-3 py-2 mb-2 bg-zinc-900/40 rounded-xl border border-white/5">
           <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#555]" />
             <input
@@ -366,23 +370,73 @@ export const TrackTable: React.FC<TrackTableProps> = ({
             )}
           </div>
 
-          {/* Desktop MV Theater Toggle Button on TrackTable */}
-          {currentTrack?.source === 'youtube' && onToggleMv && (
-            <button
-              type="button"
-              onClick={onToggleMv}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-md ${
-                showMv
-                  ? 'bg-rose-500 text-white border-rose-400 shadow-rose-500/30 ring-2 ring-rose-500/20'
-                  : 'bg-[#151520] hover:bg-[#1e1e2c] text-zinc-300 hover:text-white border-white/10'
-              }`}
-              title={language === 'vi' ? (showMv ? 'Thu nhỏ cửa sổ MV trên máy tính' : 'Phát Video MV với layout máy tính') : (showMv ? 'Minimize Desktop MV' : 'Play Music Video')}
-            >
-              <Tv className="w-3.5 h-3.5 text-rose-400" style={showMv ? { color: '#ffffff' } : undefined} />
-              <span>{showMv ? (language === 'vi' ? 'Thu nhỏ MV' : 'Hide MV') : (language === 'vi' ? 'Phát Video MV' : 'Play Music Video')}</span>
-              {showMv && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Volume Control on TrackTable */}
+            {onVolumeChange !== undefined && (
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#101016] border border-[#1c1c28]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const safe = Math.max(0, Math.min(1, typeof volume === 'number' && !isNaN(volume) ? volume : 0.8));
+                    if (safe > 0) {
+                      onVolumeChange(0);
+                    } else {
+                      onVolumeChange(0.8);
+                    }
+                  }}
+                  title={volume === 0 ? 'Bật âm lượng' : 'Tắt tiếng'}
+                  className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  {(volume ?? 0.8) === 0 ? (
+                    <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                  ) : (volume ?? 0.8) < 0.5 ? (
+                    <Volume1 className="w-3.5 h-3.5" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5" />
+                  )}
+                </button>
+                <div
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    onVolumeChange(Math.round(ratio * 100) / 100);
+                  }}
+                  onWheel={(e) => {
+                    const safe = Math.max(0, Math.min(1, typeof volume === 'number' && !isNaN(volume) ? volume : 0.8));
+                    const step = e.deltaY < 0 ? 0.05 : -0.05;
+                    onVolumeChange(Math.max(0, Math.min(1, Math.round((safe + step) * 100) / 100)));
+                  }}
+                  title={`Âm lượng: ${Math.round((volume ?? 0.8) * 100)}%`}
+                  className="w-16 h-3 flex items-center cursor-pointer group/vol relative"
+                >
+                  <div className="w-full h-[3px] group-hover/vol:h-[5px] bg-white/20 rounded-full overflow-hidden transition-all">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${Math.round((volume ?? 0.8) * 100)}%`, backgroundColor: accentColor }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Desktop MV Theater Toggle Button on TrackTable */}
+            {currentTrack?.source === 'youtube' && onToggleMv && (
+              <button
+                type="button"
+                onClick={onToggleMv}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-md ${
+                  showMv
+                    ? 'bg-rose-500 text-white border-rose-400 shadow-rose-500/30 ring-2 ring-rose-500/20'
+                    : 'bg-[#151520] hover:bg-[#1e1e2c] text-zinc-300 hover:text-white border-white/10'
+                }`}
+                title={language === 'vi' ? (showMv ? 'Thu nhỏ cửa sổ MV trên máy tính' : 'Phát Video MV với layout máy tính') : (showMv ? 'Minimize Desktop MV' : 'Play Music Video')}
+              >
+                <Tv className="w-3.5 h-3.5 text-rose-400" style={showMv ? { color: '#ffffff' } : undefined} />
+                <span>{showMv ? (language === 'vi' ? 'Thu nhỏ MV' : 'Hide MV') : (language === 'vi' ? 'Phát Video MV' : 'Play Music Video')}</span>
+                {showMv && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+              </button>
+            )}
+          </div>
 
           <div className="flex items-center gap-2.5 text-[10px] font-mono">
             {sortBy !== 'default' && (
@@ -443,7 +497,7 @@ export const TrackTable: React.FC<TrackTableProps> = ({
       </div>
 
       {/* Rows with Top & Bottom Virtual Padding */}
-      <div className="divide-y divide-[#101014]">
+      <div className="divide-y divide-white/5">
         {topPadding > 0 && <div style={{ height: `${topPadding}px` }} aria-hidden="true" />}
         {visibleTracks.map((track, i) => {
           const idx = isVirtual ? startIndex + i : i;
@@ -494,29 +548,29 @@ export const TrackTable: React.FC<TrackTableProps> = ({
                 draggedIdx === idx ? 'opacity-30 scale-[0.99] bg-white/5 pointer-events-none' : ''
               } ${
                 dragOverIdx === idx && dropPosition === 'above'
-                  ? '!border-t-2 !border-t-cyan-400 bg-cyan-500/15 shadow-[0_-2px_8px_rgba(34,211,238,0.4)]'
+                  ? '!border-t-2 !border-t-cyan-400 bg-cyan-500/15 '
                   : ''
               } ${
                 dragOverIdx === idx && dropPosition === 'below'
-                  ? '!border-b-2 !border-b-cyan-400 bg-cyan-500/15 shadow-[0_2px_8px_rgba(34,211,238,0.4)]'
+                  ? '!border-b-2 !border-b-cyan-400 bg-cyan-500/15 '
                   : ''
               } ${
                 dragOverIdx === idx && dropPosition === 'swap'
-                  ? '!border-2 !border-cyan-400 bg-cyan-500/20 shadow-[0_0_12px_rgba(34,211,238,0.35)] scale-[1.01]'
+                  ? '!border-2 !border-cyan-400 bg-cyan-500/20  scale-[1.01]'
                   : ''
               } ${
                 isSelected
                   ? 'text-white border-l-2'
-                  : 'hover:bg-[#0c0c10] text-[#888899] hover:text-white border-l-2 border-transparent'
+                  : 'hover:bg-white/[0.03] text-zinc-400 hover:text-white border-l-2 border-transparent'
               }`}
             >
               {/* Liền trước indicator */}
               {dragOverIdx === idx && dropPosition === 'above' && (
-                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] z-20 pointer-events-none" />
+                <div className="absolute top-0 left-0 right-0 h-[2.5px] bg-cyan-400  z-20 pointer-events-none" />
               )}
               {/* Liền sau indicator */}
               {dragOverIdx === idx && dropPosition === 'below' && (
-                <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-cyan-400 shadow-[0_0_8px_#22d3ee] z-20 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 right-0 h-[2.5px] bg-cyan-400  z-20 pointer-events-none" />
               )}
               {/* Swap vị trí indicator */}
               {dragOverIdx === idx && dropPosition === 'swap' && (

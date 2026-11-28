@@ -18,23 +18,56 @@
   }
 }
 
-/* Minimalist Scrollbar — TIDAL Style */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Minimalist Scrollbar — Ẩn hoàn toàn, chỉ khi lăn chuột / cuộn trang mới hiện slider */
+::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+::-webkit-scrollbar-track,
+*::-webkit-scrollbar-track {
+  background: transparent !important;
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+::-webkit-scrollbar-thumb,
+*::-webkit-scrollbar-thumb {
+  background: transparent !important;
   border-radius: 9999px;
+  transition: background 0.3s ease;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.35);
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent !important;
+  transition: scrollbar-color 0.3s ease;
+}
+
+/* Chỉ khi lăn chuột / cuộn trang (is-scrolling) slider mới hiện nhẹ nhàng */
+html.is-scrolling ::-webkit-scrollbar-thumb,
+body.is-scrolling ::-webkit-scrollbar-thumb,
+.is-scrolling::-webkit-scrollbar-thumb,
+.is-scrolling ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28) !important;
+}
+
+html.is-scrolling ::-webkit-scrollbar-thumb:hover,
+body.is-scrolling ::-webkit-scrollbar-thumb:hover,
+.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.55) !important;
+}
+
+html.is-scrolling *,
+body.is-scrolling * {
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+.light-mode.is-scrolling ::-webkit-scrollbar-thumb,
+.light-mode.is-scrolling * {
+  scrollbar-color: rgba(0, 0, 0, 0.28) transparent;
+}
+.light-mode.is-scrolling ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.28) !important;
 }
 
 /* No Scrollbar Utility */
@@ -46,11 +79,11 @@
   display: none !important;
 }
 
-/* Slider / Thanh cuộn: Ẩn mặc định, chỉ hiện khi hover vào vùng container */
+/* Slider / Thanh cuộn: Ẩn mặc định, chỉ hiện khi lăn chuột */
 .hover-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
-  transition: scrollbar-color 0.25s ease;
+  transition: scrollbar-color 0.3s ease;
 }
 
 .hover-scrollbar::-webkit-scrollbar {
@@ -65,32 +98,17 @@
 .hover-scrollbar::-webkit-scrollbar-thumb {
   background: transparent !important;
   border-radius: 9999px;
-  transition: background 0.25s ease;
+  transition: background 0.3s ease;
 }
 
-/* Khi hover vào container thì thanh trượt / slider mới hiện */
-.hover-scrollbar:hover {
-  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+html.is-scrolling .hover-scrollbar::-webkit-scrollbar-thumb,
+.hover-scrollbar.is-scrolling::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28) !important;
 }
 
-.hover-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.25) !important;
-}
-
-.hover-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5) !important;
-}
-
-.light-mode .hover-scrollbar:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
-}
-
-.light-mode .hover-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.25) !important;
-}
-
-.light-mode .hover-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.5) !important;
+html.is-scrolling .hover-scrollbar::-webkit-scrollbar-thumb:hover,
+.hover-scrollbar.is-scrolling::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.55) !important;
 }
 
 /* Spy Classified Dynamic Accent: Adapts to User Theme Color */
@@ -186,12 +204,10 @@ input[type="range"] {
 }
 
 .light-mode ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15) !important;
+  background: transparent !important;
 }
 
-.light-mode ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.35) !important;
-}
+
 
 .light-mode aside {
   background-color: #ffffff !important;
@@ -365,6 +381,19 @@ video[data-screen-share-video]:-webkit-full-screen {
   background-color: #000000 !important;
 }
 
+@keyframes marquee-ping-pong {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  50%, 65% {
+    transform: translateX(var(--marquee-offset, -40px));
+  }
+  90%, 100% {
+    transform: translateX(0);
+  }
+}
+
+
 [data-screen-share-fullscreen]:fullscreen,
 [data-screen-share-fullscreen]:-webkit-full-screen {
   width: 100vw !important;
@@ -393,3 +422,16 @@ video[data-screen-share-video]:-webkit-full-screen {
   margin: auto !important;
   background-color: #000000 !important;
 }
+
+@keyframes marquee-ping-pong {
+  0%, 15% {
+    transform: translateX(0);
+  }
+  50%, 65% {
+    transform: translateX(var(--marquee-offset, -40px));
+  }
+  90%, 100% {
+    transform: translateX(0);
+  }
+}
+

@@ -25,7 +25,7 @@ import { MiniPlayerWidget } from './components/MiniPlayerWidget';
 import { StandaloneMiniPlayer } from './components/StandaloneMiniPlayer';
 import { DesktopMiniBar } from './components/DesktopMiniBar';
 import { CustomTitleBar } from './components/CustomTitleBar';
-import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream } from './services/equalizer';
+import { loadEqualizerState, attachAudioElementToEqualizer, ensureAudioContextRunning, applyEqualizerStateToGraph, getOrCreateMasterAudioStream, setVocalCutEnabled } from './services/equalizer';
 import { spytifyConnect, ConnectCommand, ConnectPlaybackState } from './services/spytifyConnect';
 import { SplashScreen } from './components/SplashScreen';
 import { UpdateModal } from './components/UpdateModal';
@@ -38,7 +38,8 @@ import { resolve7CloudsVideoId, cleanTrackMetadata, getCached7CloudsVideoId, get
 import { Track, PlaybackStatus, SearchResult, ViewType, User, UserAlbum, RecommendationResult, ArtistMix } from './types';
 import { FolderPlus, Disc, CheckCircle2, Tv, X, Radio, ArrowUpRight, LogIn, Sun, Moon, Music, Play, Pause, SkipBack, SkipForward, Globe, Languages, ChevronDown, ChevronUp, EyeOff, Sparkles, PanelLeftClose, PanelLeftOpen, Search, Layers, AudioLines, Menu, User as UserIcon, Headphones } from 'lucide-react';
 import { YoutubeIcon, SoundCloudIcon, AudiusIcon, SpyJamIcon, ModernHomeIcon } from './components/Icons';
-import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation } from './locales/i18n';
+import { LanguageCode, SUPPORTED_LANGUAGES, getTranslation, normalizeLanguageCode } from './locales/i18n';
+import { getLanguageAiSeeds, getLanguageAiPopupLabel } from './services/smartDjLanguageSeeds';
 import { initRemoteConfigSync, RemoteBroadcastNotification } from './services/remoteConfigListener';
 import { getOfflineAudioBlobUrl } from './services/tauriWebShim';
 import spytifyLogo from './assets/spytify-logo.png';
@@ -520,8 +521,8 @@ export default function App() {
   };
 
   const [language, setLanguage] = useState<LanguageCode>(() => {
-    const saved = localStorage.getItem('spytify_language') as LanguageCode;
-    return SUPPORTED_LANGUAGES.some(l => l.code === saved) ? saved : 'vi';
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('spytify_language') : null;
+    return normalizeLanguageCode(saved);
   });
 
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
@@ -610,6 +611,7 @@ export default function App() {
       preloadedNextTrackRef.current = seeds[0];
       setPreloadedNextTrack(seeds[0]);
       preloadedAlternativesRef.current = seeds.slice(1, 11);
+      setPreloadedAlternatives(seeds.slice(1, 11));
       if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
         setNextTrackPopup({
           title: seeds[0].title,
@@ -836,13 +838,15 @@ export default function App() {
   const [isAddToAlbumModalOpen, setIsAddToAlbumModalOpen] = useState(false);
   const [isCreateAlbumFromSelectionOpen, setIsCreateAlbumFromSelectionOpen] = useState(false);
 
-  const handleCreateAlbum = (title: string, description: string): UserAlbum => {
+  const handleCreateAlbum = (title: string, description: string, initialTracks?: Track[]): UserAlbum => {
     const userId = currentUserRef.current?.id;
+    const cleanTracks = initialTracks ? deduplicateTracks(initialTracks) : [];
     const newAlbum: UserAlbum = {
       id: 'album_' + Date.now(),
       title,
       description,
-      tracks: [],
+      tracks: cleanTracks,
+      cover_art: cleanTracks[0]?.cover_art || undefined,
       created_at: new Date().toISOString(),
     };
     setAlbums(prev => {
@@ -1094,20 +1098,18 @@ export default function App() {
   };
 
   const getEffectiveQueue = (): Track[] => {
-    const ctx = activeQueueContextRef.current;
-    if (ctx === 'local') {
-      const locals = deduplicateTracks(tracksRef.current.filter(t => t.source === 'local'));
-      return locals.length > 0 ? locals : activeQueueRef.current;
-    }
-    if (ctx === 'favorites') {
-      const favs = deduplicateTracks(tracksRef.current.filter(t => favoritesRef.current.has(t.id)));
-      return favs.length > 0 ? favs : activeQueueRef.current;
-    }
-    if (ctx === 'albums' || ctx === 'artist_mix') {
-      return activeQueueRef.current.length > 0 ? activeQueueRef.current : tracksRef.current;
-    }
     if (activeQueueRef.current.length > 0) {
       return activeQueueRef.current;
+    }
+    const ctx = activeQueueContextRef.current;
+    if (ctx === 'local') {
+      return deduplicateTracks(tracksRef.current.filter(t => t.source === 'local'));
+    }
+    if (ctx === 'favorites') {
+      return deduplicateTracks(tracksRef.current.filter(t => favoritesRef.current.has(t.id)));
+    }
+    if (ctx === 'albums' || ctx === 'artist_mix') {
+      return tracksRef.current;
     }
     return displayedTracksRef.current.length > 0 ? displayedTracksRef.current : tracksRef.current;
   };
@@ -1234,6 +1236,36 @@ export default function App() {
 
   // Desktop Mini Bar Mode (Resizes main window down to a sleek floating bar without titlebar)
   const [isDesktopMiniBar, setIsDesktopMiniBar] = useState(false);
+  const preMiniBarSizeRef = useRef<{ width: number; height: number } | null>((() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('spytify_pre_minibar_size') : null;
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  })());
+  const preMiniBarWasMaximizedRef = useRef<boolean>(false);
+
+  // Track window dimensions to auto-switch into DesktopMiniBar when manually shrunk down by mouse
+  const [windowHeight, setWindowHeight] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 800));
+  const [windowWidth, setWindowWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1200));
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowHeight(window.innerHeight);
+      setWindowWidth(window.innerWidth);
+      if (!isDesktopMiniBar && window.innerWidth >= 800 && window.innerHeight >= 500) {
+        preMiniBarSizeRef.current = { width: window.innerWidth, height: window.innerHeight };
+        try {
+          localStorage.setItem('spytify_pre_minibar_size', JSON.stringify(preMiniBarSizeRef.current));
+        } catch {}
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isDesktopMiniBar]);
+
+  const isWindowShrunkToMini = windowHeight > 0 && windowHeight <= 140;
+  const effectiveIsMiniBar = isDesktopMiniBar || isWindowShrunkToMini;
 
   // Floating Always-on-Top Mini Player Widget (Picture-in-Picture & Tauri Mini Window)
   const [isMiniWidget, setIsMiniWidget] = useState(false);
@@ -1250,19 +1282,6 @@ export default function App() {
     prev: () => {},
     seek: () => {},
   });
-
-  useEffect(() => {
-    if (isTauriApp && !isDesktopMiniBar) {
-      (async () => {
-        try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window');
-          const { LogicalSize } = await import('@tauri-apps/api/dpi');
-          const win = getCurrentWindow();
-          await win.setMinSize(new LogicalSize(800, 520));
-        } catch {}
-      })();
-    }
-  }, [isTauriApp, isDesktopMiniBar]);
 
   useEffect(() => {
     if (!isMobilePlayerOpen) {
@@ -1428,9 +1447,11 @@ export default function App() {
   });
   const nextTrackPopupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endOfTrackPopupShownForRef = useRef<string | null>(null);
-  const preloadedAlternativesRef = useRef<Track[]>([]);
-  const preloadedNextTrackRef = useRef<Track | null>(null);
-  const [preloadedNextTrack, setPreloadedNextTrack] = useState<Track | null>(null);
+  const initialAiSeeds = useMemo(() => getLanguageAiSeeds(language), [language]);
+  const preloadedNextTrackRef = useRef<Track | null>(initialAiSeeds[0] || null);
+  const [preloadedNextTrack, setPreloadedNextTrack] = useState<Track | null>(() => initialAiSeeds[0] || null);
+  const preloadedAlternativesRef = useRef<Track[]>(initialAiSeeds.slice(1, 11));
+  const [preloadedAlternatives, setPreloadedAlternatives] = useState<Track[]>(() => initialAiSeeds.slice(1, 11));
   const [isNextTrackPopupEnabled, setIsNextTrackPopupEnabled] = useState<boolean>(() => {
     return localStorage.getItem('spytify_next_popup_enabled') !== 'false';
   });
@@ -1438,6 +1459,32 @@ export default function App() {
   useEffect(() => {
     isNextTrackPopupEnabledRef.current = isNextTrackPopupEnabled;
   }, [isNextTrackPopupEnabled]);
+
+  // Queue Button Action Mode ('queue' = open QueueModal | 'smart_dj_popup' = toggle Smart DJ popup)
+  const [queueButtonMode, setQueueButtonMode] = useState<'queue' | 'smart_dj_popup'>(() => {
+    try {
+      return (localStorage.getItem('spytify_queue_button_mode') as 'queue' | 'smart_dj_popup') || 'queue';
+    } catch {
+      return 'queue';
+    }
+  });
+
+  const handleUpdateQueueButtonMode = useCallback((mode: 'queue' | 'smart_dj_popup') => {
+    setQueueButtonMode(mode);
+    try {
+      localStorage.setItem('spytify_queue_button_mode', mode);
+    } catch {}
+  }, []);
+
+  const handleToggleQueueButtonMode = useCallback(() => {
+    setQueueButtonMode(prev => {
+      const next = prev === 'queue' ? 'smart_dj_popup' : 'queue';
+      try {
+        localStorage.setItem('spytify_queue_button_mode', next);
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const isSkippingRef = useRef(false);
   const playbackHistoryStackRef = useRef<Track[]>([]);
@@ -1479,18 +1526,16 @@ export default function App() {
     const fallbackNext = getNextPlaylistTrack(cur);
     const useNewDiscovery = shouldNextBeNewDiscovery();
 
-    // In new discovery (Fresh) mode, ONLY use genuine preloaded discovery track.
-    // Do NOT pull random songs from allList/history to prevent showing unrelated songs.
+    // In new discovery (Fresh) mode, prioritize preloaded discovery track,
+    // but seamlessly fall back to queue/playlist next track so the popup never vanishes
     const nextToUse = useNewDiscovery
-      ? preloadedNextTrackRef.current
+      ? (preloadedNextTrackRef.current || fallbackNext)
       : (fallbackNext || preloadedNextTrackRef.current);
     if (!nextToUse || (cur && nextToUse.id === cur.id)) return null;
 
     const altList = (useNewDiscovery && preloadedAlternativesRef.current.length > 0)
       ? preloadedAlternativesRef.current.slice(0, 10)
-      : (!useNewDiscovery
-          ? allList.filter(t => t.id !== cur?.id && t.id !== nextToUse.id).slice(0, 10)
-          : []);
+      : allList.filter(t => t.id !== cur?.id && t.id !== nextToUse.id).slice(0, 10);
 
     return {
       title: nextToUse.title,
@@ -1504,23 +1549,20 @@ export default function App() {
   };
 
   const handleToggleNextTrackPopupEnabled = () => {
-    const isCurrentlyVisible = Boolean(isNextTrackPopupEnabled && nextTrackPopup);
-    if (isCurrentlyVisible) {
-      setIsNextTrackPopupEnabled(false);
-      isNextTrackPopupEnabledRef.current = false;
-      localStorage.setItem('spytify_next_popup_enabled', 'false');
-      setNextTrackPopup(null);
-      showNotification(getTranslation(language, 'popup.disabledToast'));
-    } else {
-      setIsNextTrackPopupEnabled(true);
-      isNextTrackPopupEnabledRef.current = true;
-      localStorage.setItem('spytify_next_popup_enabled', 'true');
-      setIsNextTrackPopupCollapsed(false);
-      const immediateData = buildImmediatePopupData();
-      if (immediateData) {
-        setNextTrackPopup(immediateData);
+    setIsNextTrackPopupEnabled(prev => {
+      const next = !prev;
+      isNextTrackPopupEnabledRef.current = next;
+      localStorage.setItem('spytify_next_popup_enabled', String(next));
+      if (!next) {
+        setNextTrackPopup(null);
+        setIsAiLoadingNext(false);
+        showNotification(getTranslation(language, 'popup.disabledToast'));
       } else {
-        if (currentTrackRef.current) {
+        setIsNextTrackPopupCollapsed(false);
+        const immediateData = buildImmediatePopupData();
+        if (immediateData) {
+          setNextTrackPopup(immediateData);
+        } else if (currentTrackRef.current) {
           setIsAiLoadingNext(true);
           fetchUpcomingForTrack(currentTrackRef.current);
         } else {
@@ -1533,9 +1575,10 @@ export default function App() {
             alternatives: [],
           });
         }
+        showNotification(getTranslation(language, 'popup.enabledToast'));
       }
-      showNotification(getTranslation(language, 'popup.enabledToast'));
-    }
+      return next;
+    });
   };
 
   const currentTimeRef = useRef(0);
@@ -1589,454 +1632,6 @@ export default function App() {
       .catch(() => {});
   }, [currentUser]);
 
-const getLanguageAiSeeds = (lang: LanguageCode): Track[] => {
-  let pool: Track[] = [];
-  switch (lang) {
-    case 'ko':
-      pool = [
-        {
-          id: 'aimix_seed_ko_1',
-          title: 'APT. (feat. Bruno Mars)',
-          artist: 'ROSÉ & Bruno Mars',
-          album: 'AI 믹스 • K-Pop Global',
-          duration_secs: 173,
-          path_or_url: 'ekr2nIex040',
-          cover_art: 'https://i.ytimg.com/vi/ekr2nIex040/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ko_2',
-          title: 'Supernova',
-          artist: 'aespa (에스파)',
-          album: 'AI 믹스 • Viral Pick',
-          duration_secs: 180,
-          path_or_url: 'phuiAIQAxZ4',
-          cover_art: 'https://i.ytimg.com/vi/phuiAIQAxZ4/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ko_3',
-          title: 'Magnetic',
-          artist: 'ILLIT (아일릿)',
-          album: 'AI 믹스 • Hot Trend',
-          duration_secs: 161,
-          path_or_url: 'Vk5-c_v4gMU',
-          cover_art: 'https://i.ytimg.com/vi/Vk5-c_v4gMU/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ko_4',
-          title: 'Love wins all',
-          artist: 'IU (아이유)',
-          album: 'AI 믹스 • K-Ballad',
-          duration_secs: 272,
-          path_or_url: 'JleoAppaxi0',
-          cover_art: 'https://i.ytimg.com/vi/JleoAppaxi0/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ko_5',
-          title: 'How Sweet',
-          artist: 'NewJeans (뉴진스)',
-          album: 'AI 믹스 • Groovy K-Pop',
-          duration_secs: 219,
-          path_or_url: 'Q3K0TOvTOno',
-          cover_art: 'https://i.ytimg.com/vi/Q3K0TOvTOno/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ko_6',
-          title: 'Perfect Night',
-          artist: 'LE SSERAFIM (르세라핌)',
-          album: 'AI 믹스 • Night Drive',
-          duration_secs: 160,
-          path_or_url: 'hLvWy2b857I',
-          cover_art: 'https://i.ytimg.com/vi/hLvWy2b857I/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ko_7',
-          title: 'Dynamite',
-          artist: 'BTS (방탄소년단)',
-          album: 'AI 믹스 • Billboard #1 Hit',
-          duration_secs: 199,
-          path_or_url: 'gdZLi9oWNZg',
-          cover_art: 'https://i.ytimg.com/vi/gdZLi9oWNZg/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ko_8',
-          title: 'MAESTRO',
-          artist: 'SEVENTEEN (세븐틴)',
-          album: 'AI 믹스 • High Energy',
-          duration_secs: 198,
-          path_or_url: 'ilbT0854-C4',
-          cover_art: 'https://i.ytimg.com/vi/ilbT0854-C4/hqdefault.jpg',
-          source: 'youtube',
-        },
-      ];
-      break;
-    case 'ja':
-      pool = [
-        {
-          id: 'aimix_seed_ja_1',
-          title: 'Idol (アイドル)',
-          artist: 'YOASOBI',
-          album: 'AI Mix • J-Pop Top',
-          duration_secs: 213,
-          path_or_url: 'ZRtdQ81jPUQ',
-          cover_art: 'https://i.ytimg.com/vi/ZRtdQ81jPUQ/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ja_2',
-          title: 'Bling-Bang-Bang-Born',
-          artist: 'Creepy Nuts',
-          album: 'AI Mix • Viral J-Pop',
-          duration_secs: 178,
-          path_or_url: 'mLW35YMz1eo',
-          cover_art: 'https://i.ytimg.com/vi/mLW35YMz1eo/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ja_3',
-          title: 'Shinunoga E-Wa (死ぬのがいいわ)',
-          artist: 'Fujii Kaze (藤井 風)',
-          album: 'AI Mix • Chill Groove',
-          duration_secs: 185,
-          path_or_url: 'dFfvP9-A_P8',
-          cover_art: 'https://i.ytimg.com/vi/dFfvP9-A_P8/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ja_4',
-          title: 'KICK BACK',
-          artist: 'Kenshi Yonezu (米津玄師)',
-          album: 'AI Mix • Anime Hit',
-          duration_secs: 193,
-          path_or_url: 'M2cckDmNLMI',
-          cover_art: 'https://i.ytimg.com/vi/M2cckDmNLMI/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ja_5',
-          title: 'Show (唱)',
-          artist: 'Ado',
-          album: 'AI Mix • High Voltage',
-          duration_secs: 191,
-          path_or_url: 'pgXpM4l_MwI',
-          cover_art: 'https://i.ytimg.com/vi/pgXpM4l_MwI/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_ja_6',
-          title: 'Lilac (ライラック)',
-          artist: 'Mrs. GREEN APPLE',
-          album: 'AI Mix • J-Rock Sensation',
-          duration_secs: 204,
-          path_or_url: 'Q7PqG8K7fWw',
-          cover_art: 'https://i.ytimg.com/vi/Q7PqG8K7fWw/hqdefault.jpg',
-          source: 'youtube',
-        },
-      ];
-      break;
-    case 'zh-CN':
-      pool = [
-        {
-          id: 'aimix_seed_zh_1',
-          title: '晴天 (Sunny Day)',
-          artist: '周杰伦 (Jay Chou)',
-          album: 'AI Mix • 经典热歌',
-          duration_secs: 269,
-          path_or_url: 'DYptgVvkVLQ',
-          cover_art: 'https://i.ytimg.com/vi/DYptgVvkVLQ/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_zh_2',
-          title: '光年之外 (LIGHT YEARS AWAY)',
-          artist: 'G.E.M. 邓紫棋',
-          album: 'AI Mix • 华语流行',
-          duration_secs: 235,
-          path_or_url: 'T4SimnaiktU',
-          cover_art: 'https://i.ytimg.com/vi/T4SimnaiktU/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_zh_3',
-          title: '带我去找夜生活',
-          artist: '告五人 (Accusefive)',
-          album: 'AI Mix • 独立流行',
-          duration_secs: 243,
-          path_or_url: '55nPtJyp4eQ',
-          cover_art: 'https://i.ytimg.com/vi/55nPtJyp4eQ/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_zh_4',
-          title: '孤勇者 (Lonely Warrior)',
-          artist: '陈奕迅 (Eason Chan)',
-          album: 'AI Mix • 巅峰热榜',
-          duration_secs: 256,
-          path_or_url: 'H58vbez_m4E',
-          cover_art: 'https://i.ytimg.com/vi/H58vbez_m4E/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_zh_5',
-          title: '哪里都是你',
-          artist: '队长 (Young Captain)',
-          album: 'AI Mix • 潮流说唱',
-          duration_secs: 208,
-          path_or_url: '5dZ8vV8Y3fE',
-          cover_art: 'https://i.ytimg.com/vi/5dZ8vV8Y3fE/hqdefault.jpg',
-          source: 'youtube',
-        },
-      ];
-      break;
-    case 'en-US':
-      pool = [
-        {
-          id: 'aimix_seed_en_1',
-          title: 'Die With A Smile',
-          artist: 'Lady Gaga & Bruno Mars',
-          album: 'AI Mix • Top Match',
-          duration_secs: 251,
-          path_or_url: 'kPa7bsKwL-c',
-          cover_art: 'https://i.ytimg.com/vi/kPa7bsKwL-c/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_2',
-          title: 'Birds of a Feather',
-          artist: 'Billie Eilish',
-          album: 'AI Mix • Chill Pop',
-          duration_secs: 196,
-          path_or_url: 'V9PVRfjEBTI',
-          cover_art: 'https://i.ytimg.com/vi/V9PVRfjEBTI/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_3',
-          title: 'Espresso',
-          artist: 'Sabrina Carpenter',
-          album: 'AI Mix • Viral Summer',
-          duration_secs: 175,
-          path_or_url: 'eVli-tstM5E',
-          cover_art: 'https://i.ytimg.com/vi/eVli-tstM5E/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_4',
-          title: 'Blinding Lights',
-          artist: 'The Weeknd',
-          album: 'AI Mix • Synthwave',
-          duration_secs: 200,
-          path_or_url: '4NRXx6U8ABQ',
-          cover_art: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_5',
-          title: 'Cruel Summer',
-          artist: 'Taylor Swift',
-          album: 'AI Mix • Pop Sensation',
-          duration_secs: 178,
-          path_or_url: 'ic8j13piAhQ',
-          cover_art: 'https://i.ytimg.com/vi/ic8j13piAhQ/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_6',
-          title: 'Beautiful Things',
-          artist: 'Benson Boone',
-          album: 'AI Mix • Global Hit',
-          duration_secs: 180,
-          path_or_url: 'Oa_RSwwpPaA',
-          cover_art: 'https://i.ytimg.com/vi/Oa_RSwwpPaA/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_7',
-          title: 'Houdini',
-          artist: 'Dua Lipa',
-          album: 'AI Mix • Dance Pop',
-          duration_secs: 185,
-          path_or_url: 'suAR1PYFNYA',
-          cover_art: 'https://i.ytimg.com/vi/suAR1PYFNYA/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_8',
-          title: 'As It Was',
-          artist: 'Harry Styles',
-          album: 'AI Mix • Synthpop',
-          duration_secs: 167,
-          path_or_url: 'H5v3kku4y6Q',
-          cover_art: 'https://i.ytimg.com/vi/H5v3kku4y6Q/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_9',
-          title: 'Good Luck, Babe!',
-          artist: 'Chappell Roan',
-          album: 'AI Mix • Viral Alternative',
-          duration_secs: 218,
-          path_or_url: '1KI9XCGkzOM',
-          cover_art: 'https://i.ytimg.com/vi/1KI9XCGkzOM/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_10',
-          title: 'Stay',
-          artist: 'The Kid LAROI & Justin Bieber',
-          album: 'AI Mix • Pop Hit',
-          duration_secs: 141,
-          path_or_url: 'kTJczUoc56U',
-          cover_art: 'https://i.ytimg.com/vi/kTJczUoc56U/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_en_11',
-          title: 'Flowers',
-          artist: 'Miley Cyrus',
-          album: 'AI Mix • Disco Pop',
-          duration_secs: 200,
-          path_or_url: 'G7KNmW9a75Y',
-          cover_art: 'https://i.ytimg.com/vi/G7KNmW9a75Y/hqdefault.jpg',
-          source: 'youtube',
-        },
-      ];
-      break;
-    case 'vi':
-    default:
-      pool = [
-        {
-          id: 'aimix_seed_vi_1',
-          title: 'Đừng Làm Trái Tim Anh Đau',
-          artist: 'Sơn Tùng M-TP',
-          album: 'AI Mix • V-Pop Hot',
-          duration_secs: 326,
-          path_or_url: 'abPmZCZZrFA',
-          cover_art: 'https://i.ytimg.com/vi/abPmZCZZrFA/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_2',
-          title: 'Không Thể Say',
-          artist: 'HIEUTHUHAI',
-          album: 'AI Mix • Trending Rap',
-          duration_secs: 210,
-          path_or_url: 'W_aX497N4cE',
-          cover_art: 'https://i.ytimg.com/vi/W_aX497N4cE/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_3',
-          title: 'Bước Qua Mùa Cô Đơn',
-          artist: 'Vũ.',
-          album: 'AI Mix • Indie Ballad',
-          duration_secs: 279,
-          path_or_url: 'bX8d8XbS0hU',
-          cover_art: 'https://i.ytimg.com/vi/bX8d8XbS0hU/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_4',
-          title: 'Từng Quen',
-          artist: 'Wren Evans',
-          album: 'AI Mix • New Wave',
-          duration_secs: 174,
-          path_or_url: 'zepHPnUDROE',
-          cover_art: 'https://i.ytimg.com/vi/zepHPnUDROE/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_5',
-          title: 'Giá Như',
-          artist: 'SOOBIN',
-          album: 'AI Mix • R&B V-Pop',
-          duration_secs: 216,
-          path_or_url: 'kFq-qT8g16Q',
-          cover_art: 'https://i.ytimg.com/vi/kFq-qT8g16Q/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_6',
-          title: 'Thủy Triều',
-          artist: 'Quang Hùng MasterD',
-          album: 'AI Mix • Viral V-Pop',
-          duration_secs: 202,
-          path_or_url: '7ig2lXjozdw',
-          cover_art: 'https://i.ytimg.com/vi/7ig2lXjozdw/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_7',
-          title: 'Cắt Đôi Nỗi Sầu',
-          artist: 'Tăng Duy Tân',
-          album: 'AI Mix • Catchy Beat',
-          duration_secs: 195,
-          path_or_url: 'GpmOn4RyzZI',
-          cover_art: 'https://i.ytimg.com/vi/GpmOn4RyzZI/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_8',
-          title: 'Thanh Xuân',
-          artist: 'Da LAB',
-          album: 'AI Mix • Nostalgia V-Pop',
-          duration_secs: 228,
-          path_or_url: 'GgQFO8dL5XQ',
-          cover_art: 'https://i.ytimg.com/vi/GgQFO8dL5XQ/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_9',
-          title: 'Waiting For You',
-          artist: 'MONO',
-          album: 'AI Mix • 80s Synthpop',
-          duration_secs: 265,
-          path_or_url: 'H4rDquc_t88',
-          cover_art: 'https://i.ytimg.com/vi/H4rDquc_t88/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_10',
-          title: 'Ngày Đầu Tiên',
-          artist: 'Đức Phúc',
-          album: 'AI Mix • Pop Ballad',
-          duration_secs: 205,
-          path_or_url: '4bW_OaW0rYw',
-          cover_art: 'https://i.ytimg.com/vi/4bW_OaW0rYw/hqdefault.jpg',
-          source: 'youtube',
-        },
-        {
-          id: 'aimix_seed_vi_11',
-          title: 'Bật Tình Yêu Lên',
-          artist: 'Tăng Duy Tân & Hòa Minzy',
-          album: 'AI Mix • Duo Hit',
-          duration_secs: 205,
-          path_or_url: '1J7wQf0z-1Y',
-          cover_art: 'https://i.ytimg.com/vi/1J7wQf0z-1Y/hqdefault.jpg',
-          source: 'youtube',
-        },
-      ];
-      break;
-  }
-  return pool;
-};
-
-const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
-  switch (lang) {
-    case 'ko': return '✨ AI 믹스 • 당신을 위한 맞춤 추천';
-    case 'ja': return '✨ AIミックス • あなたへのおすすめ';
-    case 'zh-CN': return '✨ AI 混音 • 为你专属推荐';
-    case 'en-US': return '✨ AI MIX • RECOMMENDED FOR YOU';
-    case 'vi':
-    default: return '✨ AI MIX • ĐỀ XUẤT CHO BẠN';
-  }
-};
 
   // Pre-fetch AI Mix recommendations on initial app startup (when !currentTrack)
   // or when language changes, and switch to normal Next Track pre-fetching once a track starts playing
@@ -2049,6 +1644,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       preloadedNextTrackRef.current = initialAiMixSeeds[0];
       setPreloadedNextTrack(initialAiMixSeeds[0]);
       preloadedAlternativesRef.current = initialAiMixSeeds.slice(1, 11);
+      setPreloadedAlternatives(initialAiMixSeeds.slice(1, 11));
 
       if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
         const topPick = initialAiMixSeeds[0];
@@ -2067,7 +1663,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       return;
     }
     endOfTrackPopupShownForRef.current = null;
-  }, [currentTrack, !currentTrack ? language : undefined]);
+  }, [currentTrack, language]);
 
   const fetchUpcomingReqIdRef = useRef(0);
 
@@ -2084,36 +1680,44 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       if (reqId !== fetchUpcomingReqIdRef.current) return;
 
       if (related && related.length > 0) {
-        const listened = listenedHistoryTitlesRef.current;
-        const curTitleLower = targetTrack.title.toLowerCase();
-        const curUrl = (targetTrack.path_or_url || '').toLowerCase();
-        const curId = targetTrack.id.toLowerCase();
+        const curTitleLower = targetTrack.title.toLowerCase().trim();
+        const curArtistLower = (targetTrack.artist || '').toLowerCase().trim();
+        const curUrl = (targetTrack.path_or_url || '').toLowerCase().trim();
+        const curId = targetTrack.id.toLowerCase().trim();
 
-        // Filter out currently playing track, user playlists, and listened history
-        const strictOutsideCandidates = related.filter(r => {
-          const rTitle = r.title.toLowerCase();
-          const rUrl = (r.url_or_id || '').toLowerCase();
+        // 1. Filter out the exact track currently playing
+        const validRelated = related.filter(r => {
+          const rTitle = r.title.toLowerCase().trim();
+          const rUrl = (r.url_or_id || '').toLowerCase().trim();
           if (curUrl && rUrl === curUrl) return false;
           if (curId && (curId === rUrl || curId.includes(rUrl))) return false;
-          if (rTitle.includes(curTitleLower) || curTitleLower.includes(rTitle)) return false;
-          if (listened.has(rTitle) || listened.has(rUrl)) return false;
-          if (isTrackInUserPlaylists(r.title, r.url_or_id)) return false;
+          if (rTitle === curTitleLower) return false;
           return true;
         });
 
-        const rawPool = strictOutsideCandidates.length > 0
-          ? strictOutsideCandidates
-          : related.filter(r => {
-              const rUrl = (r.url_or_id || '').toLowerCase();
-              if (curUrl && rUrl === curUrl) return false;
-              return !isTrackInUserPlaylists(r.title, r.url_or_id);
-            });
+        // 2. Intelligent Scoring: Prioritize Same Artist + Same Genre + User Preferences!
+        const scored = validRelated.map(r => {
+          const rArtist = (r.artist || '').toLowerCase().trim();
+          let score = 0;
+          // Priority 1: Exact or matching artist (+100)
+          if (curArtistLower && (rArtist === curArtistLower || rArtist.includes(curArtistLower) || curArtistLower.includes(rArtist))) {
+            score += 100;
+          }
+          // Priority 2: In Mix mode, elevate tracks that user has saved/favored (+50)
+          if (recommendModeRef.current === 'mix' && isTrackInUserPlaylists(r.title, r.url_or_id)) {
+            score += 50;
+          }
+          return { item: r, score };
+        });
 
-        const candidates = (rawPool.length > 0 ? rawPool : related.filter(r => (r.url_or_id || '').toLowerCase() !== curUrl)).map((r): Track => ({
+        // Sort by relevance score descending so same-artist & matching-genre tracks lead
+        scored.sort((a, b) => b.score - a.score);
+
+        const candidates = scored.map(({ item: r }): Track => ({
           id: `${r.source}_rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           title: r.title,
           artist: r.artist,
-          album: r.album || 'Gợi ý ngoài Playlist',
+          album: r.album || (curArtistLower && r.artist.toLowerCase().includes(curArtistLower) ? 'Cùng nghệ sĩ' : 'Smart DJ Selection'),
           duration_secs: r.duration_secs || 210,
           path_or_url: r.url_or_id,
           cover_art: r.thumbnail,
@@ -2124,6 +1728,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           preloadedNextTrackRef.current = candidates[0];
           setPreloadedNextTrack(candidates[0]);
           preloadedAlternativesRef.current = candidates.slice(1, 11);
+          setPreloadedAlternatives(candidates.slice(1, 11));
           if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
             const popupLabel = recommendModeRef.current === 'fresh'
               ? getTranslation(language, 'mode.freshPopup')
@@ -2141,6 +1746,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               alternatives: candidates.slice(1, 11),
             });
           }
+        } else if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
+          const fallback = buildImmediatePopupData();
+          if (fallback) setNextTrackPopup(fallback);
         }
       }
     } catch (err) {
@@ -2364,7 +1972,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       } else {
         showNotification(getTranslation(language, 'toast.modeOff'));
       }
-      if (isNextTrackPopupEnabledRef.current) {
+      if (next === 'off') {
+        // When Smart DJ mode is switched to OFF, close the popup immediately!
+        setNextTrackPopup(null);
+        setIsAiLoadingNext(false);
+      } else if (isNextTrackPopupEnabledRef.current) {
         setTimeout(() => {
           const immediate = buildImmediatePopupData();
           if (immediate) setNextTrackPopup(immediate);
@@ -2395,6 +2007,11 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [currentTrack, displayedTracks, activeQueue, activeQueueContext, isShuffle]);
 
   const effectiveUpcomingTrack = useMemo(() => {
+    const isScoped = isScopedPlaylistContext(activeQueueContext);
+    if (isScoped) {
+      // Khi đang trong Album / Playlist cụ thể, bài tiếp theo luôn là bài tuần tự tiếp theo trong album
+      return upcomingTrack || preloadedNextTrack;
+    }
     const useNew = shouldNextBeNewDiscovery();
     if (useNew) {
       return preloadedNextTrack || upcomingTrack;
@@ -2433,24 +2050,23 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
   // Keep Next Track Floating Popup 100% synchronized with effectiveUpcomingTrack once playback has started
   useEffect(() => {
-    if (!isNextTrackPopupEnabledRef.current || !effectiveUpcomingTrack) return;
+    if (!isNextTrackPopupEnabledRef.current) return;
     if (!currentTrackRef.current) return;
     const useNew = shouldNextBeNewDiscovery();
-
-    // When in discovery/fresh mode, NEVER fall back to favorites/library tracks while AI is analyzing/loading!
-    if (useNew && !preloadedNextTrack) return;
+    const targetTrack = (useNew && preloadedNextTrack) ? preloadedNextTrack : (effectiveUpcomingTrack || upcomingTrack);
+    if (!targetTrack) return;
 
     const allList = getEffectiveQueue();
     const cur = currentTrackRef.current;
     const altList = (useNew && preloadedAlternativesRef.current.length > 0)
       ? preloadedAlternativesRef.current.slice(0, 10)
-      : (!useNew ? allList.filter(t => t.id !== cur?.id && t.id !== effectiveUpcomingTrack.id).slice(0, 10) : []);
+      : allList.filter(t => t.id !== cur?.id && t.id !== targetTrack.id).slice(0, 10);
 
     setNextTrackPopup(prev => ({
-      title: effectiveUpcomingTrack.title,
-      artist: effectiveUpcomingTrack.artist,
-      thumbnail: effectiveUpcomingTrack.cover_art || undefined,
-      source: effectiveUpcomingTrack.source,
+      title: targetTrack.title,
+      artist: targetTrack.artist,
+      thumbnail: targetTrack.cover_art || undefined,
+      source: targetTrack.source,
       modeLabel: getPlaylistModeLabel(activeQueueContextRef.current),
       isCountdown: prev?.isCountdown || false,
       remainingSecs: prev?.remainingSecs,
@@ -2672,11 +2288,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
   }, [isNextTrackPopupCollapsed]);
 
-  const isNextTrackPopupVisible = Boolean(
-    !isTrayMode &&
-    (nextTrackPopup || (isAiLoadingNext && currentTrack)) &&
-    isNextTrackPopupEnabled
-  );
+  // Smart DJ popup floating widget completely disabled per user preference
+  const isNextTrackPopupVisible = false;
 
   useEffect(() => {
     if (!isNextTrackPopupVisible) {
@@ -3587,17 +3200,41 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
   }, [currentTrack, isPlaying, currentTime, duration, activeAccentColor]);
 
   const handleEnterDesktopMiniBar = useCallback(async () => {
+    setIsKaraokeModalOpen(false);
+    setIsQueueModalOpen(false);
     setIsDesktopMiniBar(true);
     if (isTauriApp) {
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
         const win = getCurrentWindow();
-        if (await win.isMaximized()) {
+
+        // 1. Remember if window was maximized before entering pin mode
+        const isMax = await win.isMaximized();
+        preMiniBarWasMaximizedRef.current = isMax;
+
+        // 2. Remember current window scale / dimensions
+        try {
+          const factor = await win.scaleFactor();
+          const outerSize = await win.outerSize();
+          const logical = outerSize.toLogical(factor);
+          if (logical.width >= 750 && logical.height >= 480) {
+            preMiniBarSizeRef.current = { width: Math.round(logical.width), height: Math.round(logical.height) };
+            try {
+              localStorage.setItem('spytify_pre_minibar_size', JSON.stringify(preMiniBarSizeRef.current));
+            } catch {}
+          }
+        } catch {
+          if (typeof window !== 'undefined' && window.innerWidth >= 750 && window.innerHeight >= 480) {
+            preMiniBarSizeRef.current = { width: window.innerWidth, height: window.innerHeight };
+          }
+        }
+
+        if (isMax) {
           await win.unmaximize();
         }
-        await win.setMinSize(new LogicalSize(320, 64));
-        await win.setSize(new LogicalSize(380, 76));
+        await win.setMinSize(new LogicalSize(360, 72));
+        await win.setSize(new LogicalSize(430, 76));
         await win.setAlwaysOnTop(true);
         await win.setResizable(false);
       } catch (err) {
@@ -3614,10 +3251,20 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         const { LogicalSize } = await import('@tauri-apps/api/dpi');
         const win = getCurrentWindow();
         await win.setMinSize(new LogicalSize(800, 520));
-        await win.setSize(new LogicalSize(1280, 820));
         await win.setAlwaysOnTop(false);
         await win.setResizable(true);
-        await win.center();
+
+        if (preMiniBarWasMaximizedRef.current) {
+          // If window was maximized before entering pin mode, re-maximize
+          await win.maximize();
+        } else {
+          // Restore exact window scale and dimensions saved before pin mode
+          const targetW = Math.max(800, preMiniBarSizeRef.current?.width || 1280);
+          const targetH = Math.max(520, preMiniBarSizeRef.current?.height || 820);
+          await win.setSize(new LogicalSize(targetW, targetH));
+          // Center restored window on screen as requested
+          await win.center();
+        }
       } catch (err) {
         console.warn('Error restoring from mini bar:', err);
       }
@@ -4398,32 +4045,27 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
     } catch {}
 
-    // Immediately promote an existing pre-fetched discovery candidate (0ms delay, no waiting for network!)
+    // Check whether user is advancing to the preloaded song or picked a new song
     const trackTitleNorm = track.title.trim().toLowerCase();
-    const isValidNewCandidate = (c: Track | null): c is Track =>
-      Boolean(
-        c &&
-        c.id !== track.id &&
-        c.title.trim().toLowerCase() !== trackTitleNorm &&
-        !listenedHistoryTitlesRef.current.has(c.title.trim().toLowerCase()) &&
-        !isTrackInUserPlaylists(c.title, c.path_or_url)
-      );
+    const isAdvancingToPreloaded = Boolean(
+      preloadedNextTrackRef.current &&
+      (preloadedNextTrackRef.current.id === track.id ||
+       (track.path_or_url && preloadedNextTrackRef.current.path_or_url === track.path_or_url) ||
+       preloadedNextTrackRef.current.title.trim().toLowerCase() === trackTitleNorm)
+    );
 
     let nextPreloaded: Track | null = null;
-    const curArtistNorm = track.artist.trim().toLowerCase();
-    if (
-      preloadedNextTrackRef.current &&
-      isValidNewCandidate(preloadedNextTrackRef.current) &&
-      (
-        (curArtistNorm && preloadedNextTrackRef.current.artist.trim().toLowerCase() === curArtistNorm) ||
-        preloadedNextTrackRef.current.title.trim().toLowerCase() !== trackTitleNorm
-      )
-    ) {
-      nextPreloaded = preloadedNextTrackRef.current;
+    if (isAdvancingToPreloaded && preloadedAlternativesRef.current.length > 0) {
+      // Natural progression: promote next alternative to preloaded
+      nextPreloaded = preloadedAlternativesRef.current[0];
+      const remaining = preloadedAlternativesRef.current.slice(1);
+      preloadedAlternativesRef.current = remaining;
+      setPreloadedAlternatives(remaining);
     } else {
-      // Clear stale candidates completely so we never leak unrelated songs into the new track
+      // User clicked a new track / artist: wipe stale recommendations completely
       nextPreloaded = null;
       preloadedAlternativesRef.current = [];
+      setPreloadedAlternatives([]);
     }
     preloadedNextTrackRef.current = nextPreloaded;
     setPreloadedNextTrack(nextPreloaded);
@@ -4433,8 +4075,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     durationRef.current = initialDur;
     setDuration(initialDur);
 
-    // Smart DJ always prepares upcoming tracks for seamless auto-play & immediate popup
-    if (nextPreloaded) {
+    // Smart DJ always fetches high-relevance upcoming tracks for the current song
+    if (nextPreloaded && preloadedAlternativesRef.current.length >= 4) {
       setIsAiLoadingNext(false);
       if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
         const immediateData = buildImmediatePopupData();
@@ -4442,13 +4084,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           setNextTrackPopup(immediateData);
         }
       }
-      if (preloadedAlternativesRef.current.length < 2) {
-        fetchUpcomingForTrack(track);
-      }
     } else {
       setIsAiLoadingNext(true);
       if (isNextTrackPopupEnabledRef.current && !isTrayModeRef.current) {
-        setNextTrackPopup(null);
+        const immediateData = buildImmediatePopupData();
+        if (immediateData) {
+          setNextTrackPopup(immediateData);
+        }
       }
       fetchUpcomingForTrack(track);
     }
@@ -5406,12 +5048,13 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     }
 
     setActiveQueue(prev => {
-      const currentList = prev.length > 0 ? [...prev] : [...getEffectiveQueue()];
+      const base = prev.length > 0 ? prev : getEffectiveQueue();
+      const currentList = [...base];
       if (fromIndex < 0 || fromIndex >= currentList.length || toIndex < 0 || toIndex >= currentList.length) return prev;
       const [moved] = currentList.splice(fromIndex, 1);
       if (moved) currentList.splice(toIndex, 0, moved);
-      activeQueueRef.current = currentList;
-      if (isConnectHostActive) {
+      activeQueueRef.current = [...currentList];
+      if (isConnectHostActiveRef.current) {
         spytifyConnect.broadcastPlaybackState({
           currentTrack: currentTrackRef.current,
           isPlaying: isPlayingRef.current,
@@ -5425,9 +5068,9 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           timestamp: Date.now(),
         }, true);
       }
-      return currentList;
+      return [...currentList];
     });
-  }, [isTauriApp, isConnectHostActive]);
+  }, [isTauriApp]);
 
   const handleRemoveFromQueue = useCallback((trackId: string) => {
     if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
@@ -5439,7 +5082,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     setActiveQueue(prev => {
       const currentList = (prev.length > 0 ? prev : getEffectiveQueue()).filter(t => t.id !== trackId);
       activeQueueRef.current = currentList;
-      if (isConnectHostActive) {
+      if (isConnectHostActiveRef.current) {
         spytifyConnect.broadcastPlaybackState({
           currentTrack: currentTrackRef.current,
           isPlaying: isPlayingRef.current,
@@ -5455,7 +5098,12 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       }
       return currentList;
     });
-  }, [isTauriApp, isConnectHostActive]);
+  }, [isTauriApp]);
+
+  const handleReorderQueueRef = useRef(handleReorderQueue);
+  handleReorderQueueRef.current = handleReorderQueue;
+  const handleRemoveFromQueueRef = useRef(handleRemoveFromQueue);
+  handleRemoveFromQueueRef.current = handleRemoveFromQueue;
 
   const handlePlayQueueTrack = useCallback((track: Track) => {
     if (!isTauriApp && connectPlaybackTargetRef.current === 'desktop') {
@@ -5498,10 +5146,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             if (cmd.track) playTrackInternal(cmd.track);
             break;
           case 'REORDER_QUEUE':
-            handleReorderQueue(cmd.fromIndex, cmd.toIndex);
+            handleReorderQueueRef.current(cmd.fromIndex, cmd.toIndex);
             break;
           case 'REMOVE_FROM_QUEUE':
-            handleRemoveFromQueue(cmd.trackId);
+            handleRemoveFromQueueRef.current(cmd.trackId);
             break;
           case 'PLAY_QUEUE_INDEX': {
             const q = getEffectiveQueue();
@@ -5539,6 +5187,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
     if (ok) {
       setIsConnectHostActive(true);
+      isConnectHostActiveRef.current = true;
       try { localStorage.setItem('spytify_connect_host_enabled', 'true'); } catch {}
       spytifyConnect.broadcastPlaybackState({
         currentTrack: currentTrackRef.current,
@@ -5553,31 +5202,38 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         timestamp: Date.now(),
       }, true);
     }
-  }, [isTauriApp, getEffectiveRemoteUserId, handleReorderQueue, handleRemoveFromQueue]);
+  }, [isTauriApp, getEffectiveRemoteUserId]);
 
-  // Auto-start host on Desktop app launch, and re-bind if user logs in
+  // Auto-start host on Desktop app launch only if not explicitly turned off by user
   useEffect(() => {
     if (isTauriApp) {
-      startConnectHost();
+      const savedPref = localStorage.getItem('spytify_connect_host_enabled');
+      if (savedPref !== 'false') {
+        startConnectHost();
+      }
     }
-  }, [isTauriApp, startConnectHost, currentUser?.id]);
+  }, [isTauriApp, currentUser?.id]);
 
   const handleToggleConnectHost = useCallback(async () => {
     if (!isTauriApp) {
       showNotification(language === 'vi' ? 'Trạm phát Host chỉ khả dụng trên Spytify Desktop App (Tauri Rust)' : 'Host Broadcaster is only available on Desktop Tauri App');
       return;
     }
-    if (isConnectHostActive) {
-      await spytifyConnect.stopHost();
-      setIsConnectHostActive(false);
+    if (isConnectHostActiveRef.current) {
       try { localStorage.setItem('spytify_connect_host_enabled', 'false'); } catch {}
+      setIsConnectHostActive(false);
+      isConnectHostActiveRef.current = false;
+      await spytifyConnect.stopHost();
       showNotification(language === 'vi' ? 'Đã tắt trạm phát Spytify Connect' : 'Spytify Connect Broadcaster Stopped');
       return;
     }
+    try { localStorage.setItem('spytify_connect_host_enabled', 'true'); } catch {}
+    setIsConnectHostActive(true);
+    isConnectHostActiveRef.current = true;
     await startConnectHost();
     const accountInfo = currentUser ? ` (${currentUser.username || currentUser.email})` : '';
     showNotification(language === 'vi' ? `Trạm phát Spytify Connect đã bật theo tài khoản${accountInfo}! Sẵn sàng kết nối với iPhone` : `Spytify Connect is live for your account${accountInfo}! Ready for iPhone remote control`);
-  }, [currentUser, isConnectHostActive, language, isTauriApp, startConnectHost]);
+  }, [currentUser, language, isTauriApp, startConnectHost]);
 
   const handleConnectAsClient = useCallback(async () => {
     const effectiveUserId = getEffectiveRemoteUserId();
@@ -6135,6 +5791,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       preloadedNextTrackRef.current = allConverted[nextIdx];
       setPreloadedNextTrack(allConverted[nextIdx]);
       preloadedAlternativesRef.current = allConverted.slice(nextIdx + 1, nextIdx + 11);
+      setPreloadedAlternatives(allConverted.slice(nextIdx + 1, nextIdx + 11));
     }
     activeQueueRef.current = queueFromResults;
     setActiveQueue(queueFromResults);
@@ -6198,6 +5855,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
     preloadedNextTrackRef.current = albumTracks[nextIdx];
     setPreloadedNextTrack(albumTracks[nextIdx]);
     preloadedAlternativesRef.current = albumTracks.slice(nextIdx + 1, nextIdx + 11);
+    setPreloadedAlternatives(albumTracks.slice(nextIdx + 1, nextIdx + 11));
 
     playTrackInternal(currentTrackToPlay);
     showNotification(`▶ Đang phát Album Mix: ${mix.title} • Bài ${targetIndex + 1}/${albumTracks.length}`);
@@ -6233,7 +5891,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       )}
 
       {/* ─── SPOTIFY UNIFIED CUSTOM TITLEBAR (DESKTOP / TAURI FRAMELESS) ─── */}
-      {!isDesktopMiniBar && (
+      {!effectiveIsMiniBar && (
         <CustomTitleBar
           currentView={currentView}
           onNavigateView={handleNavigateView}
@@ -6260,7 +5918,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       )}
 
       {/* ─── DESKTOP FLOATING MINI PLAYER BAR (NO WINDOW TITLEBAR, FILLS ENTIRE SMALL WINDOW) ─── */}
-      {isDesktopMiniBar && (
+      {effectiveIsMiniBar && (
         <div 
           className="fixed inset-0 w-full h-full z-[100] flex flex-col justify-between overflow-hidden bg-[#07070a] select-none"
           data-tauri-drag-region="true"
@@ -6278,6 +5936,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
             onRestoreFull={handleRestoreFromDesktopMiniBar}
             onClose={handleCloseMiniBar}
             accentColor={activeAccentColor}
+            volume={volume}
+            onVolumeChange={handleVolumeChange}
           />
         </div>
       )}
@@ -6674,7 +6334,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc1 && (
         <div
           className={
-            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+            effectiveIsMiniBar || (isTauriApp && !showYoutubeVideo)
               ? 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
               : currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2)
               ? (isMobilePlayerOpen
@@ -6688,7 +6348,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+            effectiveIsMiniBar || (isTauriApp && !showYoutubeVideo)
               ? ({ left: '-9999px', top: '0px' } as React.CSSProperties)
               : currentTrack?.source === 'youtube' && (activeYtChannel === 1 || !ytIframeSrc2) && isMobilePlayerOpen
               ? (mobileMvRect
@@ -6767,7 +6427,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       {ytIframeSrc2 && (
         <div
           className={
-            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+            effectiveIsMiniBar || (isTauriApp && !showYoutubeVideo)
               ? 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
               : currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1)
               ? (isMobilePlayerOpen
@@ -6781,7 +6441,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               : 'fixed top-0 -left-[9999px] w-[320px] h-[180px] overflow-hidden opacity-0 pointer-events-none'
           }
           style={
-            isDesktopMiniBar || (isTauriApp && !showYoutubeVideo)
+            effectiveIsMiniBar || (isTauriApp && !showYoutubeVideo)
               ? ({ left: '-9999px', top: '0px' } as React.CSSProperties)
               : currentTrack?.source === 'youtube' && (activeYtChannel === 2 || !ytIframeSrc1) && isMobilePlayerOpen
               ? (mobileMvRect
@@ -6912,7 +6572,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       )}
 
       {/* Main Layout (Persistently mounted to keep WebRTC, Screen Share, Audio & Radio Bots alive) */}
-      <div className={`flex flex-1 overflow-hidden relative ${isDesktopMiniBar ? 'hidden' : ''}`}>
+      <div className={`flex flex-1 overflow-hidden relative ${effectiveIsMiniBar ? 'hidden' : ''}`}>
         {/* Desktop Sidebar */}
         <div className="hidden md:flex h-full flex-shrink-0">
           <Sidebar
@@ -7067,7 +6727,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onTogglePlay={handleTogglePlay}
                 accentColor={activeAccentColor}
                 language={language}
-                availableTracks={tracks.filter(t => t.source === 'local' || t.is_downloaded)}
+                availableTracks={deduplicateTracks([...tracks, ...displayedTracks])}
                 onDownloadAlbum={handleDownloadAlbum}
                 onCancelDownloadAlbum={handleCancelDownloadAlbum}
                 downloadingAlbumId={downloadingAlbumId}
@@ -7093,6 +6753,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 onSaveArtistMixAsAlbum={handleSaveArtistMixAsAlbum}
                 onNavigateToAlbums={() => setCurrentView('albums')}
                 onPlayArtistMix={handlePlayArtistMix}
+                onAddToAlbum={(track) => {
+                  setTrackToAddToAlbum(track);
+                  setIsAddToAlbumModalOpen(true);
+                }}
               />
             ) : currentView === 'ai_mix' ? (
               <AiMixView
@@ -7114,10 +6778,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   };
                   handleToggleFavorite(t);
                 }}
-                albums={albums}
-                onSaveArtistMixAsAlbum={handleSaveArtistMixAsAlbum}
-                onNavigateToAlbums={() => setCurrentView('albums')}
-                onPlayArtistMix={handlePlayArtistMix}
               />
             ) : currentView === 'profile' ? (
               <ProfileView
@@ -7164,10 +6824,14 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                 accentColor={activeAccentColor}
                 initialQuery={topSearchQuery}
                 onQueryChange={setTopSearchQuery}
+                onAddToAlbum={(track) => {
+                  setTrackToAddToAlbum(track);
+                  setIsAddToAlbumModalOpen(true);
+                }}
               />
             ) : currentView === 'youtube' ? (
               <div>
-                <div className="mb-5 p-5 rounded-xl bg-[#080808] border border-[#181818] flex items-center justify-between">
+                <div className="mb-5 p-5 rounded-2xl bg-zinc-900/40 border border-white/10 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-red-400 flex items-center gap-1 font-mono">
                       <Radio className="w-3 h-3 text-red-500 animate-pulse" />
@@ -7204,6 +6868,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
                   favorites={favorites}
+                  volume={volume}
+                  onVolumeChange={handleVolumeChange}
                   onTrackSelect={handlePlayTrack}
                   onTogglePlay={handleTogglePlay}
                   accentColor={accentColor}
@@ -7225,7 +6891,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </div>
             ) : currentView === 'soundcloud' ? (
               <div>
-                <div className="mb-5 p-5 rounded-xl bg-[#080808] border border-[#181818] flex items-center justify-between">
+                <div className="mb-5 p-5 rounded-2xl bg-zinc-900/40 border border-white/10 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-orange-400 flex items-center gap-1 font-mono">
                       <SoundCloudIcon className="w-3.5 h-3.5 text-orange-400" />
@@ -7262,6 +6928,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
                   favorites={favorites}
+                  volume={volume}
+                  onVolumeChange={handleVolumeChange}
                   onTrackSelect={handlePlayTrack}
                   onTogglePlay={handleTogglePlay}
                   accentColor={accentColor}
@@ -7283,7 +6951,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </div>
             ) : currentView === 'audius' ? (
               <div>
-                <div className="mb-5 p-5 rounded-xl bg-[#080808] border border-[#181818] flex items-center justify-between">
+                <div className="mb-5 p-5 rounded-2xl bg-zinc-900/40 border border-white/10 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5 font-mono" style={{ color: accentColor }}>
                       <AudiusIcon className="w-3.5 h-3.5" style={{ color: accentColor }} />
@@ -7320,6 +6988,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
                   favorites={favorites}
+                  volume={volume}
+                  onVolumeChange={handleVolumeChange}
                   onTrackSelect={handlePlayTrack}
                   onTogglePlay={handleTogglePlay}
                   accentColor={accentColor}
@@ -7341,7 +7011,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
               </div>
             ) : (
               <div>
-                <div className="mb-5 p-5 rounded-xl bg-[#0a0a0c] border border-[#1a1a20] flex items-center justify-between shadow-sm">
+                <div className="mb-5 p-5 rounded-2xl bg-zinc-900/40 border border-white/10 flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-widest font-mono flex items-center gap-1.5" style={{ color: accentColor }}>
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: accentColor }}></span>
@@ -7377,7 +7047,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                         style={{
                           backgroundColor: activeAccentColor,
                           color: getContrastTextColor(activeAccentColor),
-                          boxShadow: `0 0 16px ${activeAccentColor}50`
+                          // clean button
                         }}
                         className="w-11 h-11 rounded-full hover:scale-105 active:scale-95 flex items-center justify-center transition-all cursor-pointer shadow-lg"
                         title={isPlaying && currentTrack && displayedTracks.some(t => t.id === currentTrack.id) ? (language === 'vi' ? 'Tạm dừng' : 'Pause') : (language === 'vi' ? 'Phát tất cả' : 'Play all')}
@@ -7396,6 +7066,8 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
                   currentTrack={currentTrack}
                   isPlaying={isPlaying}
                   favorites={favorites}
+                  volume={volume}
+                  onVolumeChange={handleVolumeChange}
                   onTrackSelect={handlePlayTrack}
                   onTogglePlay={handleTogglePlay}
                   accentColor={accentColor}
@@ -7431,7 +7103,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
       </div>
 
       {/* Ultra Hi-Fi Player Bar */}
-      {!isDesktopMiniBar && (
+      {!effectiveIsMiniBar && (
         <PlayerBar
           language={language}
           isCompact={true}
@@ -7485,8 +7157,6 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           themeMode={themeMode}
           recommendMode={recommendMode}
           onCycleRecommendMode={handleCycleRecommendMode}
-          isNextTrackPopupEnabled={Boolean(isNextTrackPopupEnabled && nextTrackPopup)}
-          onToggleNextTrackPopupEnabled={handleToggleNextTrackPopupEnabled}
           crossfadeDuration={crossfadeDuration}
           onUpdateCrossfadeDuration={setCrossfadeDuration}
           isCrossfading={isCrossfading}
@@ -7505,9 +7175,18 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           playbackTarget={connectPlaybackTarget}
           onToggleConnectClient={!isTauriApp ? handleToggleConnectClient : undefined}
           onOpenConnectModal={!isTauriApp ? () => setIsConnectModalOpen(true) : undefined}
-          onOpenKaraoke={() => setIsKaraokeModalOpen(true)}
-          onOpenQueue={() => setIsQueueModalOpen(true)}
+          onOpenKaraoke={() => {
+            setIsQueueModalOpen(false);
+            setIsKaraokeModalOpen(prev => !prev);
+          }}
+          isKaraokeOpen={isKaraokeModalOpen}
+          onOpenQueue={() => {
+            setIsKaraokeModalOpen(false);
+            setIsQueueModalOpen(prev => !prev);
+          }}
+          isQueueOpen={isQueueModalOpen}
           onToggleMiniWidget={handleToggleMiniWidget}
+          isPinned={effectiveIsMiniBar || isMiniWidget}
         />
       )}
 
@@ -7521,11 +7200,10 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
           } backdrop-blur-xl`}
         >
           {[
-            { view: 'library' as ViewType, label: language === 'vi' ? 'Trang chủ' : 'Home', icon: <ModernHomeIcon className="w-4 h-4" active={currentView === 'library'} /> },
+            { view: 'library' as ViewType, label: language === 'vi' ? 'Trang chủ' : 'Home', icon: <AudioLines className="w-4 h-4" /> },
             { view: 'search' as ViewType, label: language === 'vi' ? 'Tìm kiếm' : 'Search', icon: <Search className="w-4 h-4" /> },
             { view: 'community' as ViewType, label: 'Spy Jam', icon: <SpyJamIcon className="w-4 h-4" /> },
             { view: 'albums' as ViewType, label: 'Album', icon: <Layers className="w-4 h-4" /> },
-            { view: 'ai_mix' as ViewType, label: 'AI Mix', icon: <AudioLines className="w-4 h-4" /> },
             { view: 'profile' as ViewType, label: language === 'vi' ? 'Hồ sơ' : 'Profile', icon: <UserIcon className="w-4 h-4" /> },
           ].map((item) => {
             const isActive = currentView === item.view;
@@ -7547,7 +7225,7 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
 
       {/* Karaoke & Synced Lyrics Mode Modal */}
       <KaraokeModal
-        isOpen={isKaraokeModalOpen}
+        isOpen={isKaraokeModalOpen && !isQueueModalOpen && !effectiveIsMiniBar}
         onClose={() => setIsKaraokeModalOpen(false)}
         currentTrack={currentTrack}
         isPlaying={isPlaying}
@@ -7557,23 +7235,61 @@ const getLanguageAiPopupLabel = (lang: LanguageCode): string => {
         onPrev={handleUserPrev}
         onNext={handleUserNext}
         onSeek={handleSeek}
+        onToggleVocalCut={(enabled) => {
+          setVocalCutEnabled(enabled);
+          if (enabled && currentTrack && currentTrack.source === 'youtube' && !ytMusicFallbackActiveRef.current) {
+            const curTime = currentTimeRef.current || 0;
+            fallbackToYoutubeMusicStream(currentTrack).then((ok) => {
+              if (ok && onlineAudioRef.current) {
+                onlineAudioRef.current.currentTime = curTime;
+              }
+            }).catch(() => {});
+          }
+        }}
         accentColor={activeAccentColor}
         language={language}
       />
 
       {/* Up Next & Queue Management Modal */}
       <QueueModal
-        isOpen={isQueueModalOpen}
+        isOpen={isQueueModalOpen && !isKaraokeModalOpen && !effectiveIsMiniBar}
         onClose={() => setIsQueueModalOpen(false)}
         currentTrack={currentTrack}
         isPlaying={isPlaying}
-        queue={connectPlaybackTarget === 'desktop' && !isTauriApp && remoteQueue.length > 0 ? remoteQueue : getEffectiveQueue()}
+        queue={connectPlaybackTarget === 'desktop' && !isTauriApp && remoteQueue.length > 0 ? remoteQueue : (activeQueue.length > 0 ? activeQueue : getEffectiveQueue())}
         onPlayTrack={handlePlayQueueTrack}
         onReorder={handleReorderQueue}
         onRemove={handleRemoveFromQueue}
+        onClearQueue={() => {
+          setActiveQueue([]);
+          activeQueueRef.current = [];
+          showNotification(language === 'vi' ? 'Đã xoá hàng đợi' : 'Queue cleared');
+        }}
         accentColor={activeAccentColor}
         language={language}
         isRemoteDesktop={connectPlaybackTarget === 'desktop' && !isTauriApp}
+        smartDjTrack={preloadedNextTrack}
+        smartDjAlternatives={preloadedAlternatives.length > 0 ? preloadedAlternatives : preloadedAlternativesRef.current}
+        onAddToQueue={(track) => {
+          setActiveQueue(prev => deduplicateTracks([...prev, track]));
+          showNotification(language === 'vi' ? `Đã thêm "${track.title}" vào hàng đợi` : `Added "${track.title}" to queue`);
+        }}
+        recommendMode={recommendMode}
+        onCycleRecommendMode={handleCycleRecommendMode}
+        isAiLoadingSmartDj={isAiLoadingNext}
+        onRefreshSmartDj={() => {
+          if (currentTrackRef.current) {
+            setIsAiLoadingNext(true);
+            fetchUpcomingForTrack(currentTrackRef.current);
+          } else {
+            const seeds = getLanguageAiSeeds(language);
+            preloadedNextTrackRef.current = seeds[0];
+            setPreloadedNextTrack(seeds[0]);
+            preloadedAlternativesRef.current = seeds.slice(1, 11);
+            setPreloadedAlternatives(seeds.slice(1, 11));
+          }
+        }}
+        activeContextTitle={getPlaylistModeLabel(activeQueueContext)}
       />
     </div>
   );
