@@ -1429,27 +1429,27 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
             return (
               <div
                 key={artist.artist + idx}
-                className={`absolute inset-0 flex items-center justify-between p-3.5 sm:p-7 md:p-8 transition-all duration-1000 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[opacity,transform] ${
-                  isActive ? 'opacity-100 scale-100 translate-x-0 z-10 pointer-events-auto' : 'opacity-0 scale-[1.02] translate-x-2 z-0 pointer-events-none'
+                className={`absolute inset-0 flex items-center justify-between p-3.5 sm:p-7 md:p-8 transition-opacity duration-1000 ease-in-out will-change-[opacity] ${
+                  isActive ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
                 }`}
               >
                 {/* Clean Modern Surface — Unslop: No loud gradients or blur bloat */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                  <div className="absolute inset-0 bg-zinc-950/95" />
                   <img
                     src={artist.avatar}
                     alt=""
                     aria-hidden="true"
                     referrerPolicy="no-referrer"
-                    className={`w-full h-full object-cover opacity-15 filter grayscale pointer-events-none transition-transform duration-1000 ease-[cubic-bezier(0.25,1,0.5,1)] ${
-                      isActive ? 'scale-105' : 'scale-110'
+                    className={`w-full h-full object-cover filter grayscale pointer-events-none transition-all duration-1000 ease-in-out ${
+                      isActive ? 'opacity-15 scale-105' : 'opacity-0 scale-100'
                     }`}
                   />
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#09090e] via-[#09090e]/80 to-transparent" />
                 </div>
 
                 {/* Left Column: Information & Actions */}
                 <div className={`relative z-10 flex-1 min-w-0 pr-2 flex flex-col justify-center space-y-1.5 sm:space-y-4 transition-all duration-700 ease-out ${
-                  isActive ? 'opacity-100 translate-y-0 delay-100' : 'opacity-0 translate-y-2'
+                  isActive ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-3'
                 }`}>
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <span
@@ -1510,7 +1510,7 @@ export const HomeTrendingView: React.FC<HomeTrendingViewProps> = ({
 
                 {/* Right Column: Hero Artist Card Showcase (Visible on both mobile & desktop) */}
                 <div className={`relative z-10 flex flex-col items-center justify-center flex-shrink-0 pr-1 sm:pr-2 gap-2 transition-all duration-700 ease-out ${
-                  isActive ? 'opacity-100 scale-100 delay-150' : 'opacity-0 scale-95'
+                  isActive ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
                 }`}>
                   <div 
                     onClick={() => handleOpenArtistMix(artist)}

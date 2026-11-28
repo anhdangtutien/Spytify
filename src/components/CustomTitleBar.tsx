@@ -373,9 +373,9 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
         {/* Collapsible Search with Rolling Magnifier Glass Animation */}
         <div 
           ref={searchContainerRef}
-          className={`relative flex items-center h-9 rounded-full transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] no-drag select-none ${
+          className={`relative flex items-center h-9 rounded-full overflow-hidden transition-[width,background-color,border-color,box-shadow] duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] will-change-[width] no-drag select-none ${
             isSearchActive 
-              ? 'flex-1 max-w-[420px] bg-[#1f1f26] border border-white/10 hover:border-white/20 focus-within:border-white/30 focus-within:bg-[#262630] shadow-inner' 
+              ? 'w-[280px] sm:w-[360px] md:w-[420px] bg-[#1f1f26] border border-white/10 hover:border-white/20 focus-within:border-white/30 focus-within:bg-[#262630] shadow-inner' 
               : 'w-9 bg-[#1f1f26] hover:bg-[#282832] border border-transparent cursor-pointer'
           }`}
           data-tauri-drag-region="false"
@@ -384,7 +384,7 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
             if (!isSearchActive) {
               setIsSearchExpanded(true);
               onNavigateView('search');
-              setTimeout(() => searchInputRef.current?.focus(), 100);
+              setTimeout(() => searchInputRef.current?.focus(), 150);
             }
           }}
           title={!isSearchActive ? (language === 'vi' ? 'Tìm kiếm (Bấm để mở)' : 'Search') : undefined}
@@ -397,12 +397,12 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
                 e.stopPropagation();
                 setIsSearchExpanded(true);
                 onNavigateView('search');
-                setTimeout(() => searchInputRef.current?.focus(), 100);
+                setTimeout(() => searchInputRef.current?.focus(), 150);
               } else {
                 searchInputRef.current?.focus();
               }
             }}
-            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${
               isSearchActive 
                 ? 'rotate-[360deg] text-white' 
                 : 'rotate-0 text-zinc-300 hover:text-white hover:rotate-45'
@@ -425,10 +425,10 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
             }}
             placeholder={language === 'vi' ? 'Bạn muốn nghe gì?' : 'What do you want to play?'}
             tabIndex={isSearchActive ? 0 : -1}
-            className={`h-full text-xs font-medium bg-transparent text-white placeholder-zinc-400 focus:outline-none transition-all duration-300 ${
+            className={`flex-1 min-w-0 h-full text-xs font-medium bg-transparent text-white placeholder-zinc-400 focus:outline-none transition-opacity duration-300 ${
               isSearchActive 
-                ? 'w-full opacity-100 pr-14 pointer-events-auto delay-100' 
-                : 'w-0 opacity-0 pointer-events-none p-0 border-0'
+                ? 'opacity-100 pr-14 pointer-events-auto delay-150' 
+                : 'opacity-0 pointer-events-none'
             }`}
           />
 
@@ -436,8 +436,8 @@ export const CustomTitleBar: React.FC<CustomTitleBarProps> = ({
           <div 
             className={`absolute inset-y-0 right-1 flex items-center gap-1 pr-1.5 transition-all duration-300 ${
               isSearchActive 
-                ? 'opacity-100 scale-100 pointer-events-auto delay-150' 
-                : 'opacity-0 scale-75 pointer-events-none'
+                ? 'opacity-100 scale-100 translate-x-0 pointer-events-auto delay-200' 
+                : 'opacity-0 scale-75 translate-x-3 pointer-events-none'
             }`}
           >
             {searchQuery ? (
